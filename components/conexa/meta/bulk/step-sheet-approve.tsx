@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { useBulkStore } from '@/lib/bulk/store'
 import { uploadBulkAsset } from '@/lib/bulk/api'
 import { executePlanAdRequest, writeSheetStatusRequest } from '@/lib/conexa/bulk/client'
-import { buildExecuteRequest, driveFileUrl, primaryFile } from '@/lib/conexa/bulk/plan-rows'
+import { buildExecuteRequest, driveFileUrl, publishedFiles } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
 import { Button } from '@/components/ui/button'
 
@@ -55,10 +55,11 @@ export function StepSheetApprove() {
     for (const { row, ad } of pending) {
       updateRow(row.id, { status: 'publishing', error: undefined })
       try {
-        const file = primaryFile(ad.files)
-        if (!file) throw new Error('El anuncio no tiene archivos de Drive.')
-        const assetUrl = await driveToStorage(clientId, file)
-        const item = buildExecuteRequest({ context, plan, ad, row, assetUrl })
+        const files = publishedFiles(ad)
+        if (!files.length) throw new Error('El anuncio no tiene archivos de Drive.')
+        const assetUrls: Record<string, string> = {}
+        for (const file of files) assetUrls[file.id] = await driveToStorage(clientId, file)
+        const item = buildExecuteRequest({ context, plan, ad, row, assetUrls })
         if (typeof item === 'string') throw new Error(item)
         const result = await executePlanAdRequest(context.planId, { clientId, planId: context.planId, confirmed: true, item })
         if (!result.ok) throw new Error(result.error)

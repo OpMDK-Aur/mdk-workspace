@@ -5,13 +5,14 @@ import {
   type PlacementCampaignOption, type PlacementCheck, type PlanAnswer, type PlanBadge, type PlanCampaign, type PlanContext, type PlanIssue, type PlanOverrides, type PlanQuestion, type PlanRow, type ResolvedPlan, type Role,
 } from './types'
 import { cleanValue, containsText, hashText, isBlankValue, normalizeText, sameText, splitInstructions, tokenOverlap } from './text'
+import { assignPlacements, classifyFiles, duplicatedFormats, fileFormat, type FormatFile } from './formats'
 
 type Cells = { rowNumber: number; cells: string[]; driveIds: string[][] }
 type Resolved = { value?: string; values?: string[]; text?: string; label?: string; note?: string }
 type QuestionInput = Omit<PlanQuestion, 'rowNumbers' | 'answered' | 'answer' | 'answerLabel' | 'note' | 'searchable' | 'allowFree' | 'freePlaceholder'> & Partial<Pick<PlanQuestion, 'searchable' | 'allowFree' | 'freePlaceholder'>>
 
 export const accountLabel = (accounts: InventoryAccount[], id?: string) => accounts.find((account) => account.id === id)?.name ?? id ?? 'Sin cuenta'
-export const ratioLabel = (file: DriveFileRef) => ratioFromName(file.name) ?? ratioFromDimensions(file.width, file.height)
+export const ratioLabel = (file: DriveFileRef): string => fileFormat(file) ?? ratioFromName(file.name) ?? ratioFromDimensions(file.width, file.height)
 export const instructionsKey = (text: string) => hashText(normalizeText(text))
 export const copyKey = (rowNumber: number, piece: string) => `${rowNumber}:${normalizeText(piece)}`
 export const campaignMatchKey = (accountId: string, name: string) => `${accountId}::${normalizeText(name)}`
@@ -21,8 +22,18 @@ const worst = (states: ItemState[]): ItemState => states.reduce<ItemState>((acc,
 const excludeOption = (rows = 1) => ({ value: ANSWER_EXCLUDE, label: rows > 1 ? 'Excluir las filas' : 'Excluir fila' })
 const SPECIAL = new Set([ANSWER_EXCLUDE, ANSWER_CREATE])
 
-function resolveAnswer(question: Pick<PlanQuestion, 'kind' | 'options'>, answer?: PlanAnswer): Resolved {
+function resolveAnswer(question: Pick<PlanQuestion, 'kind' | 'options' | 'folderFiles'>, answer?: PlanAnswer): Resolved {
   if (!answer) return {}
+  if (question.kind === 'files' && answer.groups && question.folderFiles) {
+    const byId = new Map(question.folderFiles.files.map((file) => [file.id, file]))
+    const groups = answer.groups.filter((group) => group.length)
+    if (!groups.length) return { note: 'Dejá al menos un archivo en un anuncio, o excluí la fila' }
+    if (groups.some((group) => group.some((id) => !byId.has(id)))) return { note: 'Los archivos de la carpeta cambiaron: volvé a armar los anuncios' }
+    if (groups.some((group) => new Set(group.map((id) => byId.get(id)!.format)).size !== group.length)) return { note: 'Cada anuncio puede tener un solo archivo por formato' }
+    const used = groups.flat().length
+    const excluded = question.folderFiles.files.length - used
+    return { value: 'groups', label: `${groups.length} ${groups.length > 1 ? 'anuncios' : 'anuncio'}${excluded ? ` · ${excluded} excluido${excluded > 1 ? 's' : ''}` : ''}` }
+  }
   if (question.kind === 'text') return answer.text?.trim() ? { text: answer.text.trim(), label: answer.text.trim() } : {}
   if (question.kind === 'multi') {
     const values = (answer.values ?? []).filter((value) => question.options.some((option) => option.value === value))
@@ -222,7 +233,6 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   const adsets = new Map<string, PlanAdset>()
   const rows: PlanRow[] = []
   const ads: PlanAd[] = []
-  const namesByAdset = new Map<string, Map<string, number>>()
   const questions = new Map<string, PlanQuestion>()
   const resolvedAnswers = new Map<string, Resolved>()
 
@@ -337,7 +347,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       decision = ask({
         id: `campaign:${key}`, kind: 'choice', field: 'Campaña',
         prompt: `No encontré "${name}" en ${accountLabel(accounts, accountId)}. ¿Uso una existente o la creo?`,
-        why: elsewhere.length ? `Existe una campaña con ese nombre en ${elsewhere.map((item) => accountLabel(accounts, item.accountId)).join(', ')}` : `Hay campañas con nombre parecido: ${semantic.map((item) => `"${item.name}"`).join(', ')}`,
+        why: elsewhere.length ? `Existe una campaña con ese nombre en ${elsewhere.map((item) => accountLabel(accounts, item.accountId)).join(', ')}` : `Hay campa��as con nombre parecido: ${semantic.map((item) => `"${item.name}"`).join(', ')}`,
         options: [
           ...ambiguous.map((item) => ({ value: `use:${item.id}`, label: `Usar "${item.name}"`, hint: accountLabel(accounts, item.accountId) })),
           { value: ANSWER_CREATE, label: `Crear "${name}" nueva`, hint: accountLabel(accounts, accountId) },
@@ -642,13 +652,48 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     return result
   }
 
+  // Una carpeta = un anuncio, con un archivo por formato. Si hay formatos repetidos, la persona arma los anuncios.
+  type Piece = { key: string; label: string; files: FormatFile[]; ignored: Array<{ name: string; reason: string }> }
   function piecesOf(row: Cells) {
-    const ids = linkIds(row)
-    const files = [...new Map(ids.flatMap((id) => context.drive[id]?.files ?? []).map((file) => [file.id, file])).values()]
+    const ids = [...new Set(linkIds(row))]
     const error = ids.map((id) => context.drive[id]?.error).find(Boolean)
-    const groups = new Map<string, DriveFileRef[]>()
-    for (const file of files.sort((a, b) => a.name.localeCompare(b.name))) groups.set(baseNameOf(file.name), [...(groups.get(baseNameOf(file.name)) ?? []), file])
-    return { hasLink: ids.length > 0, error, groups }
+    const pieces: Piece[] = []
+    const ignoredAll: Array<{ name: string; reason: string }> = []
+    let pending = false
+    const seen = new Set<string>()
+    ids.forEach((folderId, folderIndex) => {
+      const raw = (context.drive[folderId]?.files ?? []).filter((file) => !seen.has(file.id)).sort((a, b) => a.name.localeCompare(b.name))
+      raw.forEach((file) => seen.add(file.id))
+      const { valid, ignored } = classifyFiles(raw)
+      const skipped = ignored.map(({ file, reason }) => ({ name: file.name, reason }))
+      ignoredAll.push(...skipped)
+      if (!valid.length) return
+      const label = baseNameOf(valid[0].name) || `Carpeta ${folderIndex + 1}`
+      const duplicated = duplicatedFormats(valid)
+      if (!duplicated.length) {
+        pieces.push({ key: folderId, label, files: valid, ignored: skipped })
+        return
+      }
+      const questionId = `folder-files:${row.rowNumber}:${folderId}`
+      const folderLabel = ids.length > 1 ? `La carpeta ${folderIndex + 1}` : 'La carpeta'
+      const answer = ask({
+        id: questionId, kind: 'files', field: 'Creativos',
+        prompt: `${folderLabel} tiene más de un archivo ${duplicated.join(', ')}. ¿Cómo armo los anuncios?`,
+        why: 'Cada carpeta es un anuncio con un archivo por formato, y acá hay formatos repetidos',
+        options: [excludeOption()], target: 'row', targetKey: String(row.rowNumber), allowFree: false,
+        folderFiles: { folderLabel, duplicated, files: valid.map((file) => ({ id: file.id, name: file.name, format: file.format, kind: file.mimeType.startsWith('video/') ? 'video' : 'image' })) },
+      }, row.rowNumber)
+      const groups = answer?.value === 'groups' ? (answers[questionId]?.groups ?? []).filter((group) => group.length) : undefined
+      if (!groups) { pending = true; return }
+      const byId = new Map(valid.map((file) => [file.id, file]))
+      groups.forEach((group, index) => pieces.push({
+        key: groups.length > 1 ? `${folderId}#${index + 1}` : folderId,
+        label: groups.length > 1 ? `${label} (${index + 1})` : label,
+        files: group.map((id) => byId.get(id)!),
+        ignored: index === 0 ? skipped : [],
+      }))
+    })
+    return { hasLink: ids.length > 0, error, pieces, ignored: ignoredAll, pending }
   }
 
   function compare(piece: string, files: DriveFileRef[], adset: PlanAdset): { comparison: PieceComparison; match?: PlanAd['match'] } {
@@ -668,7 +713,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const key = normalizeText(piece)
     const byName = key.length >= 3 ? adsetAds.filter((ad) => normalizeText(ad.name).includes(key) || normalizeText(ad.creativeName ?? '').includes(key)) : []
     if (!byName.length) return { comparison: 'new' }
-    const adFormats = [...new Set(byName.map((ad) => ratioFromName(ad.name) ?? ratioFromName(ad.creativeName ?? '')).filter((value): value is NonNullable<typeof value> => Boolean(value)))]
+    const adFormats: string[] = [...new Set(byName.map((ad) => ratioFromName(ad.name) ?? ratioFromName(ad.creativeName ?? '')).filter((value): value is NonNullable<typeof value> => Boolean(value)))]
     const match = { adId: byName[0].id, name: byName[0].name, thumbnail: byName[0].thumbnail, formats: adFormats, certain: false }
     return { comparison: adFormats.length && formats.some((format) => !adFormats.includes(format)) ? 'missing_formats' : 'unchanged', match }
   }
@@ -715,9 +760,13 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     }
 
     const campaignName = cell(row, 'campaign_name')
-    const { hasLink, error, groups } = piecesOf(row)
+    const { hasLink, error, pieces, ignored: ignoredFiles, pending: piecesPending } = piecesOf(row)
     if (!hasLink) planRow.issues.push({ field: 'Creativos', message: 'La fila no tiene link de Drive', where: `Fila ${row.rowNumber} del sheet` })
-    else if (!groups.size) planRow.issues.push({ field: 'Creativos', message: error ?? 'La carpeta de Drive no tiene imágenes ni videos compatibles', where: 'Revisá el link y el acceso a Drive' })
+    else if (!pieces.length && !piecesPending) planRow.issues.push({
+      field: 'Creativos',
+      message: error ?? (ignoredFiles.length ? `Archivos ignorados: ${ignoredFiles.map((file) => `${file.name} (${file.reason})`).join(', ')}` : 'La carpeta de Drive no tiene imágenes ni videos compatibles'),
+      where: 'Formatos válidos: 1:1, 4:5, 9:16 o 16:9 en JPG, PNG, MP4 o MOV',
+    })
     planRow.driveError = error
     planRow.state = worst(planRow.issues.map(() => 'blocked' as const))
     const sharedWith = sharedFolderRows(row)
@@ -798,7 +847,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       }
       targets = campaign.state === 'needs_answer' ? [] : ensureAdsets(row, campaign, hint, instruction.placeInModelAdset)
     } else {
-      const formats = [...new Set([...groups.values()].flat().map(ratioLabel))]
+      const formats = [...new Set(pieces.flatMap((piece) => piece.files.map((file) => file.format)))]
       const placed = placeWithoutCampaign(row, planRow.accountId, hint, formats)
       if (!placed) continue
       if ('issue' in placed) {
@@ -814,8 +863,9 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
 
     for (const adset of targets) {
       const leadFormId = instruction.reuseLeadForm ? leadFormFor(adset, row.rowNumber).leadFormId : undefined
-      for (const [piece, files] of groups) {
-        const pieceKey = `${row.rowNumber}:${normalizeText(piece)}:${adset.key}`
+      for (const { key: folderKey, label: piece, files, ignored: pieceIgnored } of pieces) {
+        const pieceKey = `${row.rowNumber}:${folderKey}:${adset.key}`
+        const placements = assignPlacements(files)
         let { comparison, match } = compare(piece, files, adset)
         if (match && !match.certain) {
           const legacy = overrides.pieceMatch?.[pieceKey]
@@ -846,12 +896,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
         const headline = instruction.headline || cell(row, 'headline') || reuseCopy?.headline || (effective === 'create' ? generated?.headline : '') || ''
         const aiCopy = Boolean(generated && effective === 'create' && !instruction.primaryText && !cell(row, 'primary_text') && primaryText === generated.primaryText)
 
-        const baseName = instruction.adNameMode === 'today' ? context.today : instruction.adName || cell(row, 'ad_name') || piece
-        const names = namesByAdset.get(adset.key) ?? new Map<string, number>()
-        const used = (names.get(normalizeText(baseName)) ?? 0) + 1
-        names.set(normalizeText(baseName), used)
-        namesByAdset.set(adset.key, names)
-        const name = used > 1 || (groups.size > 1 && instruction.adNameMode === 'today') ? `${baseName}_${used}` : baseName
+        // El sufijo _{n} se agrega al final, solo si el mismo nombre se repite en el conjunto.
+        const name = instruction.adNameMode === 'today' ? context.today : instruction.adName || cell(row, 'ad_name') || piece
 
         const issues: PlanIssue[] = []
         const pageId = adset.pageId ?? context.pageIds[0]
@@ -865,6 +911,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
 
         ads.push({
           id: pieceKey, rowNumber: row.rowNumber, accountId: campaign.accountId, campaignKey: campaign.key, adsetKey: adset.key, piece, files, formats, comparison, match,
+          slots: Object.fromEntries(placements.slots), placementWarnings: placements.warnings, ignoredFiles: pieceIgnored,
           action: effective, badge, name, primaryText, headline, aiCopy,
           cta: instruction.cta || cell(row, 'cta') || context.batchDefaults.cta, url: instruction.url || cell(row, 'url') || context.batchDefaults.url, leadFormId,
           reason: pendingMatch ? 'Esperando tu respuesta sobre la coincidencia' : why,
@@ -874,6 +921,14 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       }
     }
   }
+
+  const sameName = new Map<string, PlanAd[]>()
+  for (const ad of ads) {
+    if (ad.badge === 'Sin cambios') continue
+    const key = `${ad.adsetKey}::${normalizeText(ad.name)}`
+    sameName.set(key, [...(sameName.get(key) ?? []), ad])
+  }
+  for (const group of sameName.values()) if (group.length > 1) group.forEach((ad, index) => { ad.name = `${ad.name}_${index + 1}` })
 
   for (const id of placementQuestions) {
     const payload = questions.get(id)?.placement

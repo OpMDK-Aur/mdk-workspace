@@ -87,7 +87,7 @@ export async function executeAd(request: ExecuteAdRequest, access: { accountIds:
     if (existingAd && item.adset.mode === 'create' && adset.reused) {
       result = { itemId: item.id, ok: true, campaignId: campaign.id, adsetId: adset.id, adId: existingAd, creativeId: '', accountId, reused: { campaign: campaign.reused, adset: adset.reused, ad: true } }
     } else {
-      const created = await createAd({ adsetId: adset.id, pageId: item.ad.pageId, status: 'PAUSED', name: item.ad.name, primaryText: item.ad.primaryText, headline: item.ad.headline, cta: item.ad.cta, link: item.ad.link, leadFormId: item.ad.leadFormId, asset: item.ad.asset })
+      const created = await createAd({ adsetId: adset.id, pageId: item.ad.pageId, status: 'PAUSED', name: item.ad.name, primaryText: item.ad.primaryText, headline: item.ad.headline, cta: item.ad.cta, link: item.ad.link, leadFormId: item.ad.leadFormId, asset: item.ad.assets[0], placementAssets: item.ad.assets })
       result = { itemId: item.id, ok: true, campaignId: campaign.id, adsetId: adset.id, adId: created.adId, creativeId: created.creativeId, accountId, reused: { campaign: campaign.reused, adset: adset.reused, ad: false } }
       await saveCreativeSources(item.ad.driveFileIds.map((file) => ({ adAccountId: accountId, adId: created.adId, creativeId: created.creativeId, driveFileId: file.id, driveModifiedTime: file.modifiedTime, format: file.format })))
     }

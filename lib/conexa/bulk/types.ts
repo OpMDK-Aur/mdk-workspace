@@ -90,7 +90,10 @@ export type PlanOverrides = {
   answers?: Record<string, PlanAnswer>
 }
 
-export type PlanAnswer = { value?: string; values?: string[]; text?: string }
+// groups: un grupo de ids de archivo por anuncio; los archivos que no quedan en ningún grupo se excluyen.
+export type PlanAnswer = { value?: string; values?: string[]; text?: string; groups?: string[][] }
+
+export type FolderFilesPayload = { folderLabel: string; files: Array<{ id: string; name: string; format: string; kind: 'image' | 'video' }>; duplicated: string[] }
 
 export const ANSWER_EXCLUDE = '__exclude'
 export const ANSWER_CREATE = '__create'
@@ -111,8 +114,9 @@ export type PlacementPayload = {
 
 export type PlanQuestion = {
   id: string
-  kind: 'choice' | 'multi' | 'text' | 'placement'
+  kind: 'choice' | 'multi' | 'text' | 'placement' | 'files'
   placement?: PlacementPayload
+  folderFiles?: FolderFilesPayload
   field: string
   prompt: string
   why: string
@@ -182,6 +186,9 @@ export type PlanAd = {
   piece: string
   files: DriveFileRef[]
   formats: string[]
+  slots: Record<string, Array<'feed' | 'vertical' | 'other'>>
+  placementWarnings: string[]
+  ignoredFiles: Array<{ name: string; reason: string }>
   comparison: PieceComparison
   match?: { adId: string; name: string; thumbnail?: string; formats: string[]; certain: boolean }
   action: CanonicalAction
@@ -240,7 +247,7 @@ export type ExecuteAdRequest = {
     answers?: Record<string, PlanAnswer>
     campaign: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }
     adset: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }
-    ad: { name: string; primaryText: string; headline: string; cta: string; link: string; pageId: string; leadFormId?: string; asset: { url: string; kind: 'image' | 'video'; name: string }; driveFileIds: Array<{ id: string; modifiedTime?: string; format: string }> }
+    ad: { name: string; primaryText: string; headline: string; cta: string; link: string; pageId: string; leadFormId?: string; assets: Array<{ url: string; kind: 'image' | 'video'; name: string; slots: Array<'feed' | 'vertical' | 'other'> }>; driveFileIds: Array<{ id: string; modifiedTime?: string; format: string }> }
   }
 }
 

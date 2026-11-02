@@ -25,7 +25,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (planned.state === 'blocked') return NextResponse.json({ error: 'El anuncio todavía tiene datos faltantes.' }, { status: 400 })
   if (pendingQuestions(resolved).length) return NextResponse.json({ error: 'El plan tiene preguntas sin responder.' }, { status: 400 })
   body.item.answers = answersForAd(resolved, planned)
-  if (!isAllowedAssetUrl(body.item.ad.asset?.url ?? '') || !['image', 'video'].includes(body.item.ad.asset?.kind)) return NextResponse.json({ error: 'Archivo inválido.' }, { status: 400 })
+  const assets = Array.isArray(body.item.ad.assets) ? body.item.ad.assets : []
+  const validSlots = ['feed', 'vertical', 'other']
+  if (!assets.length || assets.length > 4 || assets.some((asset) => !isAllowedAssetUrl(asset?.url ?? '') || !['image', 'video'].includes(asset?.kind) || !Array.isArray(asset.slots) || asset.slots.some((slot) => !validSlots.includes(slot)))) {
+    return NextResponse.json({ error: 'Archivo inválido.' }, { status: 400 })
+  }
   if (!body.item.ad.name?.trim() || !body.item.ad.primaryText?.trim() || !body.item.ad.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
 
   await markPlanApproved(id, access.userId)
