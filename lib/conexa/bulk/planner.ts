@@ -46,9 +46,18 @@ async function interpretInstructions(context: PlanContext) {
   if (!columns.length) return {}
   const texts = [...new Set(context.grid.rows.flatMap((row) => columns.flatMap((index) => splitInstructions(row.cells[index] ?? ''))))]
   if (!texts.length) return {}
-  const items = texts.map((text) => ({ key: instructionsKey(text), text }))
+  const notes = context.interpretation.instructionNotes ?? {}
+  const items = texts.map((text) => {
+    const key = instructionsKey(text)
+    const clarification = notes[key]?.decision === 'clarified' ? notes[key]?.clarification : undefined
+    return clarification ? { key, text, aclaracion_del_equipo: clarification } : { key, text }
+  })
   const result = await askJson(instructionOverridesSchema,
-    `Convertís observaciones libres de un pedido de anuncios en overrides estructurados. Solo completá un campo si la observación lo pide explícitamente.
+    `Convertís observaciones libres de un pedido de anuncios en overrides estructurados. Cada item es UNA instrucción. Solo completá un campo si la observación lo pide explícitamente.
+- status: "applied" si la entendiste y la convertiste en algún campo; "no_effect" si ya se cumple por regla general (ej. "dejar pausado"); "unclear" si no la entendés o es ambigua. Ante la duda, "unclear".
+- meaning: en una frase, cómo se aplica (applied/no_effect) o qué creés que significa (unclear). Null si no tenés hipótesis.
+- contradicts true: pide algo contrario a las reglas (ej. "dejar activo", "publicar ya"): todo lo nuevo se crea en pausa.
+- Si el item trae aclaracion_del_equipo, usala como el significado correcto de la instrucción.
 - adNameMode "today": el anuncio debe llamarse con la fecha del día (ej. "nombre del anuncio con fecha de hoy"). Hoy es ${context.today}.
 - adName: un nombre literal pedido. primaryText / headline: copy literal pedido. cta / url: si los indica.
 - placeInModelAdset true: pide crear los anuncios en el conjunto existente que corresponde al modelo de la fila.

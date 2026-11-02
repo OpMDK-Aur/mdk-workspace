@@ -200,7 +200,7 @@ function QuestionCard({ question, onAnswer, onReset }: { question: PlanQuestion;
       <p className="text-pretty text-[11px] leading-relaxed text-[#777]">{question.why}</p>
       {question.note && <p className="text-[11px] text-[#8a5f0d]">{question.note}</p>}
       {question.kind === 'placement' && question.placement ? <PlacementBody question={question} onAnswer={onAnswer} /> : <QuestionBody question={question} onAnswer={onAnswer} />}
-      {question.reuse && <p className="text-[10.5px] text-[#999]">{question.reuse.kind === 'alias' ? `Se recuerda para "${question.reuse.alias}" en próximas cargas.` : `Se recuerda qué significa "${question.reuse.value}" en este sheet.`}</p>}
+      {question.reuse && <p className="text-[10.5px] text-[#999]">{question.reuse.kind === 'alias' ? `Se recuerda para "${question.reuse.alias}" en próximas cargas.` : question.reuse.kind === 'action' ? `Se recuerda qué significa "${question.reuse.value}" en este sheet.` : 'Tu respuesta se recuerda para esta instrucción en otros sheets del cliente.'}</p>}
     </li>
   )
 }

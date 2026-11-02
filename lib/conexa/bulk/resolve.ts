@@ -1,7 +1,7 @@
 import { baseNameOf, ratioFromDimensions, ratioFromName } from '@/lib/bulk/group-assets'
 import {
   ACTION_LABELS, ANSWER_CREATE, ANSWER_EXCLUDE, CANONICAL_ACTIONS,
-  type CanonicalAction, type DriveFileRef, type InstructionOverrides, type InventoryAccount, type InventoryAdset, type InventoryCampaign, type ItemState, type PieceComparison, type PlanAd, type PlanAdset,
+  type CanonicalAction, type DriveFileRef, type InstructionChip, type InstructionOverrides, type InventoryAccount, type InventoryAdset, type InventoryCampaign, type ItemState, type PieceComparison, type PlanAd, type PlanAdset,
   type PlacementCampaignOption, type PlacementCheck, type PlanAnswer, type PlanBadge, type PlanCampaign, type PlanContext, type PlanIssue, type PlanOverrides, type PlanQuestion, type PlanRow, type ResolvedPlan, type Role,
 } from './types'
 import { cleanValue, containsText, hashText, isBlankValue, normalizeText, sameText, splitInstructions, tokenOverlap } from './text'
@@ -159,7 +159,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   // Una fila es un pedido solo si trae campaña, conjunto o link de creativos; atributos sueltos son relleno de plantilla.
   const isIgnored = (row: Cells) => !cell(row, 'campaign_name') && !cell(row, 'adset_name') && !cellsOf(row, 'creatives_link').length && !(roles.has('creatives_link') && linkIds(row).length)
 
-  const pending = interpretation.statusVocabulary.pending.filter((value) => !isBlankValue(value)).map(normalizeText)
+  // "EN REVISIÓN" es lo que Conexa escribe al terminar una fila: nunca vuelve a contar como pendiente.
+  const pending = interpretation.statusVocabulary.pending.filter((value) => !isBlankValue(value)).map(normalizeText).filter((value) => value !== 'en revision')
   const statusIndex = roles.get('status')?.[0]
   const filter = context.rowFilter
   const filterIndex = filter ? grid.headers.indexOf(filter.column) : -1
@@ -431,18 +432,36 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
         const chosen = existingAdsets.find((adset) => adset.id === answer?.value)
         return chosen ? [register(existingPlan(chosen, `Respondiste: se carga en "${chosen.name}"`))] : []
       } else if (existingAdsets.length) {
+        // Sin columna de conjunto se localiza el existente con los atributos de la fila; crear uno nuevo es solo elección explícita.
         const active = existingAdsets.filter((adset) => adset.status === 'ACTIVE')
         if (active.length === 1) return [register(existingPlan(active[0], 'La campaña tiene un solo conjunto activo'))]
         if (!active.length && existingAdsets.length === 1) return [register(existingPlan(existingAdsets[0], 'La campaña tiene un solo conjunto'))]
-        const legacy = overrides.adsetChoice?.[`${campaign.key}::choice`]
+        const pool = active.length ? active : existingAdsets
+        const attributes = [...new Set(attributesOf(row).map(normalizeText).filter((value) => value.length > 1))]
+        const scored = pool.map((adset) => {
+          const names = [adset.name, ...inventory.ads.filter((ad) => ad.adsetId === adset.id && ad.status === 'ACTIVE').map((ad) => ad.name)].map(normalizeText)
+          const hits = attributes.filter((value) => names.some((name) => ` ${name} `.includes(` ${value} `) || nameHasModel(name, value)))
+          return { adset, hits }
+        }).sort((a, b) => b.hits.length - a.hits.length || Number(b.adset.status === 'ACTIVE') - Number(a.adset.status === 'ACTIVE'))
+        const [best, second] = scored
+        if (best && best.hits.length > 0 && best.hits.length > (second?.hits.length ?? 0)) {
+          return [register(existingPlan(best.adset, `Conjunto elegido por coincidencia con ${best.hits.map((hit) => `"${hit.toUpperCase()}"`).join(', ')}`))]
+        }
         const answer = ask({
-          id: `adset-choice:${campaign.key}`, kind: 'multi', field: 'Conjunto',
-          prompt: `La fila no indica conjunto y "${campaign.name}" tiene varios. ¿En cuáles cargo los anuncios?`,
-          why: `Hay ${active.length || existingAdsets.length} conjuntos${active.length ? ' activos' : ''} y no hay forma de saber cuál corresponde`,
-          options: adsetOptions, target: 'campaign', targetKey: campaign.key, allowFree: false,
-        }, row.rowNumber, legacy?.length ? { values: legacy } : undefined)
-        if (!answer?.values?.length) return []
-        return answer.values.map((id) => existingAdsets.find((adset) => adset.id === id)).filter((adset): adset is InventoryAdset => Boolean(adset)).map((adset) => register(existingPlan(adset, 'Respondiste: conjunto elegido')))
+          id: `adset-choice:${campaign.key}::${attributes.join('|')}`, kind: 'choice', field: 'Conjunto',
+          prompt: `¿En cuál de estos conjuntos de "${campaign.name}" cargo los anuncios?`,
+          why: best?.hits.length ? `Varios conjuntos coinciden con los datos de la fila (${best.hits.join(', ')})` : `Hay ${pool.length} conjuntos${active.length ? ' activos' : ''} y ninguno coincide claramente con los datos de la fila`,
+          options: [
+            ...scored.map(({ adset, hits }) => ({ value: adset.id, label: adset.name, hint: hits.length ? `coincide: ${hits.join(', ')}` : adset.status === 'ACTIVE' ? 'activo' : 'pausado' })),
+            { value: ANSWER_CREATE, label: 'Crear conjunto nuevo', hint: 'en pausa' },
+            excludeOption(),
+          ],
+          target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Escribí parte del nombre del conjunto…',
+        }, row.rowNumber)
+        if (!answer?.value) return []
+        const chosen = existingAdsets.find((adset) => adset.id === answer.value)
+        if (chosen) return [register(existingPlan(chosen, `Respondiste: se carga en "${chosen.name}"`))]
+        if (answer.value !== ANSWER_CREATE) return []
       }
     }
 
@@ -450,8 +469,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     if (!name) {
       const answer = ask({
         id: `adset-name:${campaign.key}`, kind: 'text', field: 'Nombre del conjunto',
-        prompt: `La fila no indica conjunto. ¿Qué nombre uso para el conjunto nuevo en "${campaign.name}"?`,
-        why: 'No hay columna o valor de conjunto en la fila',
+        prompt: `¿Qué nombre uso para el conjunto nuevo en "${campaign.name}"?`,
+        why: campaign.mode === 'existing' ? 'Elegiste crear un conjunto nuevo en esta campaña' : 'La campaña es nueva y la fila no indica conjunto',
         options: [], suggestion: suggestName(batchAdsetNames, attributesOf(row), campaign.name),
         target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Nombre del conjunto',
       }, row.rowNumber)
@@ -713,11 +732,50 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     }
     if (!planRow.accountId) continue
 
-    // Varias instrucciones separadas por "|": cada una aporta su override.
+    // Cada instrucción se clasifica; una no entendida frena la fila hasta que el equipo la aclare.
     const instructionCells = cellsOf(row, 'instructions')
     const instructions = instructionCells.join(' · ')
-    const instructionKeys = [...(instructions ? [instructions] : []), ...instructionCells.flatMap(splitInstructions)]
-    const instruction: InstructionOverrides = Object.assign({}, ...instructionKeys.map((text) => context.instructionOverrides[instructionsKey(text)] ?? {}))
+    const chips: InstructionChip[] = []
+    const applied: InstructionOverrides[] = []
+    let instructionPending = false
+    for (const text of [...new Set(instructionCells.flatMap(splitInstructions))]) {
+      const key = instructionsKey(text)
+      const parsed = context.instructionOverrides[key]
+      const saved = context.interpretation.instructionNotes?.[key]
+      const { status: _status, meaning, contradicts, ...fields } = parsed ?? {}
+      const hasFields = Object.values(fields).some((value) => value !== undefined && value !== '')
+      const status = saved?.decision === 'ignore' ? 'ignored' : contradicts ? 'contradicts' : parsed?.status ?? 'unclear'
+      if (status === 'ignored') { chips.push({ text, status, detail: 'El equipo indicó ignorar esta instrucción' }); continue }
+      if (status === 'contradicts') {
+        chips.push({ text, status, detail: 'No se aplica: todo lo nuevo se crea en pausa' })
+        planRow.issues.push({ field: 'Instrucciones', message: `"${text}" no se aplica: todo lo nuevo se crea en pausa`, where: 'Columna de instrucciones' })
+        if (hasFields) applied.push(fields)
+        continue
+      }
+      if (status === 'no_effect') { chips.push({ text, status, detail: meaning || 'Ya se cumple por regla general' }); continue }
+      if (status === 'applied' || saved?.decision === 'apply' || saved?.decision === 'clarified') {
+        chips.push({ text, status: 'applied', detail: meaning || (saved?.clarification ? `Según tu aclaración: ${saved.clarification}` : 'Aplicada') })
+        applied.push(fields)
+        continue
+      }
+      const answer = ask({
+        id: `instruction:${key}`, kind: 'choice', field: 'Instrucción',
+        prompt: `No entendí la instrucción "${text}". ¿Qué hago?`,
+        why: meaning ? `Creo que significa: ${meaning}` : 'No tengo una interpretación clara de esta instrucción',
+        options: [...(meaning ? [{ value: 'apply', label: 'Sí, aplicalo así', hint: meaning }] : []), { value: 'ignore', label: 'Ignorar esta instrucción' }, excludeOption()],
+        target: 'row', targetKey: String(row.rowNumber), freePlaceholder: 'Aclarar qué significa…', reuse: { kind: 'instruction', key, text },
+      }, row.rowNumber)
+      if (answer?.value === 'apply') { chips.push({ text, status: 'applied', detail: meaning ?? 'Aplicada' }); applied.push(fields) }
+      else if (answer?.value === 'ignore') chips.push({ text, status: 'ignored', detail: 'Elegiste ignorarla' })
+      else if (answer?.text) chips.push({ text, status: 'applied', detail: `Según tu aclaración: ${answer.text}. Se reinterpreta con la aclaración en la próxima lectura del sheet.` })
+      else { chips.push({ text, status: 'unclear', detail: meaning ? `Hipótesis: ${meaning}` : 'Sin interpretación' }); instructionPending = true }
+    }
+    if (chips.length) planRow.instructions = chips
+    if (instructionPending) {
+      planRow.state = 'needs_answer'
+      continue
+    }
+    const instruction: InstructionOverrides = Object.assign({}, ...applied)
     const hint = destinationHint([campaignName, ...attributesOf(row), instructions].join(' '))
 
     let campaign: PlanCampaign

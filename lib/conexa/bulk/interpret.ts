@@ -156,5 +156,8 @@ export const instructionOverridesSchema = z.object({
     notes: z.string().nullable(),
     placeInModelAdset: z.boolean().nullable(),
     reuseLeadForm: z.boolean().nullable(),
+    status: z.enum(['applied', 'no_effect', 'unclear']),
+    meaning: z.string().nullable(),
+    contradicts: z.boolean().nullable(),
   })),
 })

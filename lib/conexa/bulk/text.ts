@@ -11,7 +11,8 @@ export const isBlankValue = (value: string | undefined) => {
   return !key || key === 'n/a' || key === 'na' || !/[a-z0-9]/.test(key)
 }
 export const cleanValue = (value: string | undefined) => (isBlankValue(value) ? '' : (value ?? '').trim())
-export const splitInstructions = (text: string) => text.split('|').map((part) => part.trim()).filter((part) => !isBlankValue(part))
+// Separa por "|", salto de línea o punto final de oración (no corta URLs ni decimales).
+export const splitInstructions = (text: string) => text.split(/\||\r?\n|\.(?=\s|$)/).map((part) => part.trim()).filter((part) => !isBlankValue(part))
 
 export const sameText = (a: string, b: string) => Boolean(normalizeText(a)) && normalizeText(a) === normalizeText(b)
 

@@ -31,8 +31,6 @@ export function StepSheetApprove() {
   const [running, setRunning] = useState(false)
   const [results, setResults] = useState<Record<string, ItemResult>>({})
   const [sheetNote, setSheetNote] = useState<string | null>(null)
-  const [doneValue, setDoneValue] = useState('')
-  const [errorValue, setErrorValue] = useState('')
 
   const plan = useMemo(() => (sheetPlan ? resolvePlan(sheetPlan.context, sheetPlan.overrides) : null), [sheetPlan])
   if (!sheetPlan || !plan || !clientId) return null
@@ -46,14 +44,8 @@ export function StepSheetApprove() {
   const failedCount = Object.values(results).filter((result) => !result.ok).length
   const missingCopy = items.filter(({ row }) => !row.primaryText.trim() || !row.headline.trim())
   const unanswered = pendingQuestions(plan)
-  // La columna de estado es el proceso de la tarea: al terminar se marca hecha o con error con el vocabulario del sheet.
-  const vocabulary = context.interpretation.statusVocabulary
-  const statusIndex = context.grid.headers.findIndex((header) => context.interpretation.columns.some((column) => column.header === header && column.role === 'status'))
-  const statusHeader = statusIndex >= 0 ? context.grid.headers[statusIndex] : null
-  const sheetStatusValues = statusIndex >= 0 ? [...new Set(context.grid.rows.map((row) => row.cells[statusIndex]?.trim()).filter(Boolean))] : []
-  const askDone = Boolean(statusHeader) && !vocabulary.done
-  const askError = Boolean(statusHeader) && !vocabulary.error
-  const statusValuesMissing = (askDone && !doneValue.trim()) || (askError && !errorValue.trim())
+  // La columna de estado es el proceso de la tarea: solo las filas creadas bien pasan a "EN REVISIÓN".
+  const statusHeader = context.interpretation.columns.find((column) => column.role === 'status' && context.grid.headers.includes(column.header))?.header ?? null
 
   async function run() {
     if (!plan || !clientId) return
@@ -81,10 +73,15 @@ export function StepSheetApprove() {
         statusUpdates.set(ad.rowNumber, false)
       }
     }
-    if (statusUpdates.size) {
+    const okRows = [...statusUpdates].filter(([, ok]) => ok).map(([rowNumber]) => rowNumber)
+    if (!statusHeader) {
+      setSheetNote('El sheet no tiene una columna de estado: no se escribió nada en el sheet.')
+    } else if (okRows.length) {
       try {
-        const response = await writeSheetStatusRequest(context.planId, { clientId, updates: [...statusUpdates].map(([rowNumber, ok]) => ({ rowNumber, ok })), values: { done: vocabulary.done ?? (doneValue.trim() || undefined), error: vocabulary.error ?? (errorValue.trim() || undefined) } })
-        setSheetNote(response.updated ? `Se actualizó el estado de ${response.updated} filas en el sheet.` : response.skipped ?? null)
+        const response = await writeSheetStatusRequest(context.planId, { clientId, updates: okRows.map((rowNumber) => ({ rowNumber, ok: true })) })
+        const failedRows = [...statusUpdates].filter(([, ok]) => !ok).length
+        const failedNote = failedRows ? ` ${failedRows} filas con error quedaron sin cambios en el sheet.` : ''
+        setSheetNote(response.updated ? `${response.updated} filas marcadas "EN REVISIÓN" en ${statusHeader}.${failedNote}` : response.skipped ?? null)
       } catch (cause) {
         setSheetNote(cause instanceof Error ? `No se pudo escribir el estado en el sheet: ${cause.message}` : 'No se pudo escribir el estado en el sheet.')
       }
@@ -120,28 +117,10 @@ export function StepSheetApprove() {
         })}
       </ul>
 
-      {(askDone || askError) && !finished && (
-        <fieldset className="flex flex-col gap-3 rounded-xl border border-[#f0e2c2] bg-[#fdf8ec] px-4 py-3">
-          <legend className="sr-only">Valores para la columna de estado</legend>
-          <p className="text-pretty text-[12px] leading-relaxed text-[#8a5f0d]">{`Al terminar escribo el resultado en la columna ${statusHeader}. El sheet no muestra qué valor usar ${askDone && askError ? 'para una tarea hecha ni para una con error' : askDone ? 'para una tarea hecha' : 'para una tarea con error'}: elegilo y lo recuerdo para este cliente.`}</p>
-          <datalist id="sheet-status-values">
-            {sheetStatusValues.map((value) => <option key={value} value={value} />)}
-          </datalist>
-          <div className="flex flex-wrap gap-3">
-            {askDone && (
-              <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[11px] font-medium text-[#555]">
-                Tarea hecha
-                <input list="sheet-status-values" value={doneValue} onChange={(event) => setDoneValue(event.target.value)} disabled={running} placeholder="Ej. FINALIZADA" className="h-9 rounded-lg border border-[#dcdcd8] bg-white px-3 text-[12px] font-normal text-[#141414] outline-none focus-visible:border-[#5B5FE8]" />
-              </label>
-            )}
-            {askError && (
-              <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[11px] font-medium text-[#555]">
-                Tarea con error
-                <input list="sheet-status-values" value={errorValue} onChange={(event) => setErrorValue(event.target.value)} disabled={running} placeholder="Ej. RECHAZADA" className="h-9 rounded-lg border border-[#dcdcd8] bg-white px-3 text-[12px] font-normal text-[#141414] outline-none focus-visible:border-[#5B5FE8]" />
-              </label>
-            )}
-          </div>
-        </fieldset>
+      {!finished && (
+        <p className="text-pretty text-[11.5px] leading-relaxed text-[#777]">
+          {statusHeader ? `Las filas creadas bien pasan a "EN REVISIÓN" en la columna ${statusHeader}. Las que fallen quedan como estaban en el sheet.` : 'El sheet no tiene una columna de estado: no voy a escribir nada en el sheet.'}
+        </p>
       )}
 
       {sheetNote && <p className="text-[11.5px] text-[#777]" role="status">{sheetNote}</p>}
@@ -157,7 +136,7 @@ export function StepSheetApprove() {
               <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={running} className="accent-[#5B5FE8]" />
               Revisé el plan y quiero crearlo en Meta
             </label>
-            <Button size="sm" disabled={!confirmed || running || !pending.length || missingCopy.length > 0 || unanswered.length > 0 || statusValuesMissing} onClick={run} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+            <Button size="sm" disabled={!confirmed || running || !pending.length || missingCopy.length > 0 || unanswered.length > 0} onClick={run} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
               {running && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
               {failedCount ? `Reintentar ${pending.length}` : `Crear ${pending.length} anuncios`}
             </Button>

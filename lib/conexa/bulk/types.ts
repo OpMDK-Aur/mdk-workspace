@@ -25,6 +25,8 @@ export const sheetInterpretationSchema = z.object({
   // confirmed: done/error los eligió el equipo, así que valen aunque todavía no aparezcan en el sheet.
   statusVocabulary: z.object({ pending: z.array(z.string()), done: z.string().optional(), error: z.string().optional(), confirmed: z.boolean().optional() }),
   suggestedRowFilter: z.object({ column: z.string(), values: z.array(z.string()) }).optional(),
+  // Aclaraciones del equipo sobre instrucciones, por hash del texto normalizado: se reutilizan en otros sheets del cliente.
+  instructionNotes: z.record(z.object({ decision: z.enum(['apply', 'ignore', 'clarified']), clarification: z.string().optional() })).optional(),
   warnings: z.array(z.string()),
 })
 export type SheetInterpretation = z.infer<typeof sheetInterpretationSchema>
@@ -48,7 +50,12 @@ export type Inventory = { accounts: InventoryAccount[]; campaigns: InventoryCamp
 export type DriveFileRef = { id: string; name: string; mimeType: string; width: number; height: number; modifiedTime?: string }
 export type CreativeSource = { adAccountId: string; adId: string; creativeId?: string; driveFileId: string; driveModifiedTime?: string; format: string }
 
-export type InstructionOverrides = { adName?: string; adNameMode?: 'today' | 'literal'; primaryText?: string; headline?: string; cta?: string; url?: string; notes?: string; placeInModelAdset?: boolean; reuseLeadForm?: boolean }
+export type InstructionStatus = 'applied' | 'no_effect' | 'unclear'
+export type InstructionOverrides = {
+  adName?: string; adNameMode?: 'today' | 'literal'; primaryText?: string; headline?: string; cta?: string; url?: string; notes?: string; placeInModelAdset?: boolean; reuseLeadForm?: boolean
+  status?: InstructionStatus; meaning?: string; contradicts?: boolean
+}
+export type InstructionChip = { text: string; status: 'applied' | 'no_effect' | 'unclear' | 'ignored' | 'contradicts'; detail: string }
 
 export type PlanContext = {
   planId: string
@@ -121,7 +128,7 @@ export type PlanQuestion = {
   answer?: PlanAnswer
   answerLabel?: string
   note?: string
-  reuse?: { kind: 'alias'; alias: string } | { kind: 'action'; value: string }
+  reuse?: { kind: 'alias'; alias: string } | { kind: 'action'; value: string } | { kind: 'instruction'; key: string; text: string }
 }
 
 export type ItemState = 'ready' | 'needs_confirmation' | 'needs_answer' | 'blocked'
@@ -207,6 +214,7 @@ export type PlanRow = {
   campaignKey?: string
   adsetKey?: string
   driveError?: string
+  instructions?: InstructionChip[]
   state: ItemState
   issues: PlanIssue[]
 }

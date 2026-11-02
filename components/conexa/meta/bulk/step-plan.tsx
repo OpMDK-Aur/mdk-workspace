@@ -7,7 +7,7 @@ import { useBulkStore } from '@/lib/bulk/store'
 import { savePlanOverridesRequest } from '@/lib/conexa/bulk/client'
 import { planToRows, actingAds } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
-import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
+import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type InstructionChip, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
 import { PlanQuestions } from './plan-questions'
 
@@ -31,6 +31,27 @@ function StateIcon({ state }: { state: ItemState }) {
 
 function Badge({ label }: { label: string }) {
   return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold', BADGE_CLASS[label as PlanBadge] ?? 'bg-[#f0f0ed] text-[#555]')}>{label}</span>
+}
+
+const CHIP: Record<InstructionChip['status'], { label: string; className: string }> = {
+  applied: { label: 'Aplicada', className: 'bg-[#5B5FE8]/10 text-[#4347c9]' },
+  no_effect: { label: 'Sin efecto', className: 'bg-[#f0f0ec] text-[#777]' },
+  ignored: { label: 'Ignorada', className: 'bg-[#f0f0ec] text-[#999] line-through' },
+  unclear: { label: 'Sin entender', className: 'bg-[#fdf3dc] text-[#8a5f0d]' },
+  contradicts: { label: 'No aplicada', className: 'bg-[#fbe9e5] text-[#c0432c]' },
+}
+
+function InstructionChips({ chips }: { chips: InstructionChip[] }) {
+  return (
+    <ul className="mt-1 flex flex-wrap gap-1" aria-label="Instrucciones de la fila">
+      {chips.map((chip) => (
+        <li key={chip.text} title={`${CHIP[chip.status].label}: ${chip.detail}`} className={`max-w-[260px] truncate rounded px-1.5 py-0.5 text-[10.5px] ${CHIP[chip.status].className}`}>
+          <span className="sr-only">{`${CHIP[chip.status].label}: `}</span>
+          {chip.text}
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 function IssueLine({ issues }: { issues: PlanIssue[] }) {
@@ -171,9 +192,17 @@ export function StepPlan() {
     const answeredAliases = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'alias' && question.answer?.value?.startsWith('act_') ? [{ alias: question.reuse.alias, accountId: question.answer.value }] : []))
     const allAliases = [...new Map([...aliases, ...answeredAliases].map((item) => [item.alias, item])).values()]
     const vocabulary = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'action' && question.answer?.value ? [{ value: question.reuse.value, action: question.answer.value }] : []))
+    type InstructionNote = { key: string; decision: 'apply' | 'ignore' | 'clarified'; clarification?: string }
+    const instructionNotes = plan.questions.flatMap((question): InstructionNote[] => {
+      if (!question.answered || question.reuse?.kind !== 'instruction') return []
+      const { key } = question.reuse
+      if (question.answer?.value === 'apply') return [{ key, decision: 'apply' }]
+      if (question.answer?.value === 'ignore') return [{ key, decision: 'ignore' }]
+      return question.answer?.text ? [{ key, decision: 'clarified', clarification: question.answer.text }] : []
+    })
     try {
-      if (allAliases.length) for (const [index, alias] of allAliases.entries()) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias, vocabulary: index === 0 ? vocabulary : undefined })
-      else await savePlanOverridesRequest(context.planId, { clientId, overrides, vocabulary })
+      if (allAliases.length) for (const [index, alias] of allAliases.entries()) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias, vocabulary: index === 0 ? vocabulary : undefined, instructionNotes: index === 0 ? instructionNotes : undefined })
+      else await savePlanOverridesRequest(context.planId, { clientId, overrides, vocabulary, instructionNotes })
     } catch (cause) {
       setSaveWarning(cause instanceof Error ? `No se guardaron las decisiones: ${cause.message}` : 'No se guardaron las decisiones.')
     } finally {
@@ -258,6 +287,7 @@ export function StepPlan() {
                 </label>
               )}
               {!row.excluded && row.issues.length > 0 ? <IssueLine issues={row.issues} /> : <span className="text-[10.5px] text-[#999]">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>}
+              {!row.excluded && row.instructions && row.instructions.length > 0 && <InstructionChips chips={row.instructions} />}
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-[#777]">
               <span className="sr-only">{`Acción fila ${row.rowNumber}`}</span>

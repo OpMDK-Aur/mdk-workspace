@@ -21,7 +21,7 @@ export const interpretSheetRequest = (body: { clientId: string; url: string; cli
 export const buildPlanRequest = (body: { clientId: string; url: string; interpretation: SheetInterpretation; rowFilter?: { column: string; values: string[] }; batchDefaults: { cta: string; url: string }; clientContext?: string }) =>
   request<{ context: PlanContext }>('/api/conexa/bulk/plan', { method: 'POST', body: JSON.stringify(body) })
 
-export const savePlanOverridesRequest = (planId: string, body: { clientId: string; overrides: PlanOverrides; alias?: { alias: string; accountId: string }; vocabulary?: Array<{ value: string; action: string }> }) =>
+export const savePlanOverridesRequest = (planId: string, body: { clientId: string; overrides: PlanOverrides; alias?: { alias: string; accountId: string }; vocabulary?: Array<{ value: string; action: string }>; instructionNotes?: Array<{ key: string; decision: 'apply' | 'ignore' | 'clarified'; clarification?: string }> }) =>
   request<{ ok: true }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}`, { method: 'PATCH', body: JSON.stringify(body) })
 
 export async function executePlanAdRequest(planId: string, body: ExecuteAdRequest): Promise<ExecuteAdResult> {
@@ -31,5 +31,5 @@ export async function executePlanAdRequest(planId: string, body: ExecuteAdReques
   return { itemId: body.item.id, ok: false, error: data.error ?? 'No se pudo crear en Meta.' }
 }
 
-export const writeSheetStatusRequest = (planId: string, body: { clientId: string; updates: Array<{ rowNumber: number; ok: boolean }>; values?: { done?: string; error?: string } }) =>
-  request<{ updated?: number; skipped?: string; needsValues?: boolean }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}/sheet-status`, { method: 'POST', body: JSON.stringify(body) })
+export const writeSheetStatusRequest = (planId: string, body: { clientId: string; updates: Array<{ rowNumber: number; ok: boolean }> }) =>
+  request<{ updated?: number; skipped?: string }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}/sheet-status`, { method: 'POST', body: JSON.stringify(body) })
