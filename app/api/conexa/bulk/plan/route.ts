@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const context = await buildPlanContext({
       planId: crypto.randomUUID(), clientId: access.clientId, sheetUrl: url, spreadsheetId: parsed.id, googleToken: google.accessToken, grid,
       interpretation: interpretation.data, rowFilter, inventory: loaded.inventory, inventoryWarnings: loaded.warnings, clientContext: clampText(body?.clientContext, 2000),
-      batchDefaults: { cta: clampText(body?.batchDefaults?.cta, 40) || 'Más información', url: clampText(body?.batchDefaults?.url, 500) }, pageIds: access.pageIds,
+      batchDefaults: { cta: clampText(body?.batchDefaults?.cta, 40) || 'Más información', url: clampText(body?.batchDefaults?.url, 500) || (clampText(body?.clientContext, 2000).match(/https?:\/\/[^\s"'<>]+/i)?.[0] ?? '') }, pageIds: access.pageIds,
     })
     context.planId = await savePlan(context, interpretationId, access.userId)
     return NextResponse.json({ context })

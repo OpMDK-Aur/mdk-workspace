@@ -21,6 +21,17 @@ const RANK: ItemState[] = ['ready', 'needs_confirmation', 'needs_answer', 'block
 const worst = (states: ItemState[]): ItemState => states.reduce<ItemState>((acc, state) => (RANK.indexOf(state) > RANK.indexOf(acc) ? state : acc), 'ready')
 const excludeOption = (rows = 1) => ({ value: ANSWER_EXCLUDE, label: rows > 1 ? 'Excluir las filas' : 'Excluir fila' })
 const SPECIAL = new Set([ANSWER_EXCLUDE, ANSWER_CREATE])
+// Meta reports multi-destination messaging adsets as e.g. MESSAGING_MESSENGER_WHATSAPP; none of them need a link.
+const NO_URL_DESTINATION = /WHATSAPP|MESSENGER|INSTAGRAM_DIRECT|ON_AD|PHONE_CALL/i
+
+export function destinationUrl(value?: string | null) {
+  const text = (value ?? '').trim()
+  if (!text) return ''
+  const explicit = text.match(/https?:\/\/[^\s"'<>]+/i)
+  if (explicit) return explicit[0]
+  const domain = text.match(/^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?$/i)
+  return domain ? `https://${domain[0]}` : ''
+}
 
 function resolveAnswer(question: Pick<PlanQuestion, 'kind' | 'options' | 'folderFiles'>, answer?: PlanAnswer): Resolved {
   if (!answer) return {}
@@ -899,7 +910,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
         const issues: PlanIssue[] = []
         const pageId = adset.pageId ?? context.pageIds[0]
         if (badge !== 'Sin cambios' && !pageId) issues.push({ field: 'Página', message: 'No hay página de Facebook para el anuncio', where: 'Asigná la página del cliente en Meta Ads' })
-        if (badge !== 'Sin cambios' && adset.destination !== 'WHATSAPP' && !leadFormId && !/^https?:\/\//i.test(instruction.url || cell(row, 'url') || context.batchDefaults.url)) issues.push({ field: 'URL', message: 'Falta la URL de destino', where: 'Valores por defecto del lote o Contexto del cliente' })
+        const url = destinationUrl(instruction.url) || destinationUrl(cell(row, 'url')) || destinationUrl(context.batchDefaults.url)
+        if (badge !== 'Sin cambios' && !NO_URL_DESTINATION.test(adset.destination ?? '') && !leadFormId && !url) issues.push({ field: 'URL', message: 'Falta la URL de destino', where: 'Valores por defecto del lote o Contexto del cliente' })
 
         const why = effective === 'skip' ? (match ? `Ya existe "${match.name}" con esta pieza: sin cambios` : 'La acción del sheet no aplica a esta pieza')
           : effective === 'add_formats' ? `En Drive hay ${formats.filter((format) => !match?.formats.includes(format)).join(', ')} que el anuncio actual no tiene: se crea un anuncio nuevo`
@@ -910,7 +922,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
           id: pieceKey, rowNumber: row.rowNumber, accountId: campaign.accountId, campaignKey: campaign.key, adsetKey: adset.key, piece, files, formats, comparison, match,
           slots: Object.fromEntries(placements.slots), placementWarnings: placements.warnings, ignoredFiles: pieceIgnored,
           action: effective, badge, name, primaryText, headline, aiCopy,
-          cta: instruction.cta || cell(row, 'cta') || context.batchDefaults.cta, url: instruction.url || cell(row, 'url') || context.batchDefaults.url, leadFormId,
+          cta: instruction.cta || cell(row, 'cta') || context.batchDefaults.cta, url, leadFormId,
           reason: pendingMatch ? 'Esperando tu respuesta sobre la coincidencia' : why,
           state: issues.length ? 'blocked' : 'ready', issues,
           idempotencyKey: hashText([context.spreadsheetId, row.rowNumber, normalizeText(piece), adset.key, files.map((file) => `${file.id}@${file.modifiedTime ?? ''}`).join(',')].join('|')),
