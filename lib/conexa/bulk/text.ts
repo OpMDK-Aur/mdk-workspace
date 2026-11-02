@@ -16,6 +16,11 @@ export const splitInstructions = (text: string) => text.split(/\||\r?\n|\.(?=\s|
 
 export const sameText = (a: string, b: string) => Boolean(normalizeText(a)) && normalizeText(a) === normalizeText(b)
 
+// Nombres de Meta: ignora separadores ("|", "-", "_", "/", espacios) y unifica O→0 en códigos (OKM ↔ 0KM, B2B, 6OO).
+export const campaignNameKey = (value: string) => normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean)
+  .map((token) => (/\d/.test(token) || /^o+km$/.test(token) ? token.replace(/o/g, '0') : token)).join(' ')
+export const sameCampaignName = (a: string, b: string) => Boolean(campaignNameKey(a)) && campaignNameKey(a) === campaignNameKey(b)
+
 // FNV-1a: estable entre servidor y navegador, suficiente para claves de idempotencia y hash de encabezados.
 export function hashText(value: string) {
   let hash = 0x811c9dc5

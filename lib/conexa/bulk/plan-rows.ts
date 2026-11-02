@@ -30,7 +30,10 @@ export function planToRows(plan: ResolvedPlan): BulkRow[] {
     }))
     return {
       id: newId('row'), baseName: ad.piece, adName: ad.name, assets, adsetId: '', cta: asCta(ad.cta), primaryText: ad.primaryText, headline: ad.headline,
-      aiGenerated: ad.aiCopy, planAdId: ad.id, planDestination: { campaignName: campaign?.name ?? '', adsetName: adset?.name ?? '' }, status: 'idle',
+      aiGenerated: ad.aiCopy, planAdId: ad.id, planDestination: {
+        accountId: campaign?.accountId, campaignName: campaign?.meta?.name ?? campaign?.name ?? '', campaignId: campaign?.meta?.id ?? campaign?.existingId,
+        adsetName: adset?.name ?? '', adsetId: adset?.existingIds?.join(', ') || undefined,
+      }, status: 'idle',
     }
   })
 }

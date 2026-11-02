@@ -53,7 +53,7 @@ export function StepSheetApprove() {
     setSheetNote(null)
     const statusUpdates = new Map<number, boolean>()
     for (const { row, ad } of pending) {
-      updateRow(row.id, { status: 'publishing', error: undefined })
+      updateRow(row.id, { status: 'creating', error: undefined })
       try {
         const files = publishedFiles(ad)
         if (!files.length) throw new Error('El anuncio no tiene archivos de Drive.')
@@ -65,7 +65,7 @@ export function StepSheetApprove() {
         if (!result.ok) throw new Error(result.error)
         const reused = result.reused.ad ? ' (ya existía, no se duplicó)' : ''
         setResults((current) => ({ ...current, [row.id]: { ok: true, message: `Creado en pausa${reused}` } }))
-        updateRow(row.id, { status: 'published', metaAdId: result.adId })
+        updateRow(row.id, { status: 'done', metaAdId: result.adId })
         if (statusUpdates.get(ad.rowNumber) !== false) statusUpdates.set(ad.rowNumber, true)
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'No se pudo crear en Meta.'
@@ -107,7 +107,7 @@ export function StepSheetApprove() {
           const adset = plan.adsets.find((item) => item.key === ad.adsetKey)
           return (
             <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-              {row.status === 'publishing' ? <Loader2 className="size-3.5 animate-spin text-[#5B5FE8]" aria-label="Creando" /> : result?.ok ? <CheckCircle2 className="size-3.5 text-[#1e9e6b]" aria-label="Creado" /> : result ? <AlertTriangle className="size-3.5 text-[#c0432c]" aria-label="Error" /> : <span className="size-3.5 rounded-full border border-[#dcdcd8]" aria-hidden="true" />}
+              {row.status === 'creating' ? <Loader2 className="size-3.5 animate-spin text-[#5B5FE8]" aria-label="Creando" /> : result?.ok ? <CheckCircle2 className="size-3.5 text-[#1e9e6b]" aria-label="Creado" /> : result ? <AlertTriangle className="size-3.5 text-[#c0432c]" aria-label="Error" /> : <span className="size-3.5 rounded-full border border-[#dcdcd8]" aria-hidden="true" />}
               <div className="flex min-w-[220px] flex-1 flex-col">
                 <span className="truncate text-[12.5px] font-medium text-[#141414]">{row.adName || ad.name}</span>
                 <span className="truncate text-[11px] text-[#777]">{`${campaign?.mode === 'create' ? 'Nueva: ' : ''}${campaign?.name ?? ''} › ${adset?.mode === 'create' ? 'Nuevo: ' : ''}${adset?.name ?? ''}`}</span>
