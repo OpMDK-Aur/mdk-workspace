@@ -9,6 +9,7 @@ import { CANONICAL_ACTIONS, ROLES, sheetInterpretationSchema, type Inventory, ty
 const SYSTEM = `Sos un analista de pauta en Meta Ads. Interpretás sheets de pedidos de campañas que cada cliente arma distinto.
 Asigná a cada columna un rol semántico: ${ROLES.join(', ')}.
 - campaign_name es el nombre completo de la campaña tal como debe existir en Meta (suele seguir una nomenclatura con guiones o barras). Una columna con valores cortos tipo "WHATSAPP" o una marca es attribute, no campaign_name.
+- "CAMPAÑAS" o "CAMPANAS" (plural) es campaign_name. "CAMPAÑA" (singular, valores como "WHATSAPP") es attribute: tipo o destino de campaña.
 - account es la cuenta publicitaria o concesionaria; attribute es contexto (marca, modelo, modalidad, producto).
 - instructions son observaciones o notas libres; status es el estado del pedido; action es el tipo de pedido.
 - Usá confidence entre 0 y 1. Usá ignore para lo que no aporta.
@@ -33,13 +34,29 @@ function inventorySummary(inventory: Inventory) {
   }))
 }
 
+// Encabezados confirmados por el equipo: no dependen de la IA. La clave va normalizada (sin tildes ni ñ).
+const FIXED_HEADER_ROLES: Record<string, { role: SheetInterpretation['columns'][number]['role']; note: string }> = {
+  campanas: { role: 'campaign_name', note: 'CAMPAÑAS / CAMPANAS es el nombre de la campaña' },
+  campana: { role: 'attribute', note: 'CAMPAÑA en singular es el tipo o destino (ej. WHATSAPP), no el nombre' },
+}
+
 // Completa columnas faltantes y descarta encabezados inventados: la estructura del sheet manda.
 function normalizeInterpretation(grid: SheetGrid, interpretation: SheetInterpretation): SheetInterpretation {
-  const byHeader = new Map(interpretation.columns.map((column) => [column.header, column]))
+  // La IA a veces devuelve el encabezado con otra capitalización, tildes o espacios: se compara normalizado.
+  const headerKey = (value: string) => normalizeText(value).replace(/\s+/g, ' ').trim()
+  const byHeader = new Map(interpretation.columns.map((column) => [headerKey(column.header), column]))
+  const realHeader = new Map(grid.headers.map((header) => [headerKey(header), header]))
+  const filter = interpretation.suggestedRowFilter
+  const filterColumn = filter ? realHeader.get(headerKey(filter.column)) : undefined
   return {
     ...interpretation,
-    columns: grid.headers.map((header) => byHeader.get(header) ?? { header, role: 'ignore', confidence: 0, note: 'Sin interpretar' }),
-    suggestedRowFilter: interpretation.suggestedRowFilter && grid.headers.includes(interpretation.suggestedRowFilter.column) ? interpretation.suggestedRowFilter : undefined,
+    columns: grid.headers.map((header) => {
+      const found = byHeader.get(headerKey(header))
+      const fixed = FIXED_HEADER_ROLES[headerKey(header)]
+      if (fixed) return { header, role: fixed.role, confidence: 1, note: fixed.note }
+      return found ? { ...found, header } : { header, role: 'ignore', confidence: 0, note: 'Sin interpretar' }
+    }),
+    suggestedRowFilter: filter && filterColumn ? { ...filter, column: filterColumn } : undefined,
   }
 }
 

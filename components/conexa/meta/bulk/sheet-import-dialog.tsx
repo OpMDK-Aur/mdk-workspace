@@ -125,8 +125,8 @@ export function SheetImportDialog({ destinationUrl }: { destinationUrl?: string 
                 <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-[#999]">Columnas</legend>
                 <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2">
                   {interpretation.columns.map((column) => (
-                    <div key={column.header} className="flex items-center gap-2">
-                      <label htmlFor={`role-${column.header}`} className="w-[42%] truncate text-[12px] font-medium" title={column.note ?? column.header}>{column.header}</label>
+  <div key={column.header} className="flex min-w-0 flex-col gap-1">
+  <label htmlFor={`role-${column.header}`} className="break-words text-[12px] font-medium leading-snug" title={column.note ?? undefined}>{column.header}</label>
                       <select id={`role-${column.header}`} value={column.role} onChange={(event) => setRole(column.header, event.target.value as Role)} className={cn(selectClass, column.confidence < 0.6 && 'border-[#e8c48a]')}>
                         {ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
                       </select>
@@ -139,10 +139,10 @@ export function SheetImportDialog({ destinationUrl }: { destinationUrl?: string 
               {Object.keys(interpretation.actionVocabulary).length > 0 && (
                 <fieldset className="rounded-lg border border-[#ececea] p-3">
                   <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-[#999]">Qué significa cada acción del sheet</legend>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                    {Object.entries(interpretation.actionVocabulary).map(([value, action]) => (
-                      <div key={value} className="flex items-center gap-2">
-                        <label htmlFor={`action-${value}`} className="w-[42%] truncate text-[12px]">{`"${value}"`}</label>
+  <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
+  {Object.entries(interpretation.actionVocabulary).map(([value, action]) => (
+  <div key={value} className="flex min-w-0 flex-col gap-1">
+  <label htmlFor={`action-${value}`} className="break-words text-[12px] leading-snug">{`"${value}"`}</label>
                         <select id={`action-${value}`} value={action} onChange={(event) => setVocabulary(value, event.target.value as CanonicalAction)} className={selectClass}>
                           {CANONICAL_ACTIONS.map((item) => <option key={item} value={item}>{ACTION_LABELS[item]}</option>)}
                         </select>

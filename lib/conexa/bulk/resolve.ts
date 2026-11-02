@@ -1,11 +1,14 @@
 import { baseNameOf, ratioFromDimensions, ratioFromName } from '@/lib/bulk/group-assets'
-import type {
-  CanonicalAction, DriveFileRef, InstructionOverrides, InventoryAccount, InventoryAdset, InventoryCampaign, ItemState, PieceComparison, PlanAd, PlanAdset,
-  PlanBadge, PlanCampaign, PlanContext, PlanIssue, PlanOverrides, PlanRow, ResolvedPlan, Role,
+import {
+  ACTION_LABELS, ANSWER_CREATE, ANSWER_EXCLUDE, CANONICAL_ACTIONS,
+  type CanonicalAction, type DriveFileRef, type InstructionOverrides, type InventoryAccount, type InventoryAdset, type InventoryCampaign, type ItemState, type PieceComparison, type PlanAd, type PlanAdset,
+  type PlacementCampaignOption, type PlacementCheck, type PlanAnswer, type PlanBadge, type PlanCampaign, type PlanContext, type PlanIssue, type PlanOverrides, type PlanQuestion, type PlanRow, type ResolvedPlan, type Role,
 } from './types'
 import { containsText, hashText, normalizeText, sameText, tokenOverlap } from './text'
 
 type Cells = { rowNumber: number; cells: string[]; driveIds: string[][] }
+type Resolved = { value?: string; values?: string[]; text?: string; label?: string; note?: string }
+type QuestionInput = Omit<PlanQuestion, 'rowNumbers' | 'answered' | 'answer' | 'answerLabel' | 'note' | 'searchable' | 'allowFree' | 'freePlaceholder'> & Partial<Pick<PlanQuestion, 'searchable' | 'allowFree' | 'freePlaceholder'>>
 
 export const accountLabel = (accounts: InventoryAccount[], id?: string) => accounts.find((account) => account.id === id)?.name ?? id ?? 'Sin cuenta'
 export const ratioLabel = (file: DriveFileRef) => ratioFromName(file.name) ?? ratioFromDimensions(file.width, file.height)
@@ -13,16 +16,25 @@ export const instructionsKey = (text: string) => hashText(normalizeText(text))
 export const copyKey = (rowNumber: number, piece: string) => `${rowNumber}:${normalizeText(piece)}`
 export const campaignMatchKey = (accountId: string, name: string) => `${accountId}::${normalizeText(name)}`
 
-const worst = (states: ItemState[]): ItemState => states.includes('blocked') ? 'blocked' : states.includes('needs_confirmation') ? 'needs_confirmation' : 'ready'
+const RANK: ItemState[] = ['ready', 'needs_confirmation', 'needs_answer', 'blocked']
+const worst = (states: ItemState[]): ItemState => states.reduce<ItemState>((acc, state) => (RANK.indexOf(state) > RANK.indexOf(acc) ? state : acc), 'ready')
+const excludeOption = (rows = 1) => ({ value: ANSWER_EXCLUDE, label: rows > 1 ? 'Excluir las filas' : 'Excluir fila' })
+const SPECIAL = new Set([ANSWER_EXCLUDE, ANSWER_CREATE])
 
-function columnsByRole(context: PlanContext) {
-  const byRole = new Map<Role, number[]>()
-  for (const column of context.interpretation.columns) {
-    const index = context.grid.headers.indexOf(column.header)
-    if (index < 0 || column.role === 'ignore') continue
-    byRole.set(column.role, [...(byRole.get(column.role) ?? []), index])
+function resolveAnswer(question: Pick<PlanQuestion, 'kind' | 'options'>, answer?: PlanAnswer): Resolved {
+  if (!answer) return {}
+  if (question.kind === 'text') return answer.text?.trim() ? { text: answer.text.trim(), label: answer.text.trim() } : {}
+  if (question.kind === 'multi') {
+    const values = (answer.values ?? []).filter((value) => question.options.some((option) => option.value === value))
+    return values.length ? { values, label: question.options.filter((option) => values.includes(option.value)).map((option) => option.label).join(', ') } : {}
   }
-  return byRole
+  const picked = question.options.find((option) => option.value === answer.value)
+  if (picked) return { value: picked.value, label: picked.label }
+  const text = answer.text?.trim()
+  if (!text) return {}
+  const hits = question.options.filter((option) => !SPECIAL.has(option.value) && containsText(option.label, text))
+  if (hits.length === 1) return { value: hits[0].value, label: hits[0].label }
+  return { note: hits.length ? `"${text}" coincide con ${hits.length} opciones: elegí una` : `No encontré "${text}" entre las opciones` }
 }
 
 export function destinationHint(text: string) {
@@ -35,9 +47,91 @@ export function destinationHint(text: string) {
 
 const DESTINATION_LABEL: Record<string, string> = { WHATSAPP: 'WhatsApp', ON_AD: 'formulario', WEBSITE: 'sitio web' }
 
+const MODALITY_PATTERN = /convencional|plan( de)? ahorro|\bplan\b|ahorro|contado|financiad|leasing|usad|0 ?km/
+const OBJECTIVES_BY_DESTINATION: Record<string, string[]> = {
+  WHATSAPP: ['OUTCOME_ENGAGEMENT', 'OUTCOME_SALES', 'OUTCOME_LEADS', 'OUTCOME_TRAFFIC', 'MESSAGES'],
+  ON_AD: ['OUTCOME_LEADS', 'LEAD_GENERATION'],
+  WEBSITE: ['OUTCOME_TRAFFIC', 'OUTCOME_SALES', 'OUTCOME_LEADS', 'OUTCOME_ENGAGEMENT', 'LINK_CLICKS', 'CONVERSIONS'],
+}
+const nameTokens = (value: string) => normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean)
+
+// Coincide por palabra completa o por las abreviaturas que usa la cuenta: prefijo ("CON" = CONVENCIONAL),
+// iniciales ("PDA"/"PA" = PLAN DE AHORRO) o una palabra significativa ("AHORRO").
+export function attributeMatches(name: string, value: string) {
+  const key = normalizeText(value)
+  if (!key) return false
+  const hay = nameTokens(name)
+  const words = nameTokens(key)
+  if (!words.length) return false
+  const joined = ` ${hay.join(' ')} `
+  if (joined.includes(` ${words.join(' ')} `)) return true
+  const significant = words.filter((word) => word.length > 2)
+  const initials = words.length > 1 ? [words.map((word) => word[0]).join(''), significant.map((word) => word[0]).join('')] : []
+  return hay.some((token) =>
+    (words.length === 1 && /^[a-z]{3,}$/.test(token) && key.startsWith(token))
+    || initials.includes(token)
+    || (significant.length > 1 && significant.some((word) => word.length >= 4 && token === word)))
+}
+
+export const destinationLabel = (adset: Pick<InventoryAdset, 'destination' | 'whatsappNumber' | 'pageId'>) => {
+  if (adset.destination === 'WHATSAPP') return `WhatsApp${adset.whatsappNumber ? `: ${adset.whatsappNumber}` : adset.pageId ? ` (página ${adset.pageId})` : ''}`
+  if (adset.destination === 'ON_AD') return 'Formulario instantáneo'
+  if (adset.destination === 'WEBSITE') return 'Sitio web'
+  if (adset.destination === 'MESSENGER') return 'Messenger'
+  return adset.destination || 'Sin destino'
+}
+
+// Mismas validaciones de conjunto que en 2.2.b: destino, objetivo, ubicaciones vs. formatos y fecha de fin.
+export function adsetChecks(adset: InventoryAdset, campaign: InventoryCampaign | undefined, hint: string | undefined, formats: string[], now = Date.now()): PlacementCheck[] {
+  const label = destinationLabel(adset)
+  const destination = hint
+    ? { label: 'Destino', ok: adset.destination === hint, detail: adset.destination === hint ? label : `La fila pide ${DESTINATION_LABEL[hint]} y el conjunto usa ${label}` }
+    : { label: 'Destino', ok: Boolean(adset.destination), detail: adset.destination ? label : 'El conjunto no tiene destino configurado' }
+  const allowed = OBJECTIVES_BY_DESTINATION[adset.destination]
+  const objectiveOk = !campaign?.objective || !allowed || allowed.includes(campaign.objective)
+  const objective = { label: 'Objetivo', ok: objectiveOk, detail: objectiveOk ? campaign?.objective || 'Sin objetivo informado' : `${campaign?.objective} no admite destino ${label}` }
+  const positions = adset.positions ?? []
+  const vertical = formats.includes('9:16')
+  const feed = formats.some((format) => format !== '9:16')
+  const hasVerticalSlot = positions.some((position) => /story|reels/.test(position))
+  const hasFeedSlot = positions.some((position) => /feed|stream|explore|marketplace|search|video_feeds/.test(position))
+  const missing = [vertical && !hasVerticalSlot ? '9:16 (historias/reels)' : '', feed && !hasFeedSlot ? 'feed' : ''].filter(Boolean)
+  const placements = !positions.length
+    ? { label: 'Ubicaciones', ok: true, detail: 'Automáticas: admiten todos los formatos' }
+    : { label: 'Ubicaciones', ok: !missing.length, detail: missing.length ? `Las ubicaciones del conjunto no incluyen ${missing.join(' ni ')}` : `${positions.length} ubicaciones compatibles con ${formats.join(', ') || 'los formatos'}` }
+  const end = adset.endTime ? Date.parse(adset.endTime) : NaN
+  const endDate = Number.isNaN(end)
+    ? { label: 'Fecha de fin', ok: true, detail: 'Sin fecha de fin' }
+    : { label: 'Fecha de fin', ok: end > now, detail: end > now ? `Termina el ${new Date(end).toLocaleDateString('es-AR')}` : `Terminó el ${new Date(end).toLocaleDateString('es-AR')}` }
+  return [destination, objective, placements, endDate]
+}
+const SEPARATORS = [' - ', ' | ', ' / ', '_', '-']
+
+// Sugiere un nombre siguiendo la nomenclatura del lote: separador más usado + tramo inicial común + atributos de la fila.
+function suggestName(pool: string[], extra: string[], fallback: string) {
+  const names = pool.filter(Boolean)
+  if (!names.length) return [...new Set(extra.filter(Boolean))].join(' - ') || fallback
+  const separator = [...SEPARATORS].sort((a, b) => names.join('').split(b).length - names.join('').split(a).length)[0]
+  const parts = names.map((name) => name.split(separator).map((part) => part.trim()).filter(Boolean))
+  const prefix: string[] = []
+  const shortest = Math.min(...parts.map((item) => item.length))
+  for (let index = 0; index < shortest - (names.length === 1 ? 1 : 0); index++) {
+    if (parts.every((item) => sameText(item[index], parts[0][index]))) prefix.push(parts[0][index])
+    else break
+  }
+  const tail = extra.filter((value) => value && !prefix.some((part) => sameText(part, value)))
+  const result = [...prefix, ...tail]
+  return result.length ? result.join(separator) : fallback
+}
+
 export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {}): ResolvedPlan {
   const { inventory, grid, interpretation } = context
-  const roles = columnsByRole(context)
+  const roles = new Map<Role, number[]>()
+  for (const column of interpretation.columns) {
+    const index = grid.headers.indexOf(column.header)
+    if (index < 0 || column.role === 'ignore') continue
+    roles.set(column.role, [...(roles.get(column.role) ?? []), index])
+  }
   const cell = (row: Cells, role: Role) => (roles.get(role)?.[0] !== undefined ? row.cells[roles.get(role)![0]]?.trim() ?? '' : '')
   const cellsOf = (row: Cells, role: Role) => (roles.get(role) ?? []).map((index) => row.cells[index]?.trim() ?? '').filter(Boolean)
 
@@ -53,26 +147,82 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
 
   const vocabulary = Object.fromEntries(Object.entries(interpretation.actionVocabulary).map(([key, value]) => [normalizeText(key), value]))
   const excluded = new Set(overrides.excludedRows ?? [])
+  const answers = overrides.answers ?? {}
   const accounts = inventory.accounts
   const campaignsIn = (accountId: string) => inventory.campaigns.filter((campaign) => campaign.accountId === accountId)
   const adsetsOf = (campaignId: string) => inventory.adsets.filter((adset) => adset.campaignId === campaignId)
+  const batchAdsetNames = grid.rows.map((row) => cell(row, 'adset_name')).filter(Boolean)
+
+  // Modalidad y unidad se reconocen por el contenido de las columnas de atributo, no por el encabezado.
+  const attributeColumns = roles.get('attribute') ?? []
+  const valuesOf = (index: number) => [...new Set(grid.rows.map((row) => row.cells[index]?.trim() ?? '').filter(Boolean))]
+  const share = (values: string[], test: (value: string) => boolean) => (values.length ? values.filter(test).length / values.length : 0)
+  const modalityColumn = attributeColumns.find((index) => share(valuesOf(index), (value) => MODALITY_PATTERN.test(normalizeText(value))) >= 0.5)
+  const inventoryNames = [...inventory.campaigns.map((campaign) => campaign.name), ...inventory.adsets.map((adset) => adset.name)]
+  const unitColumn = attributeColumns
+    .filter((index) => index !== modalityColumn)
+    .map((index) => {
+      const values = valuesOf(index)
+      const isBrand = share(values, (value) => accounts.some((account) => containsText(account.name, value))) >= 0.5
+      const isLong = values.reduce((sum, value) => sum + value.length, 0) / Math.max(values.length, 1) > 30
+      return { index, score: isBrand || isLong ? -1 : share(values, (value) => inventoryNames.some((name) => attributeMatches(name, value))) }
+    })
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)[0]?.index
+  const placementQuestions: string[] = []
+  const placementGroups = new Map<string, number[]>()
 
   const campaigns = new Map<string, PlanCampaign>()
   const adsets = new Map<string, PlanAdset>()
   const rows: PlanRow[] = []
   const ads: PlanAd[] = []
   const namesByAdset = new Map<string, Map<string, number>>()
+  const questions = new Map<string, PlanQuestion>()
+  const resolvedAnswers = new Map<string, Resolved>()
 
-  function resolveAccount(row: Cells): Pick<PlanRow, 'accountId' | 'accountStatus' | 'accountReason' | 'accountCandidates'> {
+  // Registra la pregunta (o suma la fila si ya existe) y devuelve la respuesta solo si resuelve algo.
+  function ask(input: QuestionInput, rowNumber: number, legacy?: PlanAnswer): Resolved | undefined {
+    const current = questions.get(input.id)
+    if (current) {
+      if (!current.rowNumbers.includes(rowNumber)) current.rowNumbers.push(rowNumber)
+      return current.answered ? resolvedAnswers.get(input.id) : undefined
+    }
+    const raw = answers[input.id] ?? legacy
+    const resolved = resolveAnswer(input, raw)
+    const answered = Boolean((resolved.value && resolved.value !== ANSWER_EXCLUDE) || resolved.values?.length || resolved.text)
+    questions.set(input.id, {
+      searchable: input.options.length > 8, allowFree: true, freePlaceholder: 'Otra respuesta…', ...input,
+      rowNumbers: [rowNumber], answered, answer: raw, answerLabel: resolved.label, note: resolved.note,
+    })
+    resolvedAnswers.set(input.id, resolved)
+    return answered ? resolved : undefined
+  }
+  const addRowToTarget = (targetKey: string, rowNumber: number) => {
+    for (const question of questions.values()) if (question.targetKey === targetKey && !question.rowNumbers.includes(rowNumber)) question.rowNumbers.push(rowNumber)
+  }
+
+  function resolveAccount(row: Cells, active: boolean): Pick<PlanRow, 'accountId' | 'accountStatus' | 'accountReason' | 'accountCandidates'> {
     const manual = overrides.accountByRow?.[row.rowNumber]
     if (manual) return { accountId: manual, accountStatus: 'resolved', accountReason: `Cuenta elegida a mano: ${accountLabel(accounts, manual)}`, accountCandidates: [] }
     const value = cell(row, 'account')
+    const unresolved = (reason: string, candidates: InventoryAccount[]): ReturnType<typeof resolveAccount> => {
+      const base = { accountStatus: 'account_unresolved' as const, accountReason: reason, accountCandidates: candidates }
+      if (!active) return base
+      const ordered = [...candidates, ...accounts.filter((account) => !candidates.some((item) => item.id === account.id))]
+      const answer = ask({
+        id: value ? `account:${normalizeText(value)}` : `account:row:${row.rowNumber}`, kind: 'choice', field: 'Cuenta',
+        prompt: value ? `¿Qué cuenta publicitaria es "${value}"?` : `¿En qué cuenta publicitaria va la fila ${row.rowNumber}?`, why: reason,
+        options: [...ordered.map((account) => ({ value: account.id, label: account.name, hint: candidates.some((item) => item.id === account.id) && candidates.length < accounts.length ? 'coincide' : undefined })), excludeOption()],
+        target: 'row', targetKey: String(row.rowNumber), freePlaceholder: 'Escribí parte del nombre de la cuenta…', reuse: value ? { kind: 'alias', alias: value } : undefined,
+      }, row.rowNumber)
+      return answer?.value ? { accountId: answer.value, accountStatus: 'resolved', accountReason: `Respondiste: ${answer.label}${value ? ' (se guarda como alias)' : ''}`, accountCandidates: [] } : base
+    }
     if (value) {
       const alias = context.aliases[normalizeText(value)]
       if (alias && accounts.some((account) => account.id === alias)) return { accountId: alias, accountStatus: 'resolved', accountReason: `Cuenta resuelta por alias guardado: "${value}" → ${accountLabel(accounts, alias)}`, accountCandidates: [] }
       const matches = accounts.filter((account) => containsText(account.name, value))
       if (matches.length === 1) return { accountId: matches[0].id, accountStatus: 'resolved', accountReason: `Cuenta resuelta: el nombre contiene "${value}"`, accountCandidates: [] }
-      return { accountStatus: 'account_unresolved', accountReason: matches.length ? `"${value}" coincide con ${matches.length} cuentas` : `Ninguna cuenta contiene "${value}"`, accountCandidates: matches.length ? matches : accounts }
+      return unresolved(matches.length ? `"${value}" coincide con ${matches.length} cuentas` : `Ninguna cuenta contiene "${value}"`, matches)
     }
     if (accounts.length === 1) return { accountId: accounts[0].id, accountStatus: 'resolved', accountReason: 'Es la única cuenta conectada del cliente', accountCandidates: [] }
     const campaignName = cell(row, 'campaign_name')
@@ -87,9 +237,9 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       if (scores.length === 1 || (scores.length > 1 && scores[0].score > scores[1].score * 2)) {
         return { accountId: scores[0].account.id, accountStatus: 'resolved', accountReason: `Cuenta inferida por "${attributes.join(' · ')}": tiene campañas de esa marca`, accountCandidates: [] }
       }
-      if (scores.length) return { accountStatus: 'account_unresolved', accountReason: `Más de una cuenta tiene campañas de "${attributes.join(' · ')}"`, accountCandidates: scores.map((item) => item.account) }
+      if (scores.length) return unresolved(`Más de una cuenta tiene campañas de "${attributes.join(' · ')}"`, scores.map((item) => item.account))
     }
-    return { accountStatus: 'account_unresolved', accountReason: 'No hay columna de cuenta y no pude inferirla', accountCandidates: accounts }
+    return unresolved('No hay columna de cuenta y no pude inferirla', [])
   }
 
   function pickReference(accountId: string, name: string, hint?: string) {
@@ -99,38 +249,86 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       .sort((a, b) => tokenOverlap(name, b.name) - tokenOverlap(name, a.name) || Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE'))[0]
   }
 
+  function existingCampaign(row: Cells, campaign: InventoryCampaign, reason: string): PlanCampaign {
+    const key = campaignMatchKey(campaign.accountId, campaign.name)
+    const current = campaigns.get(key)
+    if (current) {
+      if (!current.rows.includes(row.rowNumber)) current.rows.push(row.rowNumber)
+      addRowToTarget(key, row.rowNumber)
+      return current
+    }
+    const plan: PlanCampaign = {
+      key, accountId: campaign.accountId, name: campaign.name, mode: 'existing', existingId: campaign.id, status: 'exists', candidates: [], isCbo: campaign.isCbo,
+      dailyBudget: campaign.dailyBudget, rows: [row.rowNumber], reason, state: 'ready', issues: [],
+    }
+    campaigns.set(key, plan)
+    return plan
+  }
+
   function ensureCampaign(row: Cells, accountId: string, name: string, hint?: string): PlanCampaign {
     const key = campaignMatchKey(accountId, name)
     const existing = campaigns.get(key)
     if (existing) {
       existing.rows.push(row.rowNumber)
+      addRowToTarget(key, row.rowNumber)
       return existing
     }
-    const decision = overrides.campaignDecision?.[key]
     const local = campaignsIn(accountId).find((campaign) => sameText(campaign.name, name))
     const elsewhere = inventory.campaigns.filter((campaign) => campaign.accountId !== accountId && sameText(campaign.name, name))
     const semantic = (context.semanticMatches[key] ?? []).map((id) => inventory.campaigns.find((campaign) => campaign.id === id)).filter((item): item is InventoryCampaign => Boolean(item))
-    const useId = decision?.startsWith('use:') ? decision.slice(4) : undefined
-    const used = useId ? inventory.campaigns.find((campaign) => campaign.id === useId) : undefined
-
     const base = { key, accountId, name, rows: [row.rowNumber], issues: [] as PlanIssue[] }
+    if (local) {
+      const plan: PlanCampaign = { ...base, mode: 'existing', existingId: local.id, status: 'exists', candidates: [], isCbo: local.isCbo, dailyBudget: local.dailyBudget, reason: `Campaña encontrada por nombre exacto en ${accountLabel(accounts, accountId)}`, state: 'ready' }
+      campaigns.set(key, plan)
+      return plan
+    }
+
+    const ambiguous = [...elsewhere, ...semantic.filter((item) => !elsewhere.some((other) => other.id === item.id))]
+    let decision: string | undefined
+    if (ambiguous.length) {
+      const legacy = overrides.campaignDecision?.[key]
+      const legacyAnswer = legacy ? { value: legacy === 'create' ? ANSWER_CREATE : legacy.startsWith('use:') ? legacy : `use:${legacy}` } : undefined
+      decision = ask({
+        id: `campaign:${key}`, kind: 'choice', field: 'Campaña',
+        prompt: `No encontré "${name}" en ${accountLabel(accounts, accountId)}. ¿Uso una existente o la creo?`,
+        why: elsewhere.length ? `Existe una campaña con ese nombre en ${elsewhere.map((item) => accountLabel(accounts, item.accountId)).join(', ')}` : `Hay campañas con nombre parecido: ${semantic.map((item) => `"${item.name}"`).join(', ')}`,
+        options: [
+          ...ambiguous.map((item) => ({ value: `use:${item.id}`, label: `Usar "${item.name}"`, hint: accountLabel(accounts, item.accountId) })),
+          { value: ANSWER_CREATE, label: `Crear "${name}" nueva`, hint: accountLabel(accounts, accountId) },
+          excludeOption(),
+        ],
+        target: 'campaign', targetKey: key, freePlaceholder: 'Escribí el nombre de otra campaña…',
+      }, row.rowNumber, legacyAnswer)?.value
+    }
+    const used = decision?.startsWith('use:') ? inventory.campaigns.find((campaign) => campaign.id === decision!.slice(4)) : undefined
+
     let plan: PlanCampaign
-    if (local) plan = { ...base, mode: 'existing', existingId: local.id, status: 'exists', candidates: [], isCbo: local.isCbo, dailyBudget: local.dailyBudget, reason: `Campaña encontrada por nombre exacto en ${accountLabel(accounts, accountId)}`, state: 'ready' }
-    else if (used) plan = { ...base, accountId: used.accountId, mode: 'existing', existingId: used.id, status: elsewhere.some((item) => item.id === used.id) ? 'exists_other_account' : 'possible_match', candidates: [], isCbo: used.isCbo, dailyBudget: used.dailyBudget, reason: `Confirmado: se usa "${used.name}" en ${accountLabel(accounts, used.accountId)}`, state: 'ready' }
-    else if (elsewhere.length && decision !== 'create') plan = { ...base, mode: 'create', status: 'exists_other_account', candidates: elsewhere.map(({ id, name: candidate, accountId: owner }) => ({ id, name: candidate, accountId: owner })), isCbo: false, reason: `Existe una campaña con ese nombre en ${elsewhere.map((item) => accountLabel(accounts, item.accountId)).join(', ')}`, state: 'needs_confirmation' }
-    else if (semantic.length && decision !== 'create') plan = { ...base, mode: 'create', status: 'possible_match', candidates: semantic.map(({ id, name: candidate, accountId: owner }) => ({ id, name: candidate, accountId: owner })), isCbo: false, reason: `Posible coincidencia: "${semantic[0].name}"`, state: 'needs_confirmation' }
+    if (used) plan = { ...base, accountId: used.accountId, mode: 'existing', existingId: used.id, status: elsewhere.some((item) => item.id === used.id) ? 'exists_other_account' : 'possible_match', candidates: [], isCbo: used.isCbo, dailyBudget: used.dailyBudget, reason: `Respondiste: se usa "${used.name}" en ${accountLabel(accounts, used.accountId)}`, state: 'ready' }
+    else if (ambiguous.length && decision !== ANSWER_CREATE) plan = { ...base, mode: 'create', status: elsewhere.length ? 'exists_other_account' : 'possible_match', candidates: ambiguous.map(({ id, name: candidate, accountId: owner }) => ({ id, name: candidate, accountId: owner })), isCbo: false, reason: 'Esperando tu respuesta', state: 'needs_answer' }
     else {
       const field = overrides.fields?.[key]
-      const reference = (field?.referenceCampaignId && inventory.campaigns.find((campaign) => campaign.id === field.referenceCampaignId && campaign.accountId === accountId)) || pickReference(accountId, name, hint)
+      const referencePool = campaignsIn(accountId).filter((campaign) => adsetsOf(campaign.id).length)
+      let reference = (field?.referenceCampaignId && inventory.campaigns.find((campaign) => campaign.id === field.referenceCampaignId && campaign.accountId === accountId)) || pickReference(accountId, name, hint)
       const issues: PlanIssue[] = []
-      if (!reference) issues.push({ field: 'Campaña de referencia', message: `No hay una campaña${hint ? ` con destino ${DESTINATION_LABEL[hint]}` : ''} en la cuenta para copiar objetivo y estructura`, where: 'Elegí una referencia en este ítem' })
+      let state: ItemState = 'ready'
+      if (!reference && referencePool.length) {
+        const answer = ask({
+          id: `campaign-ref:${key}`, kind: 'choice', field: 'Campaña de referencia',
+          prompt: `¿De qué campaña copio objetivo y estructura para crear "${name}"?`,
+          why: `No encontré una campaña${hint ? ` con destino ${DESTINATION_LABEL[hint]}` : ''} parecida en la cuenta`,
+          options: [...referencePool.map((item) => ({ value: item.id, label: item.name, hint: item.objective })), excludeOption()],
+          target: 'campaign', targetKey: key, freePlaceholder: 'Buscar campaña por nombre…',
+        }, row.rowNumber)
+        reference = referencePool.find((item) => item.id === answer?.value)
+        if (!reference) state = 'needs_answer'
+      } else if (!reference) issues.push({ field: 'Campaña de referencia', message: 'La cuenta no tiene campañas con conjuntos para copiar objetivo y estructura', where: 'Creá una campaña base en Meta o excluí la fila' })
       const dailyBudget = field?.dailyBudget ?? (reference?.isCbo ? reference.dailyBudget : undefined)
       if (reference?.isCbo && !dailyBudget) issues.push({ field: 'Presupuesto de campaña', message: 'La referencia usa presupuesto de campaña y no tiene monto', where: 'Completá el presupuesto diario en este ítem' })
       plan = {
         ...base, mode: 'create', status: 'create', candidates: [], isCbo: Boolean(reference?.isCbo), dailyBudget,
         reference: reference ? { id: reference.id, name: reference.name, objective: reference.objective } : undefined,
-        reason: decision === 'create' ? 'Confirmado: se crea una campaña nueva' : reference ? `No existe en ninguna cuenta del cliente: se crea copiando "${reference.name}"` : 'No existe en ninguna cuenta del cliente',
-        issues, state: issues.length ? 'blocked' : 'ready',
+        reason: decision === ANSWER_CREATE ? 'Respondiste: se crea una campaña nueva' : reference ? `No existe en ninguna cuenta del cliente: se crea copiando "${reference.name}"` : 'No existe en ninguna cuenta del cliente',
+        issues, state: issues.length ? 'blocked' : state,
       }
     }
     campaigns.set(key, plan)
@@ -141,10 +339,12 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const adsetName = cell(row, 'adset_name')
     const existingAdsets = campaign.existingId ? adsetsOf(campaign.existingId) : []
     const options = existingAdsets.map(({ id, name, status }) => ({ id, name, status }))
+    const adsetOptions = existingAdsets.map((adset) => ({ value: adset.id, label: adset.name, hint: adset.status === 'ACTIVE' ? 'activo' : 'pausado' }))
     const register = (plan: PlanAdset) => {
       const current = adsets.get(plan.key)
       if (current) {
-        current.rows.push(row.rowNumber)
+        if (!current.rows.includes(row.rowNumber)) current.rows.push(row.rowNumber)
+        addRowToTarget(plan.key, row.rowNumber)
         return current
       }
       adsets.set(plan.key, plan)
@@ -159,38 +359,178 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       if (adsetName) {
         const match = existingAdsets.find((adset) => sameText(adset.name, adsetName))
         if (match) return [register(existingPlan(match, 'Conjunto encontrado por nombre exacto'))]
-      } else {
-        const choiceKey = `${campaign.key}::choice`
-        const chosen = overrides.adsetChoice?.[choiceKey]
-        if (chosen?.length) return chosen.map((id) => existingAdsets.find((adset) => adset.id === id)).filter((adset): adset is InventoryAdset => Boolean(adset)).map((adset) => register(existingPlan(adset, 'Conjunto elegido a mano')))
+        const answer = ask({
+          id: `adset:${campaign.key}::${normalizeText(adsetName)}`, kind: 'choice', field: 'Conjunto',
+          prompt: `No encontré el conjunto "${adsetName}" en "${campaign.name}". ¿Dónde cargo los anuncios?`,
+          why: existingAdsets.length ? `La campaña tiene ${existingAdsets.length} conjuntos y ninguno se llama así` : 'La campaña no tiene conjuntos',
+          options: [...adsetOptions, { value: ANSWER_CREATE, label: `Crear "${adsetName}" nuevo en esta campaña`, hint: 'en pausa' }, excludeOption()],
+          target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Escribí el nombre de otro conjunto…',
+        }, row.rowNumber)
+        if (!answer?.value) return []
+        const chosen = existingAdsets.find((adset) => adset.id === answer.value)
+        if (chosen) return [register(existingPlan(chosen, `Respondiste: se carga en "${chosen.name}"`))]
+      } else if (existingAdsets.length) {
         const active = existingAdsets.filter((adset) => adset.status === 'ACTIVE')
         if (active.length === 1) return [register(existingPlan(active[0], 'La campaña tiene un solo conjunto activo'))]
         if (!active.length && existingAdsets.length === 1) return [register(existingPlan(existingAdsets[0], 'La campaña tiene un solo conjunto'))]
-        if (existingAdsets.length > 1) {
-          return [register({
-            key: choiceKey, campaignKey: campaign.key, accountId: campaign.accountId, name: 'Elegir conjunto', mode: 'existing', existingIds: [], options, rows: [row.rowNumber],
-            reason: `La campaña tiene ${active.length || existingAdsets.length} conjuntos${active.length ? ' activos' : ''}: elegí en cuál cargar`, state: 'needs_confirmation', issues: [],
-          })]
-        }
+        const legacy = overrides.adsetChoice?.[`${campaign.key}::choice`]
+        const answer = ask({
+          id: `adset-choice:${campaign.key}`, kind: 'multi', field: 'Conjunto',
+          prompt: `La fila no indica conjunto y "${campaign.name}" tiene varios. ¿En cuáles cargo los anuncios?`,
+          why: `Hay ${active.length || existingAdsets.length} conjuntos${active.length ? ' activos' : ''} y no hay forma de saber cuál corresponde`,
+          options: adsetOptions, target: 'campaign', targetKey: campaign.key, allowFree: false,
+        }, row.rowNumber, legacy?.length ? { values: legacy } : undefined)
+        if (!answer?.values?.length) return []
+        return answer.values.map((id) => existingAdsets.find((adset) => adset.id === id)).filter((adset): adset is InventoryAdset => Boolean(adset)).map((adset) => register(existingPlan(adset, 'Respondiste: conjunto elegido')))
       }
     }
 
-    const name = adsetName || campaign.name
+    let name = adsetName
+    if (!name) {
+      const answer = ask({
+        id: `adset-name:${campaign.key}`, kind: 'text', field: 'Nombre del conjunto',
+        prompt: `La fila no indica conjunto. ¿Qué nombre uso para el conjunto nuevo en "${campaign.name}"?`,
+        why: 'No hay columna o valor de conjunto en la fila',
+        options: [], suggestion: suggestName(batchAdsetNames, cellsOf(row, 'attribute'), campaign.name),
+        target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Nombre del conjunto',
+      }, row.rowNumber)
+      if (!answer?.text) return []
+      name = answer.text
+    }
+
     const key = `${campaign.key}::new::${normalizeText(name)}`
     const field = overrides.fields?.[key]
     const pool = campaign.mode === 'existing' ? existingAdsets : campaign.reference ? adsetsOf(campaign.reference.id) : []
-    const reference = (field?.referenceAdsetId && inventory.adsets.find((adset) => adset.id === field.referenceAdsetId && adset.accountId === campaign.accountId))
+    let reference = (field?.referenceAdsetId && inventory.adsets.find((adset) => adset.id === field.referenceAdsetId && adset.accountId === campaign.accountId))
       || [...pool].sort((a, b) => Number(b.destination === hint) - Number(a.destination === hint) || Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE'))[0]
     const issues: PlanIssue[] = []
-    if (!reference) issues.push({ field: 'Conjunto de referencia', message: 'No hay un conjunto del que copiar segmentación, ubicaciones y optimización', where: 'Elegí una referencia en este ítem' })
+    let state: ItemState = 'ready'
+    const accountAdsets = inventory.adsets.filter((adset) => adset.accountId === campaign.accountId)
+    if (!reference && accountAdsets.length) {
+      const answer = ask({
+        id: `adset-ref:${key}`, kind: 'choice', field: 'Conjunto de referencia',
+        prompt: `¿De qué conjunto copio segmentación, ubicaciones y optimización para "${name}"?`,
+        why: campaign.mode === 'existing' ? 'La campaña no tiene conjuntos para copiar' : 'La campaña de referencia no tiene conjuntos',
+        options: [...accountAdsets.map((adset) => ({ value: adset.id, label: adset.name, hint: adset.destination })), excludeOption()],
+        target: 'adset', targetKey: key, freePlaceholder: 'Buscar conjunto por nombre…',
+      }, row.rowNumber)
+      reference = accountAdsets.find((adset) => adset.id === answer?.value)
+      if (!reference) state = 'needs_answer'
+    } else if (!reference) issues.push({ field: 'Conjunto de referencia', message: 'La cuenta no tiene conjuntos de los que copiar segmentación', where: 'Creá un conjunto base en Meta o excluí la fila' })
     const dailyBudget = field?.dailyBudget ?? reference?.dailyBudget
     if (!campaign.isCbo && !dailyBudget) issues.push({ field: 'Presupuesto del conjunto', message: 'Falta el presupuesto diario', where: 'Completá el presupuesto en este ítem' })
     if (reference?.destination === 'WEBSITE' && reference.optimizationGoal === 'OFFSITE_CONVERSIONS' && !reference.hasPixel) issues.push({ field: 'Píxel', message: 'La referencia optimiza conversiones sin píxel', where: 'Elegí otra referencia' })
     return [register({
       key, campaignKey: campaign.key, accountId: campaign.accountId, name, mode: 'create', existingIds: [], options, rows: [row.rowNumber],
       reference: reference ? { id: reference.id, name: reference.name } : undefined, dailyBudget, pageId: field?.pageId ?? reference?.pageId, destination: reference?.destination,
-      reason: reference ? `Se crea copiando la configuración de "${reference.name}"` : 'Se crea un conjunto nuevo', issues, state: issues.length ? 'blocked' : 'ready',
+      reason: reference ? `Copia la configuración de "${reference.name}"` : 'Se crea un conjunto nuevo',
+      issues, state: issues.length ? 'blocked' : state,
     })]
+  }
+
+  // 2.2.b: la fila no trae campaña. Se ubica por el conjunto existente; si no aparece, la fila queda bloqueada.
+  function placeWithoutCampaign(row: Cells, accountId: string, hint: string | undefined, formats: string[]): { campaign: PlanCampaign; targets: PlanAdset[] } | { issue: PlanIssue } | undefined {
+    const adsetName = cell(row, 'adset_name')
+    const matches = adsetName ? inventory.adsets.filter((adset) => adset.accountId === accountId && sameText(adset.name, adsetName)) : []
+    const campaignOf = (adset: InventoryAdset) => inventory.campaigns.find((campaign) => campaign.id === adset.campaignId)
+    const useExisting = (adset: InventoryAdset, reason: string, campaignReason = `Campaña del conjunto "${adset.name}"`) => {
+      const owner = campaignOf(adset)
+      if (!owner) return undefined
+      const campaign = existingCampaign(row, owner, campaignReason)
+      const key = `${campaign.accountId}::adset::${adset.id}`
+      const current = adsets.get(key)
+      if (current) {
+        if (!current.rows.includes(row.rowNumber)) current.rows.push(row.rowNumber)
+        return { campaign, targets: [current] }
+      }
+      const plan: PlanAdset = {
+        key, campaignKey: campaign.key, accountId: campaign.accountId, name: adset.name, mode: 'existing', existingIds: [adset.id], options: [],
+        pageId: adset.pageId, destination: adset.destination, rows: [row.rowNumber], reason, state: 'ready', issues: [],
+      }
+      adsets.set(key, plan)
+      return { campaign, targets: [plan] }
+    }
+
+    if (matches.length === 1) return useExisting(matches[0], 'La fila no trae campaña: se encontró el conjunto por nombre exacto')
+    if (matches.length > 1) {
+      const answer = ask({
+        id: `adset-pick:${row.rowNumber}`, kind: 'choice', field: 'Conjunto',
+        prompt: `Hay ${matches.length} conjuntos "${adsetName}" en la cuenta. ¿Cuál es?`,
+        why: 'La fila no trae campaña y el nombre del conjunto se repite',
+        options: [...matches.map((adset) => ({ value: adset.id, label: adset.name, hint: campaignOf(adset)?.name })), excludeOption()],
+        target: 'row', targetKey: String(row.rowNumber),
+      }, row.rowNumber)
+      const chosen = matches.find((adset) => adset.id === answer?.value)
+      return chosen ? useExisting(chosen, `Respondiste: conjunto de "${campaignOf(chosen)?.name ?? ''}"`) : undefined
+    }
+
+    // Sin campaña ni conjunto reconocible: se pregunta dónde cargar, con las campañas de la cuenta ordenadas por modalidad y unidad.
+    const modality = modalityColumn !== undefined ? row.cells[modalityColumn]?.trim() || undefined : undefined
+    const unit = unitColumn !== undefined ? row.cells[unitColumn]?.trim() || undefined : undefined
+    const maxScore = Number(Boolean(modality)) + Number(Boolean(unit))
+    const scoreOf = (...names: string[]) => Number(Boolean(modality && names.some((name) => attributeMatches(name, modality)))) + Number(Boolean(unit && names.some((name) => attributeMatches(name, unit))))
+    const options: PlacementCampaignOption[] = campaignsIn(accountId)
+      .map((campaign) => {
+        const list = adsetsOf(campaign.id).map((adset) => ({
+          id: adset.id, name: adset.name, status: adset.status, destinationLabel: destinationLabel(adset),
+          score: scoreOf(campaign.name, adset.name), checks: adsetChecks(adset, campaign, hint, formats),
+        })).sort((a, b) => b.score - a.score || Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE') || a.name.localeCompare(b.name))
+        return { id: campaign.id, name: campaign.name, status: campaign.status, objective: campaign.objective, score: Math.max(scoreOf(campaign.name), ...list.map((adset) => adset.score)), adsets: list }
+      })
+      .filter((campaign) => campaign.adsets.length)
+      .sort((a, b) => b.score - a.score || Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE') || a.name.localeCompare(b.name))
+    if (!options.length) {
+      return { issue: { field: 'Campaña', message: 'La fila no trae campaña y la cuenta no tiene campañas con conjuntos', where: `Completá la campaña en la fila ${row.rowNumber} del sheet o excluí la fila` } }
+    }
+
+    const groupKey = `${accountId}::${normalizeText(modality ?? '')}::${normalizeText(unit ?? '')}`
+    const groupQuestionId = `placement-group:${groupKey}`
+    placementGroups.set(groupKey, [...(placementGroups.get(groupKey) ?? []), row.rowNumber])
+    const questionId = `placement:${row.rowNumber}`
+    placementQuestions.push(questionId)
+    const filterLabel = [modality, unit].filter(Boolean).join(' / ')
+    const matched = options.some((campaign) => campaign.score > 0)
+    const answer = ask({
+      id: questionId, kind: 'placement', field: 'Campaña y conjunto',
+      prompt: adsetName ? `La fila no trae campaña y no existe el conjunto "${adsetName}". ¿Dónde cargo los anuncios?` : 'La fila no trae campaña ni conjunto. ¿Dónde cargo los anuncios?',
+      why: !filterLabel ? `Elegí una campaña o un conjunto de ${accountLabel(accounts, accountId)}` : matched ? `Filtré por ${filterLabel} en ${accountLabel(accounts, accountId)}` : `No encontré campañas con ${filterLabel} en esta cuenta`,
+      options: [
+        ...options.flatMap((campaign) => [
+          { value: `campaign:${campaign.id}`, label: campaign.name },
+          ...campaign.adsets.map((adset) => ({ value: adset.id, label: `${campaign.name} › ${adset.name}` })),
+        ]),
+        excludeOption(),
+      ],
+      placement: { accountName: accountLabel(accounts, accountId), modality, unit, maxScore, matched, campaigns: options, groupQuestionId, groupRows: [] },
+      target: 'row', targetKey: String(row.rowNumber), searchable: false, allowFree: false,
+    }, row.rowNumber, answers[groupQuestionId])
+    if (!answer?.value) return undefined
+
+    const accountAdsets = inventory.adsets.filter((adset) => adset.accountId === accountId)
+    let chosen = accountAdsets.find((adset) => adset.id === answer.value)
+    if (!chosen && answer.value.startsWith('campaign:')) {
+      const list = adsetsOf(answer.value.slice(9))
+      const active = list.filter((adset) => adset.status === 'ACTIVE')
+      chosen = active.length === 1 ? active[0] : !active.length && list.length === 1 ? list[0] : undefined
+    }
+    if (!chosen) {
+      const question = questions.get(questionId)
+      if (question) {
+        question.answered = false
+        question.note = 'Esa campaña tiene varios conjuntos activos: elegí uno'
+      }
+      return undefined
+    }
+    const placed = useExisting(chosen, 'Campaña y conjunto elegidos manualmente', 'Campaña y conjunto elegidos manualmente')
+    if (!placed) return undefined
+    const failed = adsetChecks(chosen, campaignOf(chosen), hint, formats).filter((check) => !check.ok)
+    for (const target of placed.targets) {
+      for (const check of failed) {
+        if (!target.issues.some((issue) => issue.field === check.label)) target.issues.push({ field: check.label, message: check.detail, where: 'Elegí otro conjunto en la pregunta "Campaña y conjunto" o excluí la fila' })
+      }
+      if (target.issues.length) target.state = 'blocked'
+    }
+    return placed
   }
 
   function piecesOf(row: Cells) {
@@ -227,7 +567,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
 
   for (const row of grid.rows) {
     const filteredOut = isFilteredOut(row)
-    const account = resolveAccount(row)
+    const active = !filteredOut && !excluded.has(row.rowNumber)
+    const account = resolveAccount(row, active)
     const rawAction = cell(row, 'action')
     const sheetAction: CanonicalAction | undefined = roles.has('action') ? (vocabulary[normalizeText(rawAction)] ?? (rawAction ? 'unknown' : undefined)) : undefined
     const manualAction = overrides.actionByRow?.[row.rowNumber]
@@ -236,43 +577,86 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       action: manualAction ?? sheetAction ?? 'create', actionSource: manualAction ? 'manual' : sheetAction ? 'sheet' : 'inferred', state: 'ready', issues: [],
     }
     rows.push(planRow)
-    if (filteredOut || planRow.excluded) continue
+    if (!active) continue
+
+    if (planRow.action === 'unknown') {
+      const answer = ask({
+        id: `action:${normalizeText(rawAction)}`, kind: 'choice', field: 'Acción',
+        prompt: `¿Qué significa la acción "${rawAction}"?`, why: 'No está en el vocabulario de acciones de este sheet',
+        options: [...CANONICAL_ACTIONS.filter((action) => action !== 'unknown').map((action) => ({ value: action, label: ACTION_LABELS[action] })), excludeOption()],
+        target: 'row', targetKey: String(row.rowNumber), allowFree: false, reuse: { kind: 'action', value: rawAction },
+      }, row.rowNumber)
+      if (answer?.value) {
+        planRow.action = answer.value as CanonicalAction
+        planRow.actionSource = 'sheet'
+      }
+    }
 
     const campaignName = cell(row, 'campaign_name')
-    if (!campaignName) planRow.issues.push({ field: 'Campaña', message: 'La fila no tiene nombre de campaña', where: `Completalo en el sheet (fila ${row.rowNumber})` })
     const { hasLink, error, groups } = piecesOf(row)
     if (!hasLink) planRow.issues.push({ field: 'Creativos', message: 'La fila no tiene link de Drive', where: `Fila ${row.rowNumber} del sheet` })
     else if (!groups.size) planRow.issues.push({ field: 'Creativos', message: error ?? 'La carpeta de Drive no tiene imágenes ni videos compatibles', where: 'Revisá el link y el acceso a Drive' })
     planRow.driveError = error
-    if (planRow.action === 'unknown') planRow.issues.push({ field: 'Acción', message: `No entiendo la acción "${rawAction}"`, where: 'Elegí la acción en este ítem' })
-
-    if (!planRow.accountId || !campaignName) {
-      planRow.state = worst([planRow.accountStatus === 'account_unresolved' ? 'needs_confirmation' : 'ready', ...planRow.issues.map(() => 'blocked' as const)])
-      continue
-    }
+    planRow.state = worst(planRow.issues.map(() => 'blocked' as const))
+    if (!planRow.accountId) continue
 
     const instructions = cellsOf(row, 'instructions').join(' · ')
     const instruction: InstructionOverrides = instructions ? context.instructionOverrides[instructionsKey(instructions)] ?? {} : {}
     const hint = destinationHint([campaignName, ...cellsOf(row, 'attribute'), instructions].join(' '))
-    const campaign = ensureCampaign(row, planRow.accountId, campaignName, hint)
-    planRow.campaignKey = campaign.key
-    if (campaign.mode === 'create' && campaign.status === 'create' && !manualAction && (planRow.action === 'replace' || planRow.action === 'add_formats')) {
-      planRow.actionWarning = `La acción dice "${rawAction}" pero la campaña no existe`
-      planRow.issues.push({ field: 'Acción', message: planRow.actionWarning, where: 'Elegí crear o excluir la fila' })
+
+    let campaign: PlanCampaign
+    let targets: PlanAdset[]
+    if (campaignName) {
+      campaign = ensureCampaign(row, planRow.accountId, campaignName, hint)
+      if (campaign.mode === 'create' && campaign.status === 'create' && !manualAction && (planRow.action === 'replace' || planRow.action === 'add_formats')) {
+        planRow.actionWarning = `La acción dice "${rawAction}" pero la campaña no existe`
+        const answer = ask({
+          id: `action-conflict:${row.rowNumber}`, kind: 'choice', field: 'Acción',
+          prompt: `La fila pide "${rawAction}" pero la campaña "${campaignName}" no existe. ¿Qué hago?`, why: planRow.actionWarning,
+          options: [{ value: 'create', label: 'Crear la campaña y los anuncios' }, excludeOption()],
+          target: 'row', targetKey: String(row.rowNumber), allowFree: false,
+        }, row.rowNumber)
+        if (answer?.value === 'create') {
+          planRow.action = 'create'
+          planRow.actionSource = 'manual'
+          planRow.actionWarning = undefined
+        }
+      }
+      targets = campaign.state === 'needs_answer' ? [] : ensureAdsets(row, campaign, hint)
+    } else {
+      const formats = [...new Set([...groups.values()].flat().map(ratioLabel))]
+      const placed = placeWithoutCampaign(row, planRow.accountId, hint, formats)
+      if (!placed) continue
+      if ('issue' in placed) {
+        planRow.issues.push(placed.issue)
+        planRow.state = 'blocked'
+        continue
+      }
+      campaign = placed.campaign
+      targets = placed.targets
     }
-    const targets = campaign.state === 'needs_confirmation' ? [] : ensureAdsets(row, campaign, hint)
+    planRow.campaignKey = campaign.key
     planRow.adsetKey = targets[0]?.key
 
     for (const adset of targets) {
       for (const [piece, files] of groups) {
         const pieceKey = `${row.rowNumber}:${normalizeText(piece)}:${adset.key}`
-        const decision = overrides.pieceMatch?.[pieceKey]
         let { comparison, match } = compare(piece, files, adset)
-        if (match && !match.certain && decision === 'reject') {
-          comparison = 'new'
-          match = undefined
+        if (match && !match.certain) {
+          const legacy = overrides.pieceMatch?.[pieceKey]
+          const answer = ask({
+            id: `piece:${pieceKey}`, kind: 'choice', field: 'Pieza',
+            prompt: `¿"${piece}" es la misma pieza que el anuncio "${match.name}"?`,
+            why: 'Coinciden por nombre, pero no hay registro de que ese anuncio use estos archivos de Drive',
+            options: [{ value: 'confirm', label: 'Sí, es la misma' }, { value: 'reject', label: 'No, es una pieza nueva' }, excludeOption()],
+            target: 'ad', targetKey: pieceKey, allowFree: false,
+          }, row.rowNumber, legacy ? { value: legacy } : undefined)
+          if (answer?.value === 'reject') {
+            comparison = 'new'
+            match = undefined
+          }
         }
-        const pendingMatch = Boolean(match && !match.certain && !decision)
+        const pendingMatch = Boolean(match && !match.certain && !questions.get(`piece:${pieceKey}`)?.answered)
         const effective: CanonicalAction = planRow.actionSource === 'inferred'
           ? (adset.mode === 'create' || campaign.mode === 'create' ? 'create' : comparison === 'changed' ? 'replace' : comparison === 'missing_formats' ? 'add_formats' : comparison === 'unchanged' ? 'skip' : 'create')
           : planRow.action === 'replace' ? (comparison === 'unchanged' && match?.certain ? 'skip' : 'replace')
@@ -308,17 +692,37 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
           id: pieceKey, rowNumber: row.rowNumber, accountId: campaign.accountId, campaignKey: campaign.key, adsetKey: adset.key, piece, files, formats, comparison, match,
           action: effective, badge, name, primaryText, headline, aiCopy,
           cta: instruction.cta || cell(row, 'cta') || context.batchDefaults.cta, url: instruction.url || cell(row, 'url') || context.batchDefaults.url,
-          reason: pendingMatch ? `Posible coincidencia por nombre con "${match!.name}": confirmá si es la misma pieza` : why,
-          state: pendingMatch ? 'needs_confirmation' : issues.length ? 'blocked' : 'ready', issues,
+          reason: pendingMatch ? 'Esperando tu respuesta sobre la coincidencia' : why,
+          state: issues.length ? 'blocked' : 'ready', issues,
           idempotencyKey: hashText([context.spreadsheetId, row.rowNumber, normalizeText(piece), adset.key, files.map((file) => `${file.id}@${file.modifiedTime ?? ''}`).join(',')].join('|')),
         })
       }
     }
-    planRow.state = worst([
-      planRow.accountStatus === 'account_unresolved' ? 'needs_confirmation' : 'ready',
-      planRow.actionWarning || planRow.action === 'unknown' ? 'needs_confirmation' : 'ready',
-      ...planRow.issues.filter((issue) => issue.field !== 'Acción').map(() => 'blocked' as const),
-    ])
+  }
+
+  for (const id of placementQuestions) {
+    const payload = questions.get(id)?.placement
+    if (payload) payload.groupRows = placementGroups.get(payload.groupQuestionId.slice('placement-group:'.length)) ?? []
+  }
+
+  const questionList = [...questions.values()]
+  const pendingList = questionList.filter((question) => !question.answered)
+  const rowByNumber = new Map(rows.map((row) => [row.rowNumber, row]))
+  for (const question of pendingList) {
+    for (const rowNumber of question.rowNumbers) {
+      const row = rowByNumber.get(rowNumber)
+      if (row) row.state = worst([row.state, 'needs_answer'])
+    }
+    if (question.target === 'campaign') {
+      const campaign = campaigns.get(question.targetKey)
+      if (campaign) campaign.state = worst([campaign.state, 'needs_answer'])
+    } else if (question.target === 'adset') {
+      const adset = adsets.get(question.targetKey)
+      if (adset) adset.state = worst([adset.state, 'needs_answer'])
+    } else if (question.target === 'ad') {
+      const ad = ads.find((item) => item.id === question.targetKey)
+      if (ad) ad.state = worst([ad.state, 'needs_answer'])
+    }
   }
 
   const included = rows.filter((row) => !row.excluded && !row.filteredOut)
@@ -326,15 +730,29 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   const campaignList = [...campaigns.values()]
   const adsetList = [...adsets.values()]
   return {
-    rows, campaigns: campaignList, adsets: adsetList, ads,
+    rows, campaigns: campaignList, adsets: adsetList, ads, questions: questionList,
     summary: {
-      read: rows.length, processed: included.length, filtered: rows.filter((row) => row.filteredOut).length, excluded: rows.filter((row) => row.excluded).length,
-      newCampaigns: campaignList.filter((item) => item.mode === 'create' && item.state !== 'needs_confirmation').length,
+      read: rows.length, processed: included.length, pendingQuestions: pendingList.length, filtered: rows.filter((row) => row.filteredOut).length, excluded: rows.filter((row) => row.excluded).length,
+      newCampaigns: campaignList.filter((item) => item.mode === 'create' && item.state !== 'needs_answer').length,
       newAdsets: adsetList.filter((item) => item.mode === 'create').length,
       newAds: acting.length, replace: acting.filter((ad) => ad.badge === 'Nuevo (reemplaza creativos)').length, addFormats: acting.filter((ad) => ad.badge === 'Nuevo (formatos faltantes)').length,
       unchanged: ads.length - acting.length,
     },
   }
+}
+
+// Preguntas sin responder que afectan filas incluidas: mientras haya alguna, no se avanza ni se crea nada.
+export const pendingQuestions = (plan: ResolvedPlan) => {
+  const included = new Set(plan.rows.filter((row) => !row.excluded && !row.filteredOut).map((row) => row.rowNumber))
+  return plan.questions.filter((question) => !question.answered && question.rowNumbers.some((rowNumber) => included.has(rowNumber)))
+}
+
+// Respuestas que tocan a un anuncio: las de su fila, su campaña, su conjunto y la propia pieza.
+export function answersForAd(plan: ResolvedPlan, ad: PlanAd) {
+  const related = plan.questions.filter((question) => question.answered && question.answer && (
+    question.targetKey === ad.campaignKey || question.targetKey === ad.adsetKey || question.targetKey === ad.id || question.rowNumbers.includes(ad.rowNumber)
+  ))
+  return Object.fromEntries(related.map((question) => [question.id, question.answer!]))
 }
 
 export function planBlockers(plan: ResolvedPlan) {
@@ -344,9 +762,14 @@ export function planBlockers(plan: ResolvedPlan) {
   const adsetKeys = new Set(acting.map((ad) => ad.adsetKey))
   const states = [
     ...rows.map((row) => row.state),
-    ...plan.campaigns.filter((item) => campaignKeys.has(item.key) || item.state === 'needs_confirmation').map((item) => item.state),
-    ...plan.adsets.filter((item) => adsetKeys.has(item.key) || item.state === 'needs_confirmation').map((item) => item.state),
+    ...plan.campaigns.filter((item) => campaignKeys.has(item.key) || item.state === 'needs_answer').map((item) => item.state),
+    ...plan.adsets.filter((item) => adsetKeys.has(item.key) || item.state === 'needs_answer').map((item) => item.state),
     ...plan.ads.map((ad) => ad.state),
   ]
-  return { blocked: states.filter((state) => state === 'blocked').length, needsConfirmation: states.filter((state) => state === 'needs_confirmation').length, actions: acting.length }
+  return {
+    blocked: states.filter((state) => state === 'blocked').length,
+    needsConfirmation: states.filter((state) => state === 'needs_confirmation').length,
+    needsAnswer: pendingQuestions(plan).length,
+    actions: acting.length,
+  }
 }

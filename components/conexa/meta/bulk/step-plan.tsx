@@ -1,14 +1,15 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBulkStore } from '@/lib/bulk/store'
 import { savePlanOverridesRequest } from '@/lib/conexa/bulk/client'
 import { planToRows, actingAds } from '@/lib/conexa/bulk/plan-rows'
-import { resolvePlan } from '@/lib/conexa/bulk/resolve'
-import { ACTION_LABELS, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanBadge, type PlanOverrides } from '@/lib/conexa/bulk/types'
+import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
+import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
+import { PlanQuestions } from './plan-questions'
 
 const selectClass = 'rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[11.5px] text-[#141414] outline-none focus:border-[#5B5FE8]'
 
@@ -24,6 +25,7 @@ const BADGE_CLASS: Record<PlanBadge, string> = {
 
 function StateIcon({ state }: { state: ItemState }) {
   if (state === 'ready') return <CheckCircle2 className="size-3.5 shrink-0 text-[#1e9e6b]" aria-label="Listo" />
+  if (state === 'needs_answer') return <HelpCircle className="size-3.5 shrink-0 text-[#c98a16]" aria-label="Esperando tu respuesta" />
   return <AlertTriangle className={cn('size-3.5 shrink-0', state === 'blocked' ? 'text-[#c0432c]' : 'text-[#c98a16]')} aria-label={state === 'blocked' ? 'Bloqueado' : 'Requiere confirmación'} />
 }
 
@@ -31,12 +33,46 @@ function Badge({ label }: { label: string }) {
   return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold', BADGE_CLASS[label as PlanBadge] ?? 'bg-[#f0f0ed] text-[#555]')}>{label}</span>
 }
 
-function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+function IssueLine({ issues }: { issues: PlanIssue[] }) {
+  if (!issues.length) return null
+  const [first, ...rest] = issues
+  return (
+    <span className="text-[10.5px] leading-relaxed">
+      <span className="font-medium text-[#c0432c]">{first.message}</span>
+      <span className="text-[#777]">{` → ${first.where}`}</span>
+      {rest.length > 0 && <span className="text-[#999]">{` · y ${rest.length} más: ${rest.map((issue) => issue.field).join(', ')}`}</span>}
+    </span>
+  )
+}
+
+function Legend() {
+  const items = [
+    { icon: <CheckCircle2 className="size-3.5 text-[#1e9e6b]" aria-hidden="true" />, label: 'Listo', text: 'tiene todo lo necesario' },
+    { icon: <AlertTriangle className="size-3.5 text-[#c98a16]" aria-hidden="true" />, label: 'Requiere confirmación', text: 'hay que elegir algo (cuenta, acción o coincidencia)' },
+    { icon: <AlertTriangle className="size-3.5 text-[#c0432c]" aria-hidden="true" />, label: 'Bloqueado', text: 'falta un dato obligatorio; corregilo o excluí la fila' },
+  ]
+  return (
+    <ul className="flex flex-wrap gap-x-5 gap-y-1.5 rounded-lg border border-[#ececea] bg-white px-3 py-2 text-[11px] text-[#777]" aria-label="Qué significa cada ícono">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-center gap-1.5">
+          {item.icon}
+          <span className="font-medium text-[#141414]">{item.label}</span>
+          <span>{`: ${item.text}`}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function Section({ title, count, actions, children }: { title: string; count: number; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-[#ececea] bg-white">
-      <header className="flex items-center justify-between border-b border-[#f0f0ed] px-4 py-2.5">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f0f0ed] px-4 py-2.5">
         <h3 className="text-[12.5px] font-semibold text-[#141414]">{title}</h3>
-        <span className="text-[11px] text-[#999]">{count}</span>
+        <div className="flex items-center gap-3">
+          {actions}
+          <span className="text-[11px] text-[#999]">{count}</span>
+        </div>
       </header>
       <ul className="divide-y divide-[#f3f3f0]">{children}</ul>
     </section>
@@ -72,9 +108,25 @@ export function StepPlan() {
     if (alias && accountId) setAliases((current) => [...current.filter((item) => item.alias !== alias), { alias, accountId }])
   }
   const setField = (key: string, patch: NonNullable<PlanOverrides['fields']>[string]) => update({ fields: { ...overrides.fields, [key]: { ...overrides.fields?.[key], ...patch } } })
+  const setAnswer = (id: string | string[], answer: PlanAnswer | undefined) => {
+    const ids = Array.isArray(id) ? id : [id]
+    if (answer?.value === ANSWER_EXCLUDE) {
+      const rowsToExclude = plan.questions.filter((question) => ids.includes(question.id)).flatMap((question) => question.rowNumbers)
+      update({ excludedRows: [...new Set([...(overrides.excludedRows ?? []), ...rowsToExclude])] })
+      return
+    }
+    const next = { ...overrides.answers }
+    for (const key of ids) {
+      if (answer) next[key] = answer
+      else delete next[key]
+    }
+    update({ answers: next })
+  }
 
   const visibleRows = plan.rows.filter((row) => !row.filteredOut)
   const activeRows = new Set(visibleRows.filter((row) => !row.excluded).map((row) => row.rowNumber))
+  const visibleQuestions = plan.questions.filter((question) => question.rowNumbers.some((rowNumber) => activeRows.has(rowNumber)))
+  const unanswered = pendingQuestions(plan)
   const campaigns = plan.campaigns.filter((campaign) => campaign.rows.some((row) => activeRows.has(row)))
   const adsets = plan.adsets.filter((adset) => adset.rows.some((row) => activeRows.has(row)))
   const ads = plan.ads.filter((ad) => activeRows.has(ad.rowNumber))
@@ -85,14 +137,43 @@ export function StepPlan() {
     ...adsets.filter((item) => item.state !== 'ready').flatMap((item) => item.issues),
     ...acting.filter((item) => item.state !== 'ready').flatMap((item) => item.issues),
   ]
+  const problemRows = new Set<number>([
+    ...visibleRows.filter((row) => !row.excluded && row.state !== 'ready').map((row) => row.rowNumber),
+    ...campaigns.filter((item) => item.state !== 'ready').flatMap((item) => item.rows),
+    ...adsets.filter((item) => item.state !== 'ready').flatMap((item) => item.rows),
+    ...ads.filter((item) => item.state !== 'ready').map((item) => item.rowNumber),
+  ].filter((rowNumber) => activeRows.has(rowNumber)))
+  const excludeProblemRows = () => update({ excludedRows: [...new Set([...(overrides.excludedRows ?? []), ...problemRows])] })
+  const includeAllRows = () => update({ excludedRows: [] })
+  const blockerSummary = Object.entries(blockers.reduce<Record<string, number>>((acc, issue) => ({ ...acc, [issue.message]: (acc[issue.message] ?? 0) + 1 }), {}))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+  const bulkActions = (
+    <>
+      {problemRows.size > 0 && (
+        <button type="button" onClick={excludeProblemRows} className="rounded-full border border-[#f0d4cc] px-2.5 py-0.5 text-[11px] font-medium text-[#c0432c] hover:bg-[#fcefeb]">
+          {`Deseleccionar ${problemRows.size} con problemas`}
+        </button>
+      )}
+      {(overrides.excludedRows?.length ?? 0) > 0 && (
+        <button type="button" onClick={includeAllRows} className="text-[11px] text-[#777] underline-offset-2 hover:text-[#141414] hover:underline">
+          Seleccionar todas
+        </button>
+      )}
+    </>
+  )
 
   async function continueToConfigure() {
     if (!plan || !clientId) return
     setSaving(true)
     setSaveWarning(null)
+    // Las respuestas reutilizables (alias de cuenta y significado de una acción) se guardan para la próxima carga.
+    const answeredAliases = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'alias' && question.answer?.value?.startsWith('act_') ? [{ alias: question.reuse.alias, accountId: question.answer.value }] : []))
+    const allAliases = [...new Map([...aliases, ...answeredAliases].map((item) => [item.alias, item])).values()]
+    const vocabulary = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'action' && question.answer?.value ? [{ value: question.reuse.value, action: question.answer.value }] : []))
     try {
-      if (aliases.length) for (const alias of aliases) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias })
-      else await savePlanOverridesRequest(context.planId, { clientId, overrides })
+      if (allAliases.length) for (const [index, alias] of allAliases.entries()) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias, vocabulary: index === 0 ? vocabulary : undefined })
+      else await savePlanOverridesRequest(context.planId, { clientId, overrides, vocabulary })
     } catch (cause) {
       setSaveWarning(cause instanceof Error ? `No se guardaron las decisiones: ${cause.message}` : 'No se guardaron las decisiones.')
     } finally {
@@ -139,7 +220,11 @@ export function StepPlan() {
         </ul>
       )}
 
-      <Section title="Filas del sheet" count={visibleRows.length}>
+      <PlanQuestions questions={visibleQuestions} onAnswer={setAnswer} />
+
+      <Legend />
+
+      <Section title="Filas del sheet" count={visibleRows.length} actions={bulkActions}>
         {visibleRows.map((row) => (
           <li key={row.rowNumber} className={cn('flex flex-wrap items-center gap-3 px-4 py-2', row.excluded && 'opacity-50')}>
             <input type="checkbox" checked={!row.excluded} onChange={() => toggleRow(row.rowNumber)} aria-label={`Incluir fila ${row.rowNumber}`} className="accent-[#5B5FE8]" />
@@ -157,7 +242,7 @@ export function StepPlan() {
                   </select>
                 </label>
               )}
-              <span className="text-[10.5px] text-[#999]">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>
+              {!row.excluded && row.issues.length > 0 ? <IssueLine issues={row.issues} /> : <span className="text-[10.5px] text-[#999]">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>}
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-[#777]">
               <span className="sr-only">{`Acción fila ${row.rowNumber}`}</span>
@@ -248,14 +333,15 @@ export function StepPlan() {
         ))}
       </Section>
 
-      <Section title="Anuncios" count={ads.length}>
+      <Section title="Anuncios" count={ads.length} actions={bulkActions}>
         {ads.map((ad) => (
           <li key={ad.id} className={cn('flex flex-wrap items-center gap-3 px-4 py-2.5', ad.badge === 'Sin cambios' && 'opacity-60')}>
+            <input type="checkbox" checked onChange={() => toggleRow(ad.rowNumber)} aria-label={`Incluir fila ${ad.rowNumber}`} className="accent-[#5B5FE8]" />
             <StateIcon state={ad.state} />
             <div className="flex min-w-[200px] flex-1 flex-col">
               <span className="truncate text-[12.5px] font-medium text-[#141414]">{ad.name}</span>
               <span className="text-[11px] text-[#777]">{`Fila ${ad.rowNumber} · ${ad.piece} · ${ad.formats.join(', ') || 'sin formatos'}`}</span>
-              <span className="text-[10.5px] text-[#999]">{ad.reason}</span>
+              {ad.issues.length > 0 ? <IssueLine issues={ad.issues} /> : <span className="text-[10.5px] text-[#999]">{ad.reason}</span>}
             </div>
             {ad.match && !ad.match.certain && (
               <div className="flex items-center gap-1.5 text-[11px] text-[#8a5f0d]">
@@ -272,10 +358,22 @@ export function StepPlan() {
       </Section>
 
       <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
-        <p className={cn('text-[11.5px]', blockers.length ? 'text-[#c0432c]' : 'text-[#777]')} role="status">
-          {saveWarning ?? (blockers.length ? `${blockers.length} puntos por resolver antes de seguir: ${blockers[0].message}` : `${acting.length} anuncios listos. Nada se crea en Meta hasta que apruebes en el último paso.`)}
-        </p>
-        <Button size="sm" disabled={Boolean(blockers.length) || !acting.length || saving} onClick={continueToConfigure} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+        <div className="flex min-w-0 flex-1 flex-col gap-1" role="status">
+          <p className={cn('text-[11.5px]', blockers.length ? 'text-[#c0432c]' : 'text-[#777]')}>
+            {saveWarning ?? (unanswered.length ? `Respondé ${unanswered.length} pregunta${unanswered.length > 1 ? 's' : ''} arriba para seguir.` : blockers.length ? `${blockers.length} puntos por resolver antes de seguir:` : `${acting.length} anuncios listos. Nada se crea en Meta hasta que apruebes en el último paso.`)}
+          </p>
+          {!saveWarning && blockerSummary.length > 0 && (
+            <ul className="flex flex-col text-[11px] text-[#777]">
+              {blockerSummary.map(([message, count]) => <li key={message}>{`${count}× ${message}`}</li>)}
+            </ul>
+          )}
+          {!saveWarning && problemRows.size > 0 && (
+            <button type="button" onClick={excludeProblemRows} className="self-start text-[11px] font-medium text-[#c0432c] underline underline-offset-2">
+              {`Excluir las ${problemRows.size} filas con problemas y seguir con el resto`}
+            </button>
+          )}
+        </div>
+        <Button size="sm" disabled={Boolean(blockers.length) || Boolean(unanswered.length) || !acting.length || saving} onClick={continueToConfigure} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
           {saving && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
           {'Configurar anuncios →'}
         </Button>

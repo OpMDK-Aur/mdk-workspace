@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { isAllowedAssetUrl } from '@/lib/meta-ads/bulk-access'
 import { executeAd } from '@/lib/conexa/bulk/execute'
 import { loadPlan, markPlanApproved } from '@/lib/conexa/bulk/persistence'
-import { resolvePlan } from '@/lib/conexa/bulk/resolve'
+import { answersForAd, pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
 import { requireBulkAccess } from '@/lib/conexa/bulk/route-helpers'
 import type { ExecuteAdRequest } from '@/lib/conexa/bulk/types'
 
@@ -23,6 +23,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const planned = resolved.ads.find((ad) => ad.id === body.item.id)
   if (!planned || planned.idempotencyKey !== body.item.idempotencyKey) return NextResponse.json({ error: 'El anuncio no coincide con el plan aprobado. Regenerá el plan.' }, { status: 409 })
   if (planned.state === 'blocked') return NextResponse.json({ error: 'El anuncio todavía tiene datos faltantes.' }, { status: 400 })
+  if (pendingQuestions(resolved).length) return NextResponse.json({ error: 'El plan tiene preguntas sin responder.' }, { status: 400 })
+  body.item.answers = answersForAd(resolved, planned)
   if (!isAllowedAssetUrl(body.item.ad.asset?.url ?? '') || !['image', 'video'].includes(body.item.ad.asset?.kind)) return NextResponse.json({ error: 'Archivo inválido.' }, { status: 400 })
   if (!body.item.ad.name?.trim() || !body.item.ad.primaryText?.trim() || !body.item.ad.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
 
