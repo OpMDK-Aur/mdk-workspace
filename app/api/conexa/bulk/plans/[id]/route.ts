@@ -42,10 +42,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const entries = vocabulary
     .map((entry: { value?: unknown; action?: unknown }) => [clampText(entry?.value, 120), entry?.action] as const)
     .filter(([value, action]: readonly [string, unknown]) => value && typeof action === 'string' && (CANONICAL_ACTIONS as readonly string[]).includes(action) && action !== 'unknown')
-  if (entries.length) {
+  // Las aclaraciones sobre instrucciones se reutilizan cuando la misma instrucción aparece en otro sheet del cliente.
+  const notes = (Array.isArray(body?.instructionNotes) ? body.instructionNotes.slice(0, 100) : [])
+    .map((entry: { key?: unknown; decision?: unknown; clarification?: unknown }) => ({ key: clampText(entry?.key, 80), decision: entry?.decision, clarification: clampText(entry?.clarification, 500) }))
+    .filter((entry: { key: string; decision: unknown }) => entry.key && (entry.decision === 'apply' || entry.decision === 'ignore' || entry.decision === 'clarified'))
+  if (entries.length || notes.length) {
     const { grid, interpretation } = found.plan.context
     await saveInterpretation(found.access.clientId, headersHash(grid.headers), grid.headers, {
-      ...interpretation, actionVocabulary: { ...interpretation.actionVocabulary, ...Object.fromEntries(entries) },
+      ...interpretation,
+      actionVocabulary: { ...interpretation.actionVocabulary, ...Object.fromEntries(entries) },
+      instructionNotes: {
+        ...interpretation.instructionNotes,
+        ...Object.fromEntries(notes.map((note: { key: string; decision: 'apply' | 'ignore' | 'clarified'; clarification: string }) => [note.key, note.clarification ? { decision: note.decision, clarification: note.clarification } : { decision: note.decision }])),
+      },
     }, found.access.userId)
   }
   return NextResponse.json({ ok: true })

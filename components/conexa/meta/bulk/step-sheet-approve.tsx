@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { useBulkStore } from '@/lib/bulk/store'
 import { uploadBulkAsset } from '@/lib/bulk/api'
 import { executePlanAdRequest, writeSheetStatusRequest } from '@/lib/conexa/bulk/client'
-import { buildExecuteRequest, driveFileUrl, primaryFile } from '@/lib/conexa/bulk/plan-rows'
+import { buildExecuteRequest, driveFileUrl, publishedFiles } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
 import { Button } from '@/components/ui/button'
 
@@ -44,6 +44,8 @@ export function StepSheetApprove() {
   const failedCount = Object.values(results).filter((result) => !result.ok).length
   const missingCopy = items.filter(({ row }) => !row.primaryText.trim() || !row.headline.trim())
   const unanswered = pendingQuestions(plan)
+  // La columna de estado es el proceso de la tarea: solo las filas creadas bien pasan a "EN REVISIÓN".
+  const statusHeader = context.interpretation.columns.find((column) => column.role === 'status' && context.grid.headers.includes(column.header))?.header ?? null
 
   async function run() {
     if (!plan || !clientId) return
@@ -53,10 +55,11 @@ export function StepSheetApprove() {
     for (const { row, ad } of pending) {
       updateRow(row.id, { status: 'publishing', error: undefined })
       try {
-        const file = primaryFile(ad.files)
-        if (!file) throw new Error('El anuncio no tiene archivos de Drive.')
-        const assetUrl = await driveToStorage(clientId, file)
-        const item = buildExecuteRequest({ context, plan, ad, row, assetUrl })
+        const files = publishedFiles(ad)
+        if (!files.length) throw new Error('El anuncio no tiene archivos de Drive.')
+        const assetUrls: Record<string, string> = {}
+        for (const file of files) assetUrls[file.id] = await driveToStorage(clientId, file)
+        const item = buildExecuteRequest({ context, plan, ad, row, assetUrls })
         if (typeof item === 'string') throw new Error(item)
         const result = await executePlanAdRequest(context.planId, { clientId, planId: context.planId, confirmed: true, item })
         if (!result.ok) throw new Error(result.error)
@@ -71,10 +74,15 @@ export function StepSheetApprove() {
         statusUpdates.set(ad.rowNumber, false)
       }
     }
-    if (statusUpdates.size) {
+    const okRows = [...statusUpdates].filter(([, ok]) => ok).map(([rowNumber]) => rowNumber)
+    if (!statusHeader) {
+      setSheetNote('El sheet no tiene una columna de estado: no se escribió nada en el sheet.')
+    } else if (okRows.length) {
       try {
-        const response = await writeSheetStatusRequest(context.planId, { clientId, updates: [...statusUpdates].map(([rowNumber, ok]) => ({ rowNumber, ok })), values: context.interpretation.statusVocabulary })
-        setSheetNote(response.updated ? `Se actualizó el estado de ${response.updated} filas en el sheet.` : response.skipped ?? null)
+        const response = await writeSheetStatusRequest(context.planId, { clientId, updates: okRows.map((rowNumber) => ({ rowNumber, ok: true })) })
+        const failedRows = [...statusUpdates].filter(([, ok]) => !ok).length
+        const failedNote = failedRows ? ` ${failedRows} filas con error quedaron sin cambios en el sheet.` : ''
+        setSheetNote(response.updated ? `${response.updated} filas marcadas "EN REVISIÓN" en ${statusHeader}.${failedNote}` : response.skipped ?? null)
       } catch (cause) {
         setSheetNote(cause instanceof Error ? `No se pudo escribir el estado en el sheet: ${cause.message}` : 'No se pudo escribir el estado en el sheet.')
       }
@@ -109,6 +117,12 @@ export function StepSheetApprove() {
           )
         })}
       </ul>
+
+      {!finished && (
+        <p className="text-pretty text-[11.5px] leading-relaxed text-[#777]">
+          {statusHeader ? `Las filas creadas bien pasan a "EN REVISIÓN" en la columna ${statusHeader}. Las que fallen quedan como estaban en el sheet.` : 'El sheet no tiene una columna de estado: no voy a escribir nada en el sheet.'}
+        </p>
+      )}
 
       {sheetNote && <p className="text-[11.5px] text-[#777]" role="status">{sheetNote}</p>}
 

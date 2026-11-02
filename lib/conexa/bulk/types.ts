@@ -22,8 +22,11 @@ export const ACTION_LABELS: Record<CanonicalAction, string> = { create: 'Crear',
 export const sheetInterpretationSchema = z.object({
   columns: z.array(z.object({ header: z.string(), role: z.enum(ROLES), confidence: z.number().min(0).max(1), note: z.string().optional() })),
   actionVocabulary: z.record(z.enum(CANONICAL_ACTIONS)),
-  statusVocabulary: z.object({ pending: z.array(z.string()), done: z.string().optional(), error: z.string().optional() }),
+  // confirmed: done/error los eligió el equipo, así que valen aunque todavía no aparezcan en el sheet.
+  statusVocabulary: z.object({ pending: z.array(z.string()), done: z.string().optional(), error: z.string().optional(), confirmed: z.boolean().optional() }),
   suggestedRowFilter: z.object({ column: z.string(), values: z.array(z.string()) }).optional(),
+  // Aclaraciones del equipo sobre instrucciones, por hash del texto normalizado: se reutilizan en otros sheets del cliente.
+  instructionNotes: z.record(z.object({ decision: z.enum(['apply', 'ignore', 'clarified']), clarification: z.string().optional() })).optional(),
   warnings: z.array(z.string()),
 })
 export type SheetInterpretation = z.infer<typeof sheetInterpretationSchema>
@@ -41,13 +44,18 @@ export type InterpretResponse = {
 export type InventoryAccount = { id: string; name: string }
 export type InventoryCampaign = { id: string; accountId: string; name: string; objective: string; status: string; dailyBudget?: number; isCbo: boolean }
 export type InventoryAdset = { id: string; accountId: string; campaignId: string; name: string; status: string; destination: string; dailyBudget?: number; pageId?: string; optimizationGoal?: string; hasPixel: boolean; endTime?: string; positions?: string[]; whatsappNumber?: string }
-export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }
+export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; status?: string; leadFormId?: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }
 export type Inventory = { accounts: InventoryAccount[]; campaigns: InventoryCampaign[]; adsets: InventoryAdset[]; ads: InventoryAd[]; currency: Record<string, string> }
 
 export type DriveFileRef = { id: string; name: string; mimeType: string; width: number; height: number; modifiedTime?: string }
 export type CreativeSource = { adAccountId: string; adId: string; creativeId?: string; driveFileId: string; driveModifiedTime?: string; format: string }
 
-export type InstructionOverrides = { adName?: string; adNameMode?: 'today' | 'literal'; primaryText?: string; headline?: string; cta?: string; url?: string; notes?: string }
+export type InstructionStatus = 'applied' | 'no_effect' | 'unclear'
+export type InstructionOverrides = {
+  adName?: string; adNameMode?: 'today' | 'literal'; primaryText?: string; headline?: string; cta?: string; url?: string; notes?: string; placeInModelAdset?: boolean; reuseLeadForm?: boolean
+  status?: InstructionStatus; meaning?: string; contradicts?: boolean
+}
+export type InstructionChip = { text: string; status: 'applied' | 'no_effect' | 'unclear' | 'ignored' | 'contradicts'; detail: string }
 
 export type PlanContext = {
   planId: string
@@ -82,7 +90,10 @@ export type PlanOverrides = {
   answers?: Record<string, PlanAnswer>
 }
 
-export type PlanAnswer = { value?: string; values?: string[]; text?: string }
+// groups: un grupo de ids de archivo por anuncio; los archivos que no quedan en ningún grupo se excluyen.
+export type PlanAnswer = { value?: string; values?: string[]; text?: string; groups?: string[][] }
+
+export type FolderFilesPayload = { folderLabel: string; files: Array<{ id: string; name: string; format: string; kind: 'image' | 'video' }>; duplicated: string[] }
 
 export const ANSWER_EXCLUDE = '__exclude'
 export const ANSWER_CREATE = '__create'
@@ -103,8 +114,9 @@ export type PlacementPayload = {
 
 export type PlanQuestion = {
   id: string
-  kind: 'choice' | 'multi' | 'text' | 'placement'
+  kind: 'choice' | 'multi' | 'text' | 'placement' | 'files'
   placement?: PlacementPayload
+  folderFiles?: FolderFilesPayload
   field: string
   prompt: string
   why: string
@@ -120,7 +132,7 @@ export type PlanQuestion = {
   answer?: PlanAnswer
   answerLabel?: string
   note?: string
-  reuse?: { kind: 'alias'; alias: string } | { kind: 'action'; value: string }
+  reuse?: { kind: 'alias'; alias: string } | { kind: 'action'; value: string } | { kind: 'instruction'; key: string; text: string }
 }
 
 export type ItemState = 'ready' | 'needs_confirmation' | 'needs_answer' | 'blocked'
@@ -174,6 +186,9 @@ export type PlanAd = {
   piece: string
   files: DriveFileRef[]
   formats: string[]
+  slots: Record<string, Array<'feed' | 'vertical' | 'other'>>
+  placementWarnings: string[]
+  ignoredFiles: Array<{ name: string; reason: string }>
   comparison: PieceComparison
   match?: { adId: string; name: string; thumbnail?: string; formats: string[]; certain: boolean }
   action: CanonicalAction
@@ -184,6 +199,7 @@ export type PlanAd = {
   aiCopy: boolean
   cta: string
   url: string
+  leadFormId?: string
   reason: string
   state: ItemState
   issues: PlanIssue[]
@@ -194,6 +210,7 @@ export type PlanRow = {
   rowNumber: number
   excluded: boolean
   filteredOut: boolean
+  ignored: boolean
   accountId?: string
   accountStatus: 'resolved' | 'account_unresolved'
   accountReason: string
@@ -204,6 +221,7 @@ export type PlanRow = {
   campaignKey?: string
   adsetKey?: string
   driveError?: string
+  instructions?: InstructionChip[]
   state: ItemState
   issues: PlanIssue[]
 }
@@ -214,7 +232,7 @@ export type ResolvedPlan = {
   adsets: PlanAdset[]
   ads: PlanAd[]
   questions: PlanQuestion[]
-  summary: { read: number; processed: number; pendingQuestions: number; filtered: number; excluded: number; newCampaigns: number; newAdsets: number; newAds: number; replace: number; addFormats: number; unchanged: number }
+  summary: { read: number; processed: number; pendingQuestions: number; filtered: number; excluded: number; ignored: number; newCampaigns: number; newAdsets: number; newAds: number; replace: number; addFormats: number; unchanged: number }
 }
 
 export type ExecuteAdRequest = {
@@ -229,7 +247,7 @@ export type ExecuteAdRequest = {
     answers?: Record<string, PlanAnswer>
     campaign: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }
     adset: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }
-    ad: { name: string; primaryText: string; headline: string; cta: string; link: string; pageId: string; asset: { url: string; kind: 'image' | 'video'; name: string }; driveFileIds: Array<{ id: string; modifiedTime?: string; format: string }> }
+    ad: { name: string; primaryText: string; headline: string; cta: string; link: string; pageId: string; leadFormId?: string; assets: Array<{ url: string; kind: 'image' | 'video'; name: string; slots: Array<'feed' | 'vertical' | 'other'> }>; driveFileIds: Array<{ id: string; modifiedTime?: string; format: string }> }
   }
 }
 

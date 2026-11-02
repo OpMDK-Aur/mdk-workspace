@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server'
 import { loadPlan } from '@/lib/conexa/bulk/persistence'
 import { requireBulkAccess, requireGoogle } from '@/lib/conexa/bulk/route-helpers'
-import { columnLetter } from '@/lib/conexa/bulk/text'
+import { columnLetter, normalizeText } from '@/lib/conexa/bulk/text'
 
 export const runtime = 'nodejs'
 
+// "EN REVISIÓN" con el formato del sheet: si ya aparece se copia tal cual; si no, se sigue la capitalización de los demás valores.
+function reviewValue(cells: string[]) {
+  const values = cells.map((cell) => cell.trim()).filter((cell) => /\p{L}/u.test(cell))
+  const existing = values.find((cell) => normalizeText(cell) === 'en revision')
+  if (existing) return existing
+  const upper = values.filter((cell) => cell === cell.toUpperCase()).length
+  if (!values.length || upper >= values.length / 2) return 'EN REVISIÓN'
+  const lower = values.filter((cell) => cell === cell.toLowerCase()).length
+  return lower > values.length / 2 ? 'en revisión' : 'En revisión'
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const body = await request.json().catch(() => null) as { clientId?: string; updates?: Array<{ rowNumber: number; ok: boolean }>; values?: { done?: string; error?: string } } | null
+  const body = await request.json().catch(() => null) as { clientId?: string; updates?: Array<{ rowNumber: number; ok: boolean }> } | null
   const access = await requireBulkAccess(body?.clientId)
   if ('error' in access) return access.error
   const plan = await loadPlan(id)
@@ -16,17 +27,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { interpretation, grid, spreadsheetId, sheetTitle } = plan.context
   const statusColumn = interpretation.columns.find((column) => column.role === 'status')
   const index = statusColumn ? grid.headers.indexOf(statusColumn.header) : -1
-  if (index < 0) return NextResponse.json({ skipped: 'El sheet no tiene una columna de estado.' })
-  const clean = (value: unknown) => (typeof value === 'string' ? value.trim().slice(0, 60) : '') || undefined
-  const done = interpretation.statusVocabulary.done || clean(body?.values?.done)
-  const error = interpretation.statusVocabulary.error || clean(body?.values?.error)
-  if (!done && !error) return NextResponse.json({ needsValues: true, skipped: 'Decime qué valor escribir en la columna de estado.' })
+  if (index < 0) return NextResponse.json({ skipped: 'El sheet no tiene una columna de estado: no se escribió nada en el sheet.' })
 
+  const value = reviewValue(grid.rows.map((row) => row.cells[index] ?? ''))
+  // Las filas que fallaron conservan su valor original para volver a aparecer como pendientes.
   const rowNumbers = new Set(grid.rows.map((row) => row.rowNumber))
-  const data = (body?.updates ?? [])
-    .filter((update) => Number.isInteger(update.rowNumber) && rowNumbers.has(update.rowNumber) && (update.ok ? done : error))
+  const okRows = [...new Set((body?.updates ?? []).filter((update) => update.ok === true && Number.isInteger(update.rowNumber) && rowNumbers.has(update.rowNumber)).map((update) => update.rowNumber))]
+  const data = okRows
     .slice(0, 500)
-    .map((update) => ({ range: `'${(sheetTitle ?? 'Sheet1').replace(/'/g, "''")}'!${columnLetter(index)}${update.rowNumber}`, values: [[update.ok ? done : error]] }))
+    .map((rowNumber) => ({ range: `'${(sheetTitle ?? 'Sheet1').replace(/'/g, "''")}'!${columnLetter(index)}${rowNumber}`, values: [[value]] }))
   if (!data.length) return NextResponse.json({ updated: 0 })
 
   const google = await requireGoogle()

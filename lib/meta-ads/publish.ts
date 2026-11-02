@@ -76,7 +76,18 @@ export type AdInput = {
   headline: string
   cta: string
   link: string
+  leadFormId?: string
   asset: AdAssetInput
+  // Con más de un archivo, cada uno se muestra en las ubicaciones indicadas (personalización por ubicación).
+  placementAssets?: Array<AdAssetInput & { slots: PlacementSlot[] }>
+}
+
+export type PlacementSlot = 'feed' | 'vertical' | 'other'
+
+const PLACEMENT_SPECS: Record<PlacementSlot, Record<string, string[]>> = {
+  feed: { publisher_platforms: ['facebook', 'instagram'], facebook_positions: ['feed', 'marketplace', 'video_feeds', 'search'], instagram_positions: ['stream', 'explore', 'explore_home'] },
+  vertical: { publisher_platforms: ['facebook', 'instagram', 'messenger'], facebook_positions: ['story', 'facebook_reels'], instagram_positions: ['story', 'reels'], messenger_positions: ['story'] },
+  other: { publisher_platforms: ['facebook', 'instagram', 'messenger', 'audience_network'], facebook_positions: ['right_hand_column', 'instream_video', 'facebook_reels_overlay', 'profile_feed'], instagram_positions: ['profile_feed', 'ig_search'], messenger_positions: ['messenger_home'], audience_network_positions: ['classic', 'rewarded_video'] },
 }
 
 export class MetaPublishError extends Error {
@@ -276,11 +287,16 @@ export async function createAd(input: AdInput) {
   const adset = await graph<{ account_id: string; destination_type?: string }>('conjunto', input.adsetId, { params: { fields: 'account_id,destination_type' } })
   const accountId = adset.account_id
   const whatsapp = adset.destination_type === 'WHATSAPP'
-  if (!whatsapp && !/^https?:\/\//i.test(input.link)) throw new MetaPublishError('Falta la URL de destino del anuncio.', 'anuncio')
-  const link = whatsapp ? WHATSAPP_LINK : input.link
+  if (!whatsapp && !input.leadFormId && !/^https?:\/\//i.test(input.link)) throw new MetaPublishError('Falta la URL de destino del anuncio.', 'anuncio')
+  // Los anuncios con formulario instantáneo no llevan a una web: Meta acepta fb.me como link de relleno.
+  const link = whatsapp ? WHATSAPP_LINK : /^https?:\/\//i.test(input.link) ? input.link : 'http://fb.me/'
   const callToAction = whatsapp
     ? { type: 'WHATSAPP_MESSAGE', value: { app_destination: 'WHATSAPP', link } }
-    : { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link } }
+    : { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link, ...(input.leadFormId ? { lead_gen_form_id: input.leadFormId } : {}) } }
+
+  if (input.placementAssets && input.placementAssets.length > 1) {
+    return createPlacementAd(input, input.placementAssets, accountId, link, callToAction)
+  }
 
   let objectStorySpec: Record<string, unknown>
   if (input.asset.kind === 'video') {
@@ -294,6 +310,53 @@ export async function createAd(input: AdInput) {
   const creative = await graph<{ id: string }>('creativo', `${act(accountId)}/adcreatives`, {
     method: 'POST',
     params: { name: input.name, object_story_spec: JSON.stringify(objectStorySpec) },
+  })
+  const ad = await graph<{ id: string }>('anuncio', `${act(accountId)}/ads`, {
+    method: 'POST',
+    params: { name: input.name, adset_id: input.adsetId, creative: JSON.stringify({ creative_id: creative.id }), status: input.status },
+  })
+  return { adId: ad.id, creativeId: creative.id, accountId }
+}
+
+async function createPlacementAd(
+  input: AdInput,
+  assets: Array<AdAssetInput & { slots: PlacementSlot[] }>,
+  accountId: string,
+  link: string,
+  callToAction: { type: string; value: Record<string, unknown> },
+) {
+  const images: Array<{ hash: string; adlabels: Array<{ name: string }> }> = []
+  const videos: Array<{ video_id: string; thumbnail_url: string; adlabels: Array<{ name: string }> }> = []
+  const rules: Array<Record<string, unknown>> = []
+  for (const [index, asset] of assets.entries()) {
+    const label = `pac_${index + 1}`
+    if (asset.kind === 'video') {
+      const { videoId, thumbnail } = asset.source?.videoId ? await sourceVideo(asset.source) : await uploadVideo(accountId, asset)
+      videos.push({ video_id: videoId, thumbnail_url: thumbnail, adlabels: [{ name: label }] })
+    } else {
+      const hash = asset.source ? await sourceImageHash(accountId, asset) : await uploadImage(accountId, asset)
+      images.push({ hash, adlabels: [{ name: label }] })
+    }
+    for (const slot of asset.slots) {
+      rules.push({ customization_spec: PLACEMENT_SPECS[slot], [asset.kind === 'video' ? 'video_label' : 'image_label']: { name: label } })
+    }
+  }
+  const kinds = new Set(assets.map((asset) => asset.kind))
+  const assetFeedSpec = {
+    ...(images.length ? { images } : {}),
+    ...(videos.length ? { videos } : {}),
+    bodies: [{ text: input.primaryText }],
+    titles: [{ text: input.headline }],
+    link_urls: [{ website_url: link }],
+    call_to_action_types: [callToAction.type],
+    ...(input.leadFormId || callToAction.type === 'WHATSAPP_MESSAGE' ? { call_to_actions: [callToAction] } : {}),
+    ad_formats: kinds.size > 1 ? ['AUTOMATIC_FORMAT'] : kinds.has('video') ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE'],
+    optimization_type: 'PLACEMENT',
+    asset_customization_rules: rules.map((rule, index) => ({ ...rule, priority: index + 1 })),
+  }
+  const creative = await graph<{ id: string }>('creativo', `${act(accountId)}/adcreatives`, {
+    method: 'POST',
+    params: { name: input.name, object_story_spec: JSON.stringify({ page_id: input.pageId }), asset_feed_spec: JSON.stringify(assetFeedSpec) },
   })
   const ad = await graph<{ id: string }>('anuncio', `${act(accountId)}/ads`, {
     method: 'POST',

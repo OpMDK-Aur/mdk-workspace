@@ -42,7 +42,8 @@ async function listAll<T>(path: string, params: Record<string, string>) {
 
 type RawCampaign = { id: string; name?: string; objective?: string; effective_status?: string; daily_budget?: string }
 type RawAdset = { id: string; name?: string; campaign_id?: string; effective_status?: string; destination_type?: string; daily_budget?: string; optimization_goal?: string; end_time?: string; promoted_object?: { page_id?: string; pixel_id?: string; whatsapp_phone_number?: string }; targeting?: { facebook_positions?: string[]; instagram_positions?: string[]; messenger_positions?: string[] } }
-type RawAd = { id: string; name?: string; adset_id?: string; creative?: { id?: string; name?: string; thumbnail_url?: string; body?: string; title?: string; object_story_spec?: { link_data?: { message?: string; name?: string }; video_data?: { message?: string; title?: string } } } }
+type RawCta = { value?: { lead_gen_form_id?: string } }
+type RawAd = { id: string; name?: string; adset_id?: string; effective_status?: string; creative?: { id?: string; name?: string; thumbnail_url?: string; body?: string; title?: string; object_story_spec?: { link_data?: { message?: string; name?: string; call_to_action?: RawCta }; video_data?: { message?: string; title?: string; call_to_action?: RawCta } } } }
 
 const ACTIVE_FILTER = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW'] }])
 
@@ -58,7 +59,7 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
   const [campaigns, adsets, ads] = await Promise.all([
     listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }),
     listAll<RawAdset>(`${act(accountId)}/adsets`, { fields: 'id,name,campaign_id,effective_status,destination_type,daily_budget,optimization_goal,promoted_object,end_time,targeting{facebook_positions,instagram_positions,messenger_positions}', filtering: ACTIVE_FILTER }),
-    listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec}', filtering: ACTIVE_FILTER }),
+    listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec}', filtering: ACTIVE_FILTER }),
   ])
   return {
     accounts: [{ id: accountId, name: account.name ?? accountId }],
@@ -77,7 +78,9 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
     ads: ads.map((item): InventoryAd => {
       const story = item.creative?.object_story_spec
       return {
-        id: item.id, accountId, adsetId: item.adset_id ?? '', name: item.name ?? '', creativeId: item.creative?.id, creativeName: item.creative?.name, thumbnail: item.creative?.thumbnail_url,
+        id: item.id, accountId, adsetId: item.adset_id ?? '', name: item.name ?? '', status: item.effective_status,
+        leadFormId: story?.link_data?.call_to_action?.value?.lead_gen_form_id || story?.video_data?.call_to_action?.value?.lead_gen_form_id || undefined,
+        creativeId: item.creative?.id, creativeName: item.creative?.name, thumbnail: item.creative?.thumbnail_url,
         primaryText: item.creative?.body || story?.link_data?.message || story?.video_data?.message || '',
         headline: item.creative?.title || story?.link_data?.name || story?.video_data?.title || '',
       }

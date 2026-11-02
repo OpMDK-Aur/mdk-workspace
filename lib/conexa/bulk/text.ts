@@ -5,6 +5,15 @@ export const containsText = (haystack: string, needle: string) => {
   return Boolean(key) && normalizeText(haystack).includes(key)
 }
 
+// Relleno de plantilla: solo puntuación, guiones, espacios o "N/A" cuenta como celda vacía.
+export const isBlankValue = (value: string | undefined) => {
+  const key = normalizeText(value ?? '')
+  return !key || key === 'n/a' || key === 'na' || !/[a-z0-9]/.test(key)
+}
+export const cleanValue = (value: string | undefined) => (isBlankValue(value) ? '' : (value ?? '').trim())
+// Separa por "|", salto de línea o punto final de oración (no corta URLs ni decimales).
+export const splitInstructions = (text: string) => text.split(/\||\r?\n|\.(?=\s|$)/).map((part) => part.trim()).filter((part) => !isBlankValue(part))
+
 export const sameText = (a: string, b: string) => Boolean(normalizeText(a)) && normalizeText(a) === normalizeText(b)
 
 // FNV-1a: estable entre servidor y navegador, suficiente para claves de idempotencia y hash de encabezados.

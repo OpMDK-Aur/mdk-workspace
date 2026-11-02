@@ -7,7 +7,7 @@ import { useBulkStore } from '@/lib/bulk/store'
 import { savePlanOverridesRequest } from '@/lib/conexa/bulk/client'
 import { planToRows, actingAds } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
-import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
+import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type InstructionChip, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
 import { PlanQuestions } from './plan-questions'
 
@@ -31,6 +31,27 @@ function StateIcon({ state }: { state: ItemState }) {
 
 function Badge({ label }: { label: string }) {
   return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold', BADGE_CLASS[label as PlanBadge] ?? 'bg-[#f0f0ed] text-[#555]')}>{label}</span>
+}
+
+const CHIP: Record<InstructionChip['status'], { label: string; className: string }> = {
+  applied: { label: 'Aplicada', className: 'bg-[#5B5FE8]/10 text-[#4347c9]' },
+  no_effect: { label: 'Sin efecto', className: 'bg-[#f0f0ec] text-[#777]' },
+  ignored: { label: 'Ignorada', className: 'bg-[#f0f0ec] text-[#999] line-through' },
+  unclear: { label: 'Sin entender', className: 'bg-[#fdf3dc] text-[#8a5f0d]' },
+  contradicts: { label: 'No aplicada', className: 'bg-[#fbe9e5] text-[#c0432c]' },
+}
+
+function InstructionChips({ chips }: { chips: InstructionChip[] }) {
+  return (
+    <ul className="mt-1 flex flex-wrap gap-1" aria-label="Instrucciones de la fila">
+      {chips.map((chip) => (
+        <li key={chip.text} title={`${CHIP[chip.status].label}: ${chip.detail}`} className={`max-w-[260px] truncate rounded px-1.5 py-0.5 text-[10.5px] ${CHIP[chip.status].className}`}>
+          <span className="sr-only">{`${CHIP[chip.status].label}: `}</span>
+          {chip.text}
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 function IssueLine({ issues }: { issues: PlanIssue[] }) {
@@ -171,9 +192,17 @@ export function StepPlan() {
     const answeredAliases = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'alias' && question.answer?.value?.startsWith('act_') ? [{ alias: question.reuse.alias, accountId: question.answer.value }] : []))
     const allAliases = [...new Map([...aliases, ...answeredAliases].map((item) => [item.alias, item])).values()]
     const vocabulary = plan.questions.flatMap((question) => (question.answered && question.reuse?.kind === 'action' && question.answer?.value ? [{ value: question.reuse.value, action: question.answer.value }] : []))
+    type InstructionNote = { key: string; decision: 'apply' | 'ignore' | 'clarified'; clarification?: string }
+    const instructionNotes = plan.questions.flatMap((question): InstructionNote[] => {
+      if (!question.answered || question.reuse?.kind !== 'instruction') return []
+      const { key } = question.reuse
+      if (question.answer?.value === 'apply') return [{ key, decision: 'apply' }]
+      if (question.answer?.value === 'ignore') return [{ key, decision: 'ignore' }]
+      return question.answer?.text ? [{ key, decision: 'clarified', clarification: question.answer.text }] : []
+    })
     try {
-      if (allAliases.length) for (const [index, alias] of allAliases.entries()) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias, vocabulary: index === 0 ? vocabulary : undefined })
-      else await savePlanOverridesRequest(context.planId, { clientId, overrides, vocabulary })
+      if (allAliases.length) for (const [index, alias] of allAliases.entries()) await savePlanOverridesRequest(context.planId, { clientId, overrides, alias, vocabulary: index === 0 ? vocabulary : undefined, instructionNotes: index === 0 ? instructionNotes : undefined })
+      else await savePlanOverridesRequest(context.planId, { clientId, overrides, vocabulary, instructionNotes })
     } catch (cause) {
       setSaveWarning(cause instanceof Error ? `No se guardaron las decisiones: ${cause.message}` : 'No se guardaron las decisiones.')
     } finally {
@@ -183,6 +212,14 @@ export function StepPlan() {
   }
 
   const { summary } = plan
+  // El estado es el proceso de la tarea en el equipo: las filas en proceso o terminadas no se cargan.
+  const statusIndex = context.grid.headers.findIndex((header) => context.interpretation.columns.some((column) => column.header === header && column.role === 'status'))
+  const filterIndex = context.rowFilter ? context.grid.headers.indexOf(context.rowFilter.column) : -1
+  const shownIndex = filterIndex >= 0 ? filterIndex : statusIndex
+  const statusExcluded = plan.rows.filter((row) => row.filteredOut).map((row) => ({
+    rowNumber: row.rowNumber,
+    status: context.grid.rows.find((item) => item.rowNumber === row.rowNumber)?.cells[shownIndex]?.trim() || 'sin estado',
+  }))
   const stats = [
     { label: 'Filas leídas', value: summary.read },
     { label: 'A procesar', value: summary.processed },
@@ -198,7 +235,14 @@ export function StepPlan() {
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wide text-[#999]">Plan de carga</p>
           <h2 className="truncate text-[15px] font-semibold text-[#141414]">{`${context.grid.title} · ${context.sheetTitle}`}</h2>
-          {context.rowFilter && <p className="text-[11.5px] text-[#777]">{`Solo filas con ${context.rowFilter.column}: ${context.rowFilter.values.join(', ')} · ${summary.filtered} filtradas`}</p>}
+          {statusExcluded.length > 0 && (
+            <details className="text-[11.5px] text-[#777]">
+              <summary className="cursor-pointer hover:text-[#141414]">{`Excluidas por estado (${statusExcluded.length})`}</summary>
+              <ul className="mt-1 flex flex-col gap-0.5 pl-3">
+                {statusExcluded.map((item) => <li key={item.rowNumber}>{`Fila ${item.rowNumber} · ${item.status}`}</li>)}
+              </ul>
+            </details>
+          )}
         </div>
         <button type="button" onClick={exitSheetPlan} className="inline-flex items-center gap-1 text-[11.5px] text-[#777] hover:text-[#141414]">
           <X className="size-3.5" aria-hidden="true" />
@@ -243,6 +287,7 @@ export function StepPlan() {
                 </label>
               )}
               {!row.excluded && row.issues.length > 0 ? <IssueLine issues={row.issues} /> : <span className="text-[10.5px] text-[#999]">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>}
+              {!row.excluded && row.instructions && row.instructions.length > 0 && <InstructionChips chips={row.instructions} />}
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-[#777]">
               <span className="sr-only">{`Acción fila ${row.rowNumber}`}</span>
