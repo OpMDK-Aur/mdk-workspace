@@ -148,8 +148,10 @@ export type PlanCampaign = {
   name: string
   mode: 'existing' | 'create'
   existingId?: string
-  status: 'exists' | 'exists_other_account' | 'possible_match' | 'create'
+  status: 'exists' | 'exists_other_account' | 'possible_match' | 'create' | 'not_found'
   candidates: Array<{ id: string; name: string; accountId: string }>
+  /** Campaña tal como existe en Meta (nombre real, estado y cómo se encontró). */
+  meta?: { id: string; name: string; status: string; match: 'exacta' | 'normalizada' | 'elegida' }
   reference?: { id: string; name: string; objective: string }
   dailyBudget?: number
   isCbo: boolean

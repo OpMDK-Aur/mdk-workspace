@@ -148,8 +148,12 @@ function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: 
         {row.planAdId ? (
           <div className="w-[200px]">
             <p className="text-[11.5px] font-semibold text-[#141414]">{row.planDestination?.campaignName}</p>
-            <p className="text-[11px] text-[#777]">{row.planDestination?.adsetName}</p>
-            <p className="mt-1 text-[10px] text-[#999]">Destino según el plan de carga</p>
+            {row.planDestination?.campaignId && <p className="font-mono text-[10px] text-[#999]">{`Campaña ID ${row.planDestination.campaignId}`}</p>}
+            <p className="mt-1 text-[11px] text-[#777]">{row.planDestination?.adsetName}</p>
+            {row.planDestination?.adsetId && <p className="font-mono text-[10px] text-[#999]">{`Conjunto ID ${row.planDestination.adsetId}`}</p>}
+            <p className="mt-1 text-[10px] text-[#999]">
+              {row.planDestination?.accountId ? `Cuenta act_${row.planDestination.accountId.replace(/^act_/, '')} · según el plan` : 'Destino según el plan de carga'}
+            </p>
           </div>
         ) : (
           <CampaignAdsetPicker
