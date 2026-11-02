@@ -183,6 +183,14 @@ export function StepPlan() {
   }
 
   const { summary } = plan
+  // El estado es el proceso de la tarea en el equipo: las filas en proceso o terminadas no se cargan.
+  const statusIndex = context.grid.headers.findIndex((header) => context.interpretation.columns.some((column) => column.header === header && column.role === 'status'))
+  const filterIndex = context.rowFilter ? context.grid.headers.indexOf(context.rowFilter.column) : -1
+  const shownIndex = filterIndex >= 0 ? filterIndex : statusIndex
+  const statusExcluded = plan.rows.filter((row) => row.filteredOut).map((row) => ({
+    rowNumber: row.rowNumber,
+    status: context.grid.rows.find((item) => item.rowNumber === row.rowNumber)?.cells[shownIndex]?.trim() || 'sin estado',
+  }))
   const stats = [
     { label: 'Filas leídas', value: summary.read },
     { label: 'A procesar', value: summary.processed },
@@ -198,7 +206,14 @@ export function StepPlan() {
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wide text-[#999]">Plan de carga</p>
           <h2 className="truncate text-[15px] font-semibold text-[#141414]">{`${context.grid.title} · ${context.sheetTitle}`}</h2>
-          {context.rowFilter && <p className="text-[11.5px] text-[#777]">{`Solo filas con ${context.rowFilter.column}: ${context.rowFilter.values.join(', ')} · ${summary.filtered} filtradas`}</p>}
+          {statusExcluded.length > 0 && (
+            <details className="text-[11.5px] text-[#777]">
+              <summary className="cursor-pointer hover:text-[#141414]">{`Excluidas por estado (${statusExcluded.length})`}</summary>
+              <ul className="mt-1 flex flex-col gap-0.5 pl-3">
+                {statusExcluded.map((item) => <li key={item.rowNumber}>{`Fila ${item.rowNumber} · ${item.status}`}</li>)}
+              </ul>
+            </details>
+          )}
         </div>
         <button type="button" onClick={exitSheetPlan} className="inline-flex items-center gap-1 text-[11.5px] text-[#777] hover:text-[#141414]">
           <X className="size-3.5" aria-hidden="true" />

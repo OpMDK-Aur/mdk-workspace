@@ -8,7 +8,7 @@ const isVideo = (file: DriveFileRef) => file.mimeType.startsWith('video/')
 const asCta = (value: string): CTA => (CTAS as readonly string[]).find((cta) => cta.toLowerCase() === value.trim().toLowerCase()) as CTA ?? CTAS[0]
 
 export const actingAds = (plan: ResolvedPlan) => {
-  const included = new Set(plan.rows.filter((row) => !row.excluded && !row.filteredOut).map((row) => row.rowNumber))
+  const included = new Set(plan.rows.filter((row) => !row.excluded && !row.filteredOut && !row.ignored).map((row) => row.rowNumber))
   return plan.ads.filter((ad) => included.has(ad.rowNumber) && ad.badge !== 'Sin cambios')
 }
 
@@ -51,7 +51,7 @@ export function buildExecuteRequest({ context, plan, ad, row, assetUrl }: { cont
   return {
     id: ad.id, rowNumber: ad.rowNumber, idempotencyKey: ad.idempotencyKey, accountId: ad.accountId, answers: answersForAd(plan, ad), campaign: campaignSpec, adset: adsetSpec,
     ad: {
-      name: row.adName || ad.name, primaryText: row.primaryText, headline: row.headline, cta: row.cta, link: ad.url, pageId,
+      name: row.adName || ad.name, primaryText: row.primaryText, headline: row.headline, cta: row.cta, link: ad.url, pageId, leadFormId: ad.leadFormId,
       asset: { url: assetUrl, kind: isVideo(file) ? 'video' : 'image', name: file.name },
       driveFileIds: ad.files.map((item) => ({ id: item.id, modifiedTime: item.modifiedTime, format: ratioLabel(item) })),
     },

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { SheetGrid } from '@/lib/bulk/types'
 import { askJson } from './ai'
 import { findInterpretations, saveInterpretation } from './persistence'
-import { headersHash, normalizeText } from './text'
+import { headersHash, isBlankValue, normalizeText } from './text'
 import { CANONICAL_ACTIONS, ROLES, sheetInterpretationSchema, type Inventory, type SheetInterpretation } from './types'
 
 const SYSTEM = `Sos un analista de pauta en Meta Ads. Interpretás sheets de pedidos de campañas que cada cliente arma distinto.
@@ -11,10 +11,14 @@ Asigná a cada columna un rol semántico: ${ROLES.join(', ')}.
 - campaign_name es el nombre completo de la campaña tal como debe existir en Meta (suele seguir una nomenclatura con guiones o barras). Una columna con valores cortos tipo "WHATSAPP" o una marca es attribute, no campaign_name.
 - "CAMPAÑAS" o "CAMPANAS" (plural) es campaign_name. "CAMPAÑA" (singular, valores como "WHATSAPP") es attribute: tipo o destino de campaña.
 - account es la cuenta publicitaria o concesionaria; attribute es contexto (marca, modelo, modalidad, producto).
-- instructions son observaciones o notas libres; status es el estado del pedido; action es el tipo de pedido.
+- instructions son observaciones o notas libres; action es el tipo de pedido.
+- status es el estado de proceso de la tarea dentro del equipo (ej. NO INICIADA, ACTIVA, PAUSADA, EN REVISIÓN, RECHAZADA, FINALIZADA). No es el estado en Meta y nunca decide si algo se crea activo o pausado.
 - Usá confidence entre 0 y 1. Usá ignore para lo que no aporta.
 - actionVocabulary: cada valor distinto de la columna action mapeado a create | replace | add_formats | skip | unknown.
-- statusVocabulary.pending: valores que indican que el pedido todavía no se hizo; done y error: el valor a escribir al terminar si existe en el vocabulario del sheet.
+- statusVocabulary.pending: valores de tarea pendiente, todavía no empezada (ej. NO INICIADA). Las tareas en proceso o terminadas no son pending.
+- statusVocabulary.done y error: el valor de tarea hecha y de tarea con error, copiados exactamente de los valores que aparecen en la columna status. Si el sheet no muestra un valor para eso, null (no inventes).
+- suggestedRowFilter: solo sobre la columna status, con los estados a INCLUIR (pendientes). Nunca uses valores vacíos, guiones ni puntos. Si no aplica, null.
+- "Activar" en la columna action significa procesar el pedido: mapealo a unknown (la acción se infiere de lo que exista en Meta).
 Devolvé solo JSON.`
 
 function sample(grid: SheetGrid) {
@@ -46,17 +50,29 @@ function normalizeInterpretation(grid: SheetGrid, interpretation: SheetInterpret
   const headerKey = (value: string) => normalizeText(value).replace(/\s+/g, ' ').trim()
   const byHeader = new Map(interpretation.columns.map((column) => [headerKey(column.header), column]))
   const realHeader = new Map(grid.headers.map((header) => [headerKey(header), header]))
+  const columns = grid.headers.map((header): SheetInterpretation['columns'][number] => {
+    const found = byHeader.get(headerKey(header))
+    const fixed = FIXED_HEADER_ROLES[headerKey(header)]
+    if (fixed) return { header, role: fixed.role, confidence: 1, note: fixed.note }
+    return found ? { ...found, header } : { header, role: 'ignore', confidence: 0, note: 'Sin interpretar' }
+  })
+  // El filtro indica qué estados incluir: valores de relleno o columnas que no son de estado lo invertían.
   const filter = interpretation.suggestedRowFilter
   const filterColumn = filter ? realHeader.get(headerKey(filter.column)) : undefined
+  const filterValues = filter?.values.filter((value) => !isBlankValue(value)) ?? []
+  const filterIsStatus = columns.some((column) => column.header === filterColumn && column.role === 'status')
+  // "Hecha" y "error" se escriben en el sheet: solo valen si ese valor ya existe en la columna de estado o lo confirmó el equipo.
+  const statusHeader = columns.find((column) => column.role === 'status')?.header
+  const seenStatus = new Map((statusHeader ? distinctValues(grid, statusHeader) : []).map((value) => [normalizeText(value), value]))
+  const vocabulary = interpretation.statusVocabulary
+  const fromSheet = (value: string | undefined) => (value && !isBlankValue(value) ? seenStatus.get(normalizeText(value)) ?? (vocabulary.confirmed ? value : undefined) : undefined)
+  const done = fromSheet(vocabulary.done)
+  const error = fromSheet(vocabulary.error)
   return {
     ...interpretation,
-    columns: grid.headers.map((header) => {
-      const found = byHeader.get(headerKey(header))
-      const fixed = FIXED_HEADER_ROLES[headerKey(header)]
-      if (fixed) return { header, role: fixed.role, confidence: 1, note: fixed.note }
-      return found ? { ...found, header } : { header, role: 'ignore', confidence: 0, note: 'Sin interpretar' }
-    }),
-    suggestedRowFilter: filter && filterColumn ? { ...filter, column: filterColumn } : undefined,
+    columns,
+    statusVocabulary: { pending: vocabulary.pending.filter((value) => !isBlankValue(value)), ...(done ? { done } : {}), ...(error ? { error } : {}), ...(vocabulary.confirmed ? { confirmed: true } : {}) },
+    suggestedRowFilter: filterColumn && filterIsStatus && filterValues.length ? { column: filterColumn, values: filterValues } : undefined,
   }
 }
 
@@ -138,5 +154,7 @@ export const instructionOverridesSchema = z.object({
     cta: z.string().nullable(),
     url: z.string().nullable(),
     notes: z.string().nullable(),
+    placeInModelAdset: z.boolean().nullable(),
+    reuseLeadForm: z.boolean().nullable(),
   })),
 })

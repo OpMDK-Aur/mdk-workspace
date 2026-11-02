@@ -6,7 +6,7 @@ import { askJson } from './ai'
 import { instructionOverridesSchema } from './interpret'
 import { loadAliases, loadCreativeSources } from './persistence'
 import { campaignMatchKey, copyKey, instructionsKey, resolvePlan } from './resolve'
-import { normalizeText, todayDDMMYYYY, tokenOverlap } from './text'
+import { normalizeText, splitInstructions, todayDDMMYYYY, tokenOverlap } from './text'
 import type { Inventory, PlanContext, SheetInterpretation } from './types'
 
 const DRIVE_BATCH = 100
@@ -44,13 +44,16 @@ async function semanticMatches(context: PlanContext) {
 async function interpretInstructions(context: PlanContext) {
   const columns = context.interpretation.columns.filter((column) => column.role === 'instructions').map((column) => context.grid.headers.indexOf(column.header))
   if (!columns.length) return {}
-  const texts = [...new Set(context.grid.rows.map((row) => columns.map((index) => row.cells[index]?.trim() ?? '').filter(Boolean).join(' · ')).filter(Boolean))]
+  const texts = [...new Set(context.grid.rows.flatMap((row) => columns.flatMap((index) => splitInstructions(row.cells[index] ?? ''))))]
   if (!texts.length) return {}
   const items = texts.map((text) => ({ key: instructionsKey(text), text }))
   const result = await askJson(instructionOverridesSchema,
     `Convertís observaciones libres de un pedido de anuncios en overrides estructurados. Solo completá un campo si la observación lo pide explícitamente.
 - adNameMode "today": el anuncio debe llamarse con la fecha del día (ej. "nombre del anuncio con fecha de hoy"). Hoy es ${context.today}.
 - adName: un nombre literal pedido. primaryText / headline: copy literal pedido. cta / url: si los indica.
+- placeInModelAdset true: pide crear los anuncios en el conjunto existente que corresponde al modelo de la fila.
+- reuseLeadForm true: pide usar el formulario instantáneo de los anuncios que ya están corriendo en ese conjunto.
+- "Dejar pausado" no requiere nada: todo se crea en pausa.
 - notes: cualquier otra indicación que no puedas mapear, resumida.`,
     JSON.stringify(items), 'las observaciones del sheet')
   const keys = new Set(items.map((item) => item.key))

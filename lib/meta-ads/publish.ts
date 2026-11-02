@@ -76,6 +76,7 @@ export type AdInput = {
   headline: string
   cta: string
   link: string
+  leadFormId?: string
   asset: AdAssetInput
 }
 
@@ -276,11 +277,12 @@ export async function createAd(input: AdInput) {
   const adset = await graph<{ account_id: string; destination_type?: string }>('conjunto', input.adsetId, { params: { fields: 'account_id,destination_type' } })
   const accountId = adset.account_id
   const whatsapp = adset.destination_type === 'WHATSAPP'
-  if (!whatsapp && !/^https?:\/\//i.test(input.link)) throw new MetaPublishError('Falta la URL de destino del anuncio.', 'anuncio')
-  const link = whatsapp ? WHATSAPP_LINK : input.link
+  if (!whatsapp && !input.leadFormId && !/^https?:\/\//i.test(input.link)) throw new MetaPublishError('Falta la URL de destino del anuncio.', 'anuncio')
+  // Los anuncios con formulario instantáneo no llevan a una web: Meta acepta fb.me como link de relleno.
+  const link = whatsapp ? WHATSAPP_LINK : /^https?:\/\//i.test(input.link) ? input.link : 'http://fb.me/'
   const callToAction = whatsapp
     ? { type: 'WHATSAPP_MESSAGE', value: { app_destination: 'WHATSAPP', link } }
-    : { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link } }
+    : { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link, ...(input.leadFormId ? { lead_gen_form_id: input.leadFormId } : {}) } }
 
   let objectStorySpec: Record<string, unknown>
   if (input.asset.kind === 'video') {
