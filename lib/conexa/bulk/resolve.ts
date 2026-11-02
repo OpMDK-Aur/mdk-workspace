@@ -2,7 +2,7 @@ import { baseNameOf, ratioFromDimensions, ratioFromName } from '@/lib/bulk/group
 import {
   ACTION_LABELS, ANSWER_CREATE, ANSWER_EXCLUDE, CANONICAL_ACTIONS,
   type CanonicalAction, type DriveFileRef, type InstructionOverrides, type InventoryAccount, type InventoryAdset, type InventoryCampaign, type ItemState, type PieceComparison, type PlanAd, type PlanAdset,
-  type PlanAnswer, type PlanBadge, type PlanCampaign, type PlanContext, type PlanIssue, type PlanOverrides, type PlanQuestion, type PlanRow, type ResolvedPlan, type Role,
+  type PlacementCampaignOption, type PlacementCheck, type PlanAnswer, type PlanBadge, type PlanCampaign, type PlanContext, type PlanIssue, type PlanOverrides, type PlanQuestion, type PlanRow, type ResolvedPlan, type Role,
 } from './types'
 import { containsText, hashText, normalizeText, sameText, tokenOverlap } from './text'
 
@@ -46,6 +46,65 @@ export function destinationHint(text: string) {
 }
 
 const DESTINATION_LABEL: Record<string, string> = { WHATSAPP: 'WhatsApp', ON_AD: 'formulario', WEBSITE: 'sitio web' }
+
+const MODALITY_PATTERN = /convencional|plan( de)? ahorro|\bplan\b|ahorro|contado|financiad|leasing|usad|0 ?km/
+const OBJECTIVES_BY_DESTINATION: Record<string, string[]> = {
+  WHATSAPP: ['OUTCOME_ENGAGEMENT', 'OUTCOME_SALES', 'OUTCOME_LEADS', 'OUTCOME_TRAFFIC', 'MESSAGES'],
+  ON_AD: ['OUTCOME_LEADS', 'LEAD_GENERATION'],
+  WEBSITE: ['OUTCOME_TRAFFIC', 'OUTCOME_SALES', 'OUTCOME_LEADS', 'OUTCOME_ENGAGEMENT', 'LINK_CLICKS', 'CONVERSIONS'],
+}
+const nameTokens = (value: string) => normalizeText(value).split(/[^a-z0-9]+/).filter(Boolean)
+
+// Coincide por palabra completa o por las abreviaturas que usa la cuenta: prefijo ("CON" = CONVENCIONAL),
+// iniciales ("PDA"/"PA" = PLAN DE AHORRO) o una palabra significativa ("AHORRO").
+export function attributeMatches(name: string, value: string) {
+  const key = normalizeText(value)
+  if (!key) return false
+  const hay = nameTokens(name)
+  const words = nameTokens(key)
+  if (!words.length) return false
+  const joined = ` ${hay.join(' ')} `
+  if (joined.includes(` ${words.join(' ')} `)) return true
+  const significant = words.filter((word) => word.length > 2)
+  const initials = words.length > 1 ? [words.map((word) => word[0]).join(''), significant.map((word) => word[0]).join('')] : []
+  return hay.some((token) =>
+    (words.length === 1 && /^[a-z]{3,}$/.test(token) && key.startsWith(token))
+    || initials.includes(token)
+    || (significant.length > 1 && significant.some((word) => word.length >= 4 && token === word)))
+}
+
+export const destinationLabel = (adset: Pick<InventoryAdset, 'destination' | 'whatsappNumber' | 'pageId'>) => {
+  if (adset.destination === 'WHATSAPP') return `WhatsApp${adset.whatsappNumber ? `: ${adset.whatsappNumber}` : adset.pageId ? ` (página ${adset.pageId})` : ''}`
+  if (adset.destination === 'ON_AD') return 'Formulario instantáneo'
+  if (adset.destination === 'WEBSITE') return 'Sitio web'
+  if (adset.destination === 'MESSENGER') return 'Messenger'
+  return adset.destination || 'Sin destino'
+}
+
+// Mismas validaciones de conjunto que en 2.2.b: destino, objetivo, ubicaciones vs. formatos y fecha de fin.
+export function adsetChecks(adset: InventoryAdset, campaign: InventoryCampaign | undefined, hint: string | undefined, formats: string[], now = Date.now()): PlacementCheck[] {
+  const label = destinationLabel(adset)
+  const destination = hint
+    ? { label: 'Destino', ok: adset.destination === hint, detail: adset.destination === hint ? label : `La fila pide ${DESTINATION_LABEL[hint]} y el conjunto usa ${label}` }
+    : { label: 'Destino', ok: Boolean(adset.destination), detail: adset.destination ? label : 'El conjunto no tiene destino configurado' }
+  const allowed = OBJECTIVES_BY_DESTINATION[adset.destination]
+  const objectiveOk = !campaign?.objective || !allowed || allowed.includes(campaign.objective)
+  const objective = { label: 'Objetivo', ok: objectiveOk, detail: objectiveOk ? campaign?.objective || 'Sin objetivo informado' : `${campaign?.objective} no admite destino ${label}` }
+  const positions = adset.positions ?? []
+  const vertical = formats.includes('9:16')
+  const feed = formats.some((format) => format !== '9:16')
+  const hasVerticalSlot = positions.some((position) => /story|reels/.test(position))
+  const hasFeedSlot = positions.some((position) => /feed|stream|explore|marketplace|search|video_feeds/.test(position))
+  const missing = [vertical && !hasVerticalSlot ? '9:16 (historias/reels)' : '', feed && !hasFeedSlot ? 'feed' : ''].filter(Boolean)
+  const placements = !positions.length
+    ? { label: 'Ubicaciones', ok: true, detail: 'Automáticas: admiten todos los formatos' }
+    : { label: 'Ubicaciones', ok: !missing.length, detail: missing.length ? `Las ubicaciones del conjunto no incluyen ${missing.join(' ni ')}` : `${positions.length} ubicaciones compatibles con ${formats.join(', ') || 'los formatos'}` }
+  const end = adset.endTime ? Date.parse(adset.endTime) : NaN
+  const endDate = Number.isNaN(end)
+    ? { label: 'Fecha de fin', ok: true, detail: 'Sin fecha de fin' }
+    : { label: 'Fecha de fin', ok: end > now, detail: end > now ? `Termina el ${new Date(end).toLocaleDateString('es-AR')}` : `Terminó el ${new Date(end).toLocaleDateString('es-AR')}` }
+  return [destination, objective, placements, endDate]
+}
 const SEPARATORS = [' - ', ' | ', ' / ', '_', '-']
 
 // Sugiere un nombre siguiendo la nomenclatura del lote: separador más usado + tramo inicial común + atributos de la fila.
@@ -93,6 +152,25 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   const campaignsIn = (accountId: string) => inventory.campaigns.filter((campaign) => campaign.accountId === accountId)
   const adsetsOf = (campaignId: string) => inventory.adsets.filter((adset) => adset.campaignId === campaignId)
   const batchAdsetNames = grid.rows.map((row) => cell(row, 'adset_name')).filter(Boolean)
+
+  // Modalidad y unidad se reconocen por el contenido de las columnas de atributo, no por el encabezado.
+  const attributeColumns = roles.get('attribute') ?? []
+  const valuesOf = (index: number) => [...new Set(grid.rows.map((row) => row.cells[index]?.trim() ?? '').filter(Boolean))]
+  const share = (values: string[], test: (value: string) => boolean) => (values.length ? values.filter(test).length / values.length : 0)
+  const modalityColumn = attributeColumns.find((index) => share(valuesOf(index), (value) => MODALITY_PATTERN.test(normalizeText(value))) >= 0.5)
+  const inventoryNames = [...inventory.campaigns.map((campaign) => campaign.name), ...inventory.adsets.map((adset) => adset.name)]
+  const unitColumn = attributeColumns
+    .filter((index) => index !== modalityColumn)
+    .map((index) => {
+      const values = valuesOf(index)
+      const isBrand = share(values, (value) => accounts.some((account) => containsText(account.name, value))) >= 0.5
+      const isLong = values.reduce((sum, value) => sum + value.length, 0) / Math.max(values.length, 1) > 30
+      return { index, score: isBrand || isLong ? -1 : share(values, (value) => inventoryNames.some((name) => attributeMatches(name, value))) }
+    })
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)[0]?.index
+  const placementQuestions: string[] = []
+  const placementGroups = new Map<string, number[]>()
 
   const campaigns = new Map<string, PlanCampaign>()
   const adsets = new Map<string, PlanAdset>()
@@ -351,14 +429,14 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   }
 
   // 2.2.b: la fila no trae campaña. Se ubica por el conjunto existente; si no aparece, la fila queda bloqueada.
-  function placeWithoutCampaign(row: Cells, accountId: string): { campaign: PlanCampaign; targets: PlanAdset[] } | { issue: PlanIssue } | undefined {
+  function placeWithoutCampaign(row: Cells, accountId: string, hint: string | undefined, formats: string[]): { campaign: PlanCampaign; targets: PlanAdset[] } | { issue: PlanIssue } | undefined {
     const adsetName = cell(row, 'adset_name')
     const matches = adsetName ? inventory.adsets.filter((adset) => adset.accountId === accountId && sameText(adset.name, adsetName)) : []
     const campaignOf = (adset: InventoryAdset) => inventory.campaigns.find((campaign) => campaign.id === adset.campaignId)
-    const useExisting = (adset: InventoryAdset, reason: string) => {
+    const useExisting = (adset: InventoryAdset, reason: string, campaignReason = `Campaña del conjunto "${adset.name}"`) => {
       const owner = campaignOf(adset)
       if (!owner) return undefined
-      const campaign = existingCampaign(row, owner, `Campaña del conjunto "${adset.name}"`)
+      const campaign = existingCampaign(row, owner, campaignReason)
       const key = `${campaign.accountId}::adset::${adset.id}`
       const current = adsets.get(key)
       if (current) {
@@ -386,13 +464,73 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       return chosen ? useExisting(chosen, `Respondiste: conjunto de "${campaignOf(chosen)?.name ?? ''}"`) : undefined
     }
 
-    return {
-      issue: {
-        field: 'Campaña',
-        message: adsetName ? `La fila no trae campaña y no existe el conjunto "${adsetName}" en la cuenta` : 'La fila no trae campaña ni conjunto',
-        where: `Completá la campaña en la fila ${row.rowNumber} del sheet o excluí la fila`,
-      },
+    // Sin campaña ni conjunto reconocible: se pregunta dónde cargar, con las campañas de la cuenta ordenadas por modalidad y unidad.
+    const modality = modalityColumn !== undefined ? row.cells[modalityColumn]?.trim() || undefined : undefined
+    const unit = unitColumn !== undefined ? row.cells[unitColumn]?.trim() || undefined : undefined
+    const maxScore = Number(Boolean(modality)) + Number(Boolean(unit))
+    const scoreOf = (...names: string[]) => Number(Boolean(modality && names.some((name) => attributeMatches(name, modality)))) + Number(Boolean(unit && names.some((name) => attributeMatches(name, unit))))
+    const options: PlacementCampaignOption[] = campaignsIn(accountId)
+      .map((campaign) => {
+        const list = adsetsOf(campaign.id).map((adset) => ({
+          id: adset.id, name: adset.name, status: adset.status, destinationLabel: destinationLabel(adset),
+          score: scoreOf(campaign.name, adset.name), checks: adsetChecks(adset, campaign, hint, formats),
+        })).sort((a, b) => b.score - a.score || Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE') || a.name.localeCompare(b.name))
+        return { id: campaign.id, name: campaign.name, status: campaign.status, objective: campaign.objective, score: Math.max(scoreOf(campaign.name), ...list.map((adset) => adset.score)), adsets: list }
+      })
+      .filter((campaign) => campaign.adsets.length)
+      .sort((a, b) => b.score - a.score || Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE') || a.name.localeCompare(b.name))
+    if (!options.length) {
+      return { issue: { field: 'Campaña', message: 'La fila no trae campaña y la cuenta no tiene campañas con conjuntos', where: `Completá la campaña en la fila ${row.rowNumber} del sheet o excluí la fila` } }
     }
+
+    const groupKey = `${accountId}::${normalizeText(modality ?? '')}::${normalizeText(unit ?? '')}`
+    const groupQuestionId = `placement-group:${groupKey}`
+    placementGroups.set(groupKey, [...(placementGroups.get(groupKey) ?? []), row.rowNumber])
+    const questionId = `placement:${row.rowNumber}`
+    placementQuestions.push(questionId)
+    const filterLabel = [modality, unit].filter(Boolean).join(' / ')
+    const matched = options.some((campaign) => campaign.score > 0)
+    const answer = ask({
+      id: questionId, kind: 'placement', field: 'Campaña y conjunto',
+      prompt: adsetName ? `La fila no trae campaña y no existe el conjunto "${adsetName}". ¿Dónde cargo los anuncios?` : 'La fila no trae campaña ni conjunto. ¿Dónde cargo los anuncios?',
+      why: !filterLabel ? `Elegí una campaña o un conjunto de ${accountLabel(accounts, accountId)}` : matched ? `Filtré por ${filterLabel} en ${accountLabel(accounts, accountId)}` : `No encontré campañas con ${filterLabel} en esta cuenta`,
+      options: [
+        ...options.flatMap((campaign) => [
+          { value: `campaign:${campaign.id}`, label: campaign.name },
+          ...campaign.adsets.map((adset) => ({ value: adset.id, label: `${campaign.name} › ${adset.name}` })),
+        ]),
+        excludeOption(),
+      ],
+      placement: { accountName: accountLabel(accounts, accountId), modality, unit, maxScore, matched, campaigns: options, groupQuestionId, groupRows: [] },
+      target: 'row', targetKey: String(row.rowNumber), searchable: false, allowFree: false,
+    }, row.rowNumber, answers[groupQuestionId])
+    if (!answer?.value) return undefined
+
+    const accountAdsets = inventory.adsets.filter((adset) => adset.accountId === accountId)
+    let chosen = accountAdsets.find((adset) => adset.id === answer.value)
+    if (!chosen && answer.value.startsWith('campaign:')) {
+      const list = adsetsOf(answer.value.slice(9))
+      const active = list.filter((adset) => adset.status === 'ACTIVE')
+      chosen = active.length === 1 ? active[0] : !active.length && list.length === 1 ? list[0] : undefined
+    }
+    if (!chosen) {
+      const question = questions.get(questionId)
+      if (question) {
+        question.answered = false
+        question.note = 'Esa campaña tiene varios conjuntos activos: elegí uno'
+      }
+      return undefined
+    }
+    const placed = useExisting(chosen, 'Campaña y conjunto elegidos manualmente', 'Campaña y conjunto elegidos manualmente')
+    if (!placed) return undefined
+    const failed = adsetChecks(chosen, campaignOf(chosen), hint, formats).filter((check) => !check.ok)
+    for (const target of placed.targets) {
+      for (const check of failed) {
+        if (!target.issues.some((issue) => issue.field === check.label)) target.issues.push({ field: check.label, message: check.detail, where: 'Elegí otro conjunto en la pregunta "Campaña y conjunto" o excluí la fila' })
+      }
+      if (target.issues.length) target.state = 'blocked'
+    }
+    return placed
   }
 
   function piecesOf(row: Cells) {
@@ -486,7 +624,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       }
       targets = campaign.state === 'needs_answer' ? [] : ensureAdsets(row, campaign, hint)
     } else {
-      const placed = placeWithoutCampaign(row, planRow.accountId)
+      const formats = [...new Set([...groups.values()].flat().map(ratioLabel))]
+      const placed = placeWithoutCampaign(row, planRow.accountId, hint, formats)
       if (!placed) continue
       if ('issue' in placed) {
         planRow.issues.push(placed.issue)
@@ -559,6 +698,11 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
         })
       }
     }
+  }
+
+  for (const id of placementQuestions) {
+    const payload = questions.get(id)?.placement
+    if (payload) payload.groupRows = placementGroups.get(payload.groupQuestionId.slice('placement-group:'.length)) ?? []
   }
 
   const questionList = [...questions.values()]

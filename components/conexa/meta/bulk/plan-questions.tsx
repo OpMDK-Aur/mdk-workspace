@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Check, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { PlanAnswer, PlanQuestion } from '@/lib/conexa/bulk/types'
+import { ANSWER_EXCLUDE, type PlanAnswer, type PlanQuestion } from '@/lib/conexa/bulk/types'
 
 const inputClass = 'min-w-0 flex-1 rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[12px] text-[#141414] outline-none focus:border-[#5B5FE8]'
 const chipClass = 'rounded-full border px-2.5 py-1 text-left text-[11.5px] transition-colors'
@@ -30,6 +30,104 @@ function FreeAnswer({ placeholder, initial, onSubmit }: { placeholder: string; i
       <button type="button" onClick={submit} disabled={!text.trim()} className="rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
         Responder
       </button>
+    </div>
+  )
+}
+
+function PlacementBody({ question, onAnswer }: { question: PlanQuestion; onAnswer: (answer: PlanAnswer, applyToGroup: boolean) => void }) {
+  const payload = question.placement!
+  const [showAll, setShowAll] = useState(!payload.matched)
+  const [open, setOpen] = useState<string | undefined>(payload.campaigns[0]?.id)
+  const [picked, setPicked] = useState<string | undefined>(question.answer?.value)
+  const relevant = payload.campaigns.filter((campaign) => campaign.score > 0)
+  const visible = showAll || !relevant.length ? payload.campaigns : relevant
+  const groupSize = payload.groupRows.length
+  const groupLabel = [payload.modality, payload.unit].filter(Boolean).join(' / ')
+  const pickedAdset = payload.campaigns.flatMap((campaign) => campaign.adsets).find((adset) => adset.id === picked)
+  const pickedCampaign = payload.campaigns.find((campaign) => `campaign:${campaign.id}` === picked)
+  const failing = pickedAdset?.checks.filter((check) => !check.ok) ?? []
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#777]">
+        <span>{`Cuenta: ${payload.accountName}`}</span>
+        {payload.modality && <span>{`Modalidad: ${payload.modality}`}</span>}
+        {payload.unit && <span>{`Unidad: ${payload.unit}`}</span>}
+        {relevant.length > 0 && relevant.length < payload.campaigns.length && (
+          <button type="button" onClick={() => setShowAll((value) => !value)} className="text-[#5B5FE8] underline-offset-2 hover:underline">
+            {showAll ? `Ver solo las que coinciden (${relevant.length})` : `Ver todas las campañas (${payload.campaigns.length})`}
+          </button>
+        )}
+      </div>
+      <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-md border border-[#eeeeea] p-1">
+        {visible.map((campaign) => {
+          const expanded = open === campaign.id
+          const campaignValue = `campaign:${campaign.id}`
+          return (
+            <li key={campaign.id} className="rounded-md">
+              <div className={cn('flex items-center gap-2 rounded-md px-2 py-1.5', picked === campaignValue && 'bg-[#5B5FE8]/10')}>
+                <button type="button" aria-expanded={expanded} onClick={() => setOpen(expanded ? undefined : campaign.id)} className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-[12px] font-medium text-[#141414]">{campaign.name}</span>
+                  <span className="text-[10.5px] text-[#888]">
+                    {`${campaign.status === 'ACTIVE' ? 'Activa' : 'Pausada'} · ${campaign.objective || 'sin objetivo'} · ${campaign.adsets.length} conjunto${campaign.adsets.length > 1 ? 's' : ''}`}
+                    {payload.maxScore > 0 && campaign.score > 0 && <span className="text-[#1e9e6b]">{campaign.score === payload.maxScore ? ' · coincide' : ' · coincide en parte'}</span>}
+                  </span>
+                </button>
+                <button type="button" onClick={() => setPicked(campaignValue)} className="shrink-0 rounded-full border border-[#e5e5e0] px-2 py-0.5 text-[10.5px] text-[#333] hover:border-[#141414]">
+                  Elegir campaña
+                </button>
+              </div>
+              {expanded && (
+                <ul className="ml-3 flex flex-col gap-1 border-l border-[#eeeeea] py-1 pl-2">
+                  {campaign.adsets.map((adset) => {
+                    const selected = picked === adset.id
+                    const bad = adset.checks.filter((check) => !check.ok)
+                    return (
+                      <li key={adset.id}>
+                        <button type="button" role="radio" aria-checked={selected} onClick={() => setPicked(adset.id)} className={cn('flex w-full flex-col gap-0.5 rounded-md border px-2 py-1.5 text-left', selected ? 'border-[#5B5FE8] bg-[#5B5FE8]/10' : 'border-transparent hover:border-[#e5e5e0]')}>
+                          <span className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-[#141414]">{adset.name}</span>
+                            <span className={cn('shrink-0 text-[10.5px]', bad.length ? 'text-[#b4432f]' : 'text-[#1e9e6b]')}>{bad.length ? `${bad.length} problema${bad.length > 1 ? 's' : ''}` : 'Compatible'}</span>
+                          </span>
+                          <span className="text-[10.5px] text-[#888]">{`${adset.status === 'ACTIVE' ? 'Activo' : 'Pausado'} · ${adset.destinationLabel}`}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      {pickedAdset && (
+        <ul className="flex flex-col gap-0.5 rounded-md bg-[#fafaf8] px-3 py-2">
+          {pickedAdset.checks.map((check) => (
+            <li key={check.label} className="flex gap-2 text-[11px] leading-relaxed">
+              <span className={cn('w-24 shrink-0 font-medium', check.ok ? 'text-[#1e9e6b]' : 'text-[#b4432f]')}>{check.label}</span>
+              <span className="text-[#555]">{check.detail}</span>
+            </li>
+          ))}
+          <li className="pt-1 text-[10.5px] text-[#888]">Se crean solo anuncios nuevos dentro del conjunto; no se modifica nada existente.</li>
+        </ul>
+      )}
+      {pickedCampaign && <p className="text-[11px] text-[#777]">{`Se usa el conjunto activo de "${pickedCampaign.name}". Si tiene varios, te pido que elijas uno.`}</p>}
+      {failing.length > 0 && <p className="text-[11px] text-[#b4432f]">Con estos problemas la fila queda bloqueada. Elegí otro conjunto o excluí la fila.</p>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={!picked} onClick={() => picked && onAnswer({ value: picked }, false)} className="rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
+          Aplicar a esta fila
+        </button>
+        {groupSize > 1 && (
+          <button type="button" disabled={!picked} onClick={() => picked && onAnswer({ value: picked }, true)} className="rounded-full border border-[#141414] px-3 py-1 text-[11px] font-medium text-[#141414] hover:bg-[#141414] hover:text-white disabled:opacity-40">
+            {`Aplicar a las ${groupSize} filas${groupLabel ? ` con ${groupLabel}` : ' sin campaña'}`}
+          </button>
+        )}
+        <button type="button" onClick={() => onAnswer({ value: ANSWER_EXCLUDE }, false)} className="text-[11px] text-[#777] underline-offset-2 hover:text-[#141414] hover:underline">
+          Excluir fila
+        </button>
+      </div>
     </div>
   )
 }
@@ -81,7 +179,7 @@ function QuestionBody({ question, onAnswer }: { question: PlanQuestion; onAnswer
   )
 }
 
-function QuestionCard({ question, onAnswer, onReset }: { question: PlanQuestion; onAnswer: (answer: PlanAnswer) => void; onReset: () => void }) {
+function QuestionCard({ question, onAnswer, onReset }: { question: PlanQuestion; onAnswer: (answer: PlanAnswer, applyToGroup?: boolean) => void; onReset: () => void }) {
   if (question.answered) {
     return (
       <li className="flex flex-wrap items-center gap-2 px-4 py-2">
@@ -101,13 +199,23 @@ function QuestionCard({ question, onAnswer, onReset }: { question: PlanQuestion;
       <p className="text-pretty text-[12.5px] font-medium leading-relaxed text-[#141414]">{question.prompt}</p>
       <p className="text-pretty text-[11px] leading-relaxed text-[#777]">{question.why}</p>
       {question.note && <p className="text-[11px] text-[#8a5f0d]">{question.note}</p>}
-      <QuestionBody question={question} onAnswer={onAnswer} />
+      {question.kind === 'placement' && question.placement ? <PlacementBody question={question} onAnswer={onAnswer} /> : <QuestionBody question={question} onAnswer={onAnswer} />}
       {question.reuse && <p className="text-[10.5px] text-[#999]">{question.reuse.kind === 'alias' ? `Se recuerda para "${question.reuse.alias}" en próximas cargas.` : `Se recuerda qué significa "${question.reuse.value}" en este sheet.`}</p>}
     </li>
   )
 }
 
-export function PlanQuestions({ questions, onAnswer }: { questions: PlanQuestion[]; onAnswer: (id: string, answer: PlanAnswer | undefined) => void }) {
+export function PlanQuestions({ questions, onAnswer }: { questions: PlanQuestion[]; onAnswer: (id: string | string[], answer: PlanAnswer | undefined) => void }) {
+  // Al aplicar al grupo, la respuesta queda en la clave del grupo y se limpian las respuestas por fila de ese grupo.
+  const answerFor = (question: PlanQuestion) => (answer: PlanAnswer, applyToGroup?: boolean) => {
+    const group = question.placement
+    if (!group || !applyToGroup) return onAnswer(question.id, answer)
+    const groupIds = group.groupRows.map((row) => `placement:${row}`)
+    if (answer.value === ANSWER_EXCLUDE) return onAnswer(groupIds, answer)
+    onAnswer(groupIds, undefined)
+    onAnswer(group.groupQuestionId, answer)
+  }
+  const resetFor = (question: PlanQuestion) => () => onAnswer(question.placement ? [question.id, question.placement.groupQuestionId] : question.id, undefined)
   if (!questions.length) return null
   const pending = questions.filter((question) => !question.answered)
   const answered = questions.filter((question) => question.answered)
@@ -136,7 +244,7 @@ export function PlanQuestions({ questions, onAnswer }: { questions: PlanQuestion
       </header>
       <ul className="divide-y divide-[#f3f3f0]">
         {[...pending, ...answered].map((question) => (
-          <QuestionCard key={question.id} question={question} onAnswer={(answer) => onAnswer(question.id, answer)} onReset={() => onAnswer(question.id, undefined)} />
+          <QuestionCard key={question.id} question={question} onAnswer={answerFor(question)} onReset={resetFor(question)} />
         ))}
       </ul>
     </section>

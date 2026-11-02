@@ -41,7 +41,7 @@ async function listAll<T>(path: string, params: Record<string, string>) {
 }
 
 type RawCampaign = { id: string; name?: string; objective?: string; effective_status?: string; daily_budget?: string }
-type RawAdset = { id: string; name?: string; campaign_id?: string; effective_status?: string; destination_type?: string; daily_budget?: string; optimization_goal?: string; promoted_object?: { page_id?: string; pixel_id?: string } }
+type RawAdset = { id: string; name?: string; campaign_id?: string; effective_status?: string; destination_type?: string; daily_budget?: string; optimization_goal?: string; end_time?: string; promoted_object?: { page_id?: string; pixel_id?: string; whatsapp_phone_number?: string }; targeting?: { facebook_positions?: string[]; instagram_positions?: string[]; messenger_positions?: string[] } }
 type RawAd = { id: string; name?: string; adset_id?: string; creative?: { id?: string; name?: string; thumbnail_url?: string; body?: string; title?: string; object_story_spec?: { link_data?: { message?: string; name?: string }; video_data?: { message?: string; title?: string } } } }
 
 const ACTIVE_FILTER = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW'] }])
@@ -57,7 +57,7 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
   const currency = account.currency ?? 'USD'
   const [campaigns, adsets, ads] = await Promise.all([
     listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }),
-    listAll<RawAdset>(`${act(accountId)}/adsets`, { fields: 'id,name,campaign_id,effective_status,destination_type,daily_budget,optimization_goal,promoted_object', filtering: ACTIVE_FILTER }),
+    listAll<RawAdset>(`${act(accountId)}/adsets`, { fields: 'id,name,campaign_id,effective_status,destination_type,daily_budget,optimization_goal,promoted_object,end_time,targeting{facebook_positions,instagram_positions,messenger_positions}', filtering: ACTIVE_FILTER }),
     listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec}', filtering: ACTIVE_FILTER }),
   ])
   return {
@@ -67,6 +67,12 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
     adsets: adsets.map((item): InventoryAdset => ({
       id: item.id, accountId, campaignId: item.campaign_id ?? '', name: item.name ?? '', status: item.effective_status ?? '', destination: item.destination_type ?? '',
       dailyBudget: minorToMajor(item.daily_budget, currency), pageId: item.promoted_object?.page_id, optimizationGoal: item.optimization_goal, hasPixel: Boolean(item.promoted_object?.pixel_id),
+      endTime: item.end_time, whatsappNumber: item.promoted_object?.whatsapp_phone_number,
+      positions: [
+        ...(item.targeting?.facebook_positions ?? []).map((position) => `facebook:${position}`),
+        ...(item.targeting?.instagram_positions ?? []).map((position) => `instagram:${position}`),
+        ...(item.targeting?.messenger_positions ?? []).map((position) => `messenger:${position}`),
+      ],
     })),
     ads: ads.map((item): InventoryAd => {
       const story = item.creative?.object_story_spec

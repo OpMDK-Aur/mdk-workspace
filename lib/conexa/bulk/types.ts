@@ -40,7 +40,7 @@ export type InterpretResponse = {
 
 export type InventoryAccount = { id: string; name: string }
 export type InventoryCampaign = { id: string; accountId: string; name: string; objective: string; status: string; dailyBudget?: number; isCbo: boolean }
-export type InventoryAdset = { id: string; accountId: string; campaignId: string; name: string; status: string; destination: string; dailyBudget?: number; pageId?: string; optimizationGoal?: string; hasPixel: boolean }
+export type InventoryAdset = { id: string; accountId: string; campaignId: string; name: string; status: string; destination: string; dailyBudget?: number; pageId?: string; optimizationGoal?: string; hasPixel: boolean; endTime?: string; positions?: string[]; whatsappNumber?: string }
 export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }
 export type Inventory = { accounts: InventoryAccount[]; campaigns: InventoryCampaign[]; adsets: InventoryAdset[]; ads: InventoryAd[]; currency: Record<string, string> }
 
@@ -87,9 +87,24 @@ export type PlanAnswer = { value?: string; values?: string[]; text?: string }
 export const ANSWER_EXCLUDE = '__exclude'
 export const ANSWER_CREATE = '__create'
 
+export type PlacementCheck = { label: string; ok: boolean; detail: string }
+export type PlacementAdsetOption = { id: string; name: string; status: string; destinationLabel: string; score: number; checks: PlacementCheck[] }
+export type PlacementCampaignOption = { id: string; name: string; status: string; objective: string; score: number; adsets: PlacementAdsetOption[] }
+export type PlacementPayload = {
+  accountName: string
+  modality?: string
+  unit?: string
+  maxScore: number
+  matched: boolean
+  campaigns: PlacementCampaignOption[]
+  groupQuestionId: string
+  groupRows: number[]
+}
+
 export type PlanQuestion = {
   id: string
-  kind: 'choice' | 'multi' | 'text'
+  kind: 'choice' | 'multi' | 'text' | 'placement'
+  placement?: PlacementPayload
   field: string
   prompt: string
   why: string

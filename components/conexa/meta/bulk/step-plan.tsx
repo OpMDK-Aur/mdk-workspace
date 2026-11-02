@@ -7,7 +7,7 @@ import { useBulkStore } from '@/lib/bulk/store'
 import { savePlanOverridesRequest } from '@/lib/conexa/bulk/client'
 import { planToRows, actingAds } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
-import { ACTION_LABELS, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
+import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
 import { PlanQuestions } from './plan-questions'
 
@@ -108,10 +108,18 @@ export function StepPlan() {
     if (alias && accountId) setAliases((current) => [...current.filter((item) => item.alias !== alias), { alias, accountId }])
   }
   const setField = (key: string, patch: NonNullable<PlanOverrides['fields']>[string]) => update({ fields: { ...overrides.fields, [key]: { ...overrides.fields?.[key], ...patch } } })
-  const setAnswer = (id: string, answer: PlanAnswer | undefined) => {
+  const setAnswer = (id: string | string[], answer: PlanAnswer | undefined) => {
+    const ids = Array.isArray(id) ? id : [id]
+    if (answer?.value === ANSWER_EXCLUDE) {
+      const rowsToExclude = plan.questions.filter((question) => ids.includes(question.id)).flatMap((question) => question.rowNumbers)
+      update({ excludedRows: [...new Set([...(overrides.excludedRows ?? []), ...rowsToExclude])] })
+      return
+    }
     const next = { ...overrides.answers }
-    if (answer) next[id] = answer
-    else delete next[id]
+    for (const key of ids) {
+      if (answer) next[key] = answer
+      else delete next[key]
+    }
     update({ answers: next })
   }
 
