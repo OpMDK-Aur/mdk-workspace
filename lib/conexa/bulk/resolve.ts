@@ -350,8 +350,10 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const candidates = [...elsewhere, ...semantic, ...similar].filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index)
     const rest = pool.filter((campaign) => !candidates.some((item) => item.id === campaign.id)).sort(byStatus)
 
+    // La campaña nueva copia la configuración (objetivo, optimización) de la más parecida de la misma cuenta.
+    const reference = candidates.find((item) => item.accountId === accountId) ?? [...pool].sort(byStatus)[0]
     const legacy = overrides.campaignDecision?.[key]
-    const legacyAnswer = legacy && legacy !== 'create' ? { value: legacy.startsWith('use:') ? legacy : `use:${legacy}` } : undefined
+    const legacyAnswer = legacy === 'create' ? { value: ANSWER_CREATE } : legacy && legacy !== 'use_existing' ? { value: legacy.startsWith('use:') ? legacy : `use:${legacy}` } : undefined
     const decision = ask({
       id: `campaign:${key}`, kind: 'choice', field: 'Campaña',
       prompt: `No encontré la campaña "${name}" en Meta (${accountName}). ¿Cuál es?`,
@@ -359,6 +361,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
         ? `Busqué entre las ${pool.length} campañas activas y pausadas de la cuenta; arriba están las más parecidas y abajo todas las demás`
         : `Ninguna de las ${pool.length} campañas activas y pausadas de la cuenta se parece; elegí de la lista completa`,
       options: [
+        { value: ANSWER_CREATE, label: `Crear campaña nueva "${name}"`, hint: reference ? `en pausa · copia la configuración de "${reference.name}"` : 'la cuenta no tiene campañas para copiar' },
         ...candidates.map((item) => ({ value: `use:${item.id}`, label: item.name, hint: `${item.accountId === accountId ? 'parecida' : accountLabel(accounts, item.accountId)} · ${item.status} · ID ${item.id}` })),
         ...rest.map((item) => ({ value: `use:${item.id}`, label: item.name, hint: `otra de la cuenta · ${item.status}` })),
         excludeOption(),
@@ -368,6 +371,14 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const used = decision?.startsWith('use:') ? inventory.campaigns.find((campaign) => campaign.id === decision.slice(4)) : undefined
     const plan: PlanCampaign = used
       ? found(used, 'elegida', `Respondiste: "${used.name}" en ${accountLabel(accounts, used.accountId)}`)
+      : decision === ANSWER_CREATE
+        ? {
+            ...base, mode: 'create', status: 'create', candidates: [], isCbo: reference?.isCbo ?? false, dailyBudget: reference?.dailyBudget,
+            reference: reference ? { id: reference.id, name: reference.name, objective: reference.objective } : undefined,
+            reason: reference ? `Respondiste: crear "${name}" en pausa, copiando la configuración de "${reference.name}"` : `Respondiste: crear "${name}"`,
+            state: reference ? 'ready' : 'blocked',
+            issues: reference ? [] : [{ field: 'Campaña de referencia', message: 'La cuenta no tiene campañas de las que copiar la configuración', where: 'Creá una campaña base en Meta o elegí una existente' }],
+          }
       : {
           ...base, mode: 'existing', status: 'not_found', isCbo: false, state: 'needs_answer',
           candidates: candidates.map(({ id, name: candidate, accountId: owner }) => ({ id, name: candidate, accountId: owner })),
