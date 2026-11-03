@@ -242,7 +242,9 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
   const removeRows = useBulkStore((state) => state.removeRows)
   const setStep = useBulkStore((state) => state.setStep)
   const fromSheet = useBulkStore((state) => state.sheetPlan !== null)
+  const planId = useBulkStore((state) => state.sheetPlan?.context.planId)
   const [writing, setWriting] = useState(false)
+  const [writeErrors, setWriteErrors] = useState<string[]>([])
 
   const summary = useMemo(() => {
     const states = rows.map((row) => validateRow(row).state)
@@ -268,9 +270,39 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
     const targets = rows.filter((row) => row.status !== 'done' && (selected.length ? selected.includes(row.id) : !row.primaryText.trim() || !row.headline.trim()))
     if (!targets.length) return
     setWriting(true)
-    const copies = await generateCopies({ clientId, clientName, rows: targets.map(({ id, baseName, adsetId }) => ({ id, baseName, adsetId })) })
-    for (const [id, copy] of Object.entries(copies)) updateRow(id, { ...copy, aiGenerated: true })
-    setWriting(false)
+    setWriteErrors([])
+    try {
+      if (planId) await writeCopiesFromCreatives(planId, targets)
+      else {
+        const copies = await generateCopies({ clientId, clientName, rows: targets.map(({ id, baseName, adsetId }) => ({ id, baseName, adsetId })) })
+        for (const [id, copy] of Object.entries(copies)) updateRow(id, { ...copy, aiGenerated: true })
+      }
+    } finally {
+      setWriting(false)
+    }
+  }
+
+  // Sheet rows: the copy is written by looking at each row's creative. Rows with the same pieces share one call.
+  async function writeCopiesFromCreatives(currentPlanId: string, targets: BulkRow[]) {
+    const groups = [...targets.filter((row) => row.planAdId).reduce((map, row) => {
+      const key = row.assets.map((asset) => asset.id).sort().join('|') || row.id
+      map.set(key, [...(map.get(key) ?? []), row])
+      return map
+    }, new Map<string, BulkRow[]>()).values()]
+    const errors: string[] = []
+    let next = 0
+    await Promise.all(Array.from({ length: Math.min(3, groups.length) }, async () => {
+      while (next < groups.length) {
+        const group = groups[next++]
+        try {
+          const copy = await regenerateCopyRequest(currentPlanId, { clientId, planAdId: group[0].planAdId! })
+          for (const row of group) updateRow(row.id, { ...copy, aiGenerated: true })
+        } catch (error) {
+          errors.push(`${group[0].baseName || group[0].adName}: ${error instanceof Error ? error.message : 'No se pudo generar.'}`)
+        }
+      }
+    }))
+    setWriteErrors(errors)
   }
 
   if (!rows.length) {
@@ -310,8 +342,15 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
       {writing && (
         <p className="flex items-center gap-2 text-[12px] text-[#5B5FE8]" role="status">
           <span className="animate-pulse" aria-hidden="true">{'✦'}</span>
-          Conexa está escribiendo copies con el tono y los objetivos del cliente…
+          {planId ? 'Conexa está mirando cada creativo para escribir su copy…' : 'Conexa está escribiendo copies con el tono y los objetivos del cliente…'}
         </p>
+      )}
+
+      {!writing && writeErrors.length > 0 && (
+        <div role="alert" className="flex flex-col gap-1 rounded-xl border border-[#c23b3b]/25 bg-[#c23b3b]/[0.05] px-4 py-3 text-[11.5px] leading-relaxed text-[#9a2f2f]">
+          <span className="font-semibold">{`No pude escribir ${writeErrors.length} ${writeErrors.length === 1 ? 'copy' : 'copies'}; esas filas quedaron como estaban:`}</span>
+          {writeErrors.map((message) => <span key={message}>{message}</span>)}
+        </div>
       )}
 
       <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
