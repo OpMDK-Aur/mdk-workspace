@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { SheetGrid } from '@/lib/bulk/types'
 import { resolveDriveLinks } from '@/lib/google/sheet-import'
 import { askJson } from './ai'
+import { copyFromCreative, creativeCopyInput, mapLimited } from './creative-copy'
 import { instructionOverridesSchema } from './interpret'
 import { loadAliases, loadCreativeSources } from './persistence'
 import { campaignMatchKey, copyKey, instructionsKey, resolvePlan } from './resolve'
@@ -24,7 +25,6 @@ async function loadDrive(token: string, grid: SheetGrid, interpretation: SheetIn
 }
 
 const semanticSchema = z.object({ matches: z.array(z.object({ key: z.string(), campaignIds: z.array(z.string()) })) })
-const copySchema = z.object({ items: z.array(z.object({ key: z.string(), primaryText: z.string(), headline: z.string() })) })
 
 async function semanticMatches(context: PlanContext) {
   const plan = resolvePlan(context)
@@ -69,18 +69,24 @@ async function interpretInstructions(context: PlanContext) {
   return Object.fromEntries(result.items.filter((item) => keys.has(item.key)).map(({ key, ...rest }) => [key, Object.fromEntries(Object.entries(rest).filter(([, value]) => value != null && value !== ''))]))
 }
 
-async function generateCopy(context: PlanContext, clientContext: string) {
+// El copy sale del creativo principal de cada pieza; la misma pieza en varios conjuntos comparte copy.
+async function generateCopy(context: PlanContext, googleToken: string) {
   const plan = resolvePlan(context)
-  const targets = plan.ads.filter((ad) => ad.action === 'create' && !ad.primaryText).slice(0, MAX_COPY_ITEMS)
-  if (!targets.length) return {}
-  const campaignName = new Map(plan.campaigns.map((campaign) => [campaign.key, campaign.name]))
-  const items = [...new Map(targets.map((ad) => [copyKey(ad.rowNumber, ad.piece), { key: copyKey(ad.rowNumber, ad.piece), pieza: ad.piece, campaña: campaignName.get(ad.campaignKey) }])).values()]
-  const result = await askJson(copySchema,
-    `Escribís copy para anuncios de Meta en español rioplatense. Texto principal: 1 a 3 oraciones, concreto, sin emojis ni promesas inventadas (no inventes precios ni descuentos). Título: máximo 40 caracteres.
-Contexto del cliente: ${clientContext}`,
-    JSON.stringify(items), 'el copy de los anuncios nuevos')
-  const keys = new Set(items.map((item) => item.key))
-  return Object.fromEntries(result.items.filter((item) => keys.has(item.key)).map(({ key, primaryText, headline }) => [key, { primaryText: primaryText.slice(0, 500), headline: headline.slice(0, 60) }]))
+  const targets = [...new Map(plan.ads
+    .filter((ad) => ad.action !== 'skip' && ad.action !== 'unknown' && !ad.primaryText && ad.files.length)
+    .map((ad) => [copyKey(ad.rowNumber, ad.piece), ad])).entries()].slice(0, MAX_COPY_ITEMS)
+  if (!targets.length) return { copy: {}, failed: 0, reasons: [] }
+  const results = await mapLimited(targets, async ([key, ad]) => {
+    const input = creativeCopyInput(context, plan, ad)
+    return [key, input ? await copyFromCreative(googleToken, context.clientContext ?? '', input) : { error: 'La pieza no tiene archivos' }] as const
+  })
+  const copy: Record<string, { primaryText: string; headline: string }> = {}
+  const reasons: string[] = []
+  for (const [key, value] of results) {
+    if ('error' in value) reasons.push(value.error)
+    else copy[key] = value
+  }
+  return { copy, failed: reasons.length, reasons: [...new Set(reasons)].slice(0, 3) }
 }
 
 export async function buildPlanContext(input: {
@@ -97,6 +103,7 @@ export async function buildPlanContext(input: {
     grid: input.grid, interpretation: input.interpretation, rowFilter: input.rowFilter, inventory: input.inventory, drive, sources,
     aliases: Object.fromEntries(Object.entries(aliases).map(([alias, id]) => [normalizeText(alias), id])),
     semanticMatches: {}, instructionOverrides: {}, generatedCopy: {}, batchDefaults: input.batchDefaults, pageIds: input.pageIds, today: todayDDMMYYYY(), warnings: [...input.inventoryWarnings],
+    clientContext: input.clientContext,
   }
 
   const [semantic, instructions] = await Promise.allSettled([semanticMatches(context), interpretInstructions(context)])
@@ -106,7 +113,9 @@ export async function buildPlanContext(input: {
   else context.warnings.push('No pude interpretar la columna de observaciones: revisá esos anuncios a mano.')
 
   try {
-    context.generatedCopy = await generateCopy(context, input.clientContext)
+    const { copy, failed, reasons } = await generateCopy(context, input.googleToken)
+    context.generatedCopy = copy
+    if (failed) context.warnings.push(`No pude generar el copy de ${failed} pieza${failed > 1 ? 's' : ''} a partir del creativo (${reasons.join(' · ')}): completalo o usá "Regenerar" en Configurar anuncios.`)
   } catch {
     context.warnings.push('No pude generar el copy de los anuncios nuevos: completalo en el paso Configurar anuncios.')
   }

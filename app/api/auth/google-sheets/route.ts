@@ -12,7 +12,8 @@ export async function GET(request: Request) {
   }
 
   const scopes = [
-    'https://www.googleapis.com/auth/spreadsheets',
+    // The app only reads sheets; it never writes to them.
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/userinfo.email',
   ].join(' ')

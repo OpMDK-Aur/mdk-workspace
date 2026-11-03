@@ -31,5 +31,18 @@ export async function executePlanAdRequest(planId: string, body: ExecuteAdReques
   return { itemId: body.item.id, ok: false, error: data.error ?? 'No se pudo crear en Meta.' }
 }
 
-export const writeSheetStatusRequest = (planId: string, body: { clientId: string; updates: Array<{ rowNumber: number; ok: boolean }> }) =>
-  request<{ updated?: number; skipped?: string }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}/sheet-status`, { method: 'POST', body: JSON.stringify(body) })
+export const regenerateCopyRequest = (planId: string, body: { clientId: string; planAdId: string }) =>
+  request<{ primaryText: string; headline: string }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}/copy`, { method: 'POST', body: JSON.stringify(body) })
+
+export type ReviewListItem = {
+  idempotencyKey: string; itemKey: string; rowNumber: number; accountId: string; adId: string
+  reviewStatus: 'pending' | 'ok' | 'excluded'; reviewNote: string | null; createdAt: string
+  name: string; metaStatus?: string; thumbnail?: string; destination: string; url: string | null
+}
+
+export const reviewUrl = (planId: string, clientId: string) => `/api/conexa/bulk/plans/${encodeURIComponent(planId)}/review?clientId=${encodeURIComponent(clientId)}`
+
+export const fetchReview = (url: string) => request<{ items: ReviewListItem[] }>(url, { method: 'GET' })
+
+export const setReviewRequest = (planId: string, body: { clientId: string; idempotencyKey: string; status: ReviewListItem['reviewStatus']; note?: string }) =>
+  request<{ ok: true }>(`/api/conexa/bulk/plans/${encodeURIComponent(planId)}/review`, { method: 'PATCH', body: JSON.stringify(body) })

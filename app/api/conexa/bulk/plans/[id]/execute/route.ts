@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { isAllowedAssetUrl } from '@/lib/meta-ads/bulk-access'
 import { executeAd } from '@/lib/conexa/bulk/execute'
 import { loadPlan, markPlanApproved } from '@/lib/conexa/bulk/persistence'
-import { answersForAd, pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
+import { answersForAd, pendingQuestions, resolvePlan, rowIdentity } from '@/lib/conexa/bulk/resolve'
 import { requireBulkAccess } from '@/lib/conexa/bulk/route-helpers'
 import type { ExecuteAdRequest } from '@/lib/conexa/bulk/types'
 
@@ -25,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (planned.state === 'blocked') return NextResponse.json({ error: 'El anuncio todavía tiene datos faltantes.' }, { status: 400 })
   if (pendingQuestions(resolved).length) return NextResponse.json({ error: 'El plan tiene preguntas sin responder.' }, { status: 400 })
   body.item.answers = answersForAd(resolved, planned)
+  Object.assign(body.item, rowIdentity(plan.context, planned.rowNumber))
   const assets = Array.isArray(body.item.ad.assets) ? body.item.ad.assets : []
   const validSlots = ['feed', 'vertical', 'other']
   if (!assets.length || assets.length > 4 || assets.some((asset) => !isAllowedAssetUrl(asset?.url ?? '') || !['image', 'video'].includes(asset?.kind) || !Array.isArray(asset.slots) || asset.slots.some((slot) => !validSlots.includes(slot)))) {
@@ -33,6 +34,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!body.item.ad.name?.trim() || !body.item.ad.primaryText?.trim() || !body.item.ad.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
 
   await markPlanApproved(id, access.userId)
-  const result = await executeAd({ ...body, planId: id }, { accountIds: access.accountIds, pageIds: access.pageIds })
+  // Accounts found at plan time because they hold the sheet's campaigns are allowed for this approved plan only.
+  const accountIds = new Set([...access.accountIds, ...plan.context.inventory.accounts.filter((account) => account.unlinked).map((account) => account.id)])
+  const result = await executeAd({ ...body, planId: id }, { accountIds, pageIds: access.pageIds })
   return NextResponse.json(result, { status: result.ok ? 200 : 400 })
 }

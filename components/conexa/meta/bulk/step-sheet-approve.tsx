@@ -5,7 +5,9 @@ import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBulkStore } from '@/lib/bulk/store'
 import { uploadBulkAsset } from '@/lib/bulk/api'
-import { executePlanAdRequest, writeSheetStatusRequest } from '@/lib/conexa/bulk/client'
+import { mutate } from 'swr'
+import { executePlanAdRequest, reviewUrl } from '@/lib/conexa/bulk/client'
+import { SheetReviewList } from './sheet-review-list'
 import { buildExecuteRequest, driveFileUrl, publishedFiles } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
 import { Button } from '@/components/ui/button'
@@ -30,7 +32,6 @@ export function StepSheetApprove() {
   const [confirmed, setConfirmed] = useState(false)
   const [running, setRunning] = useState(false)
   const [results, setResults] = useState<Record<string, ItemResult>>({})
-  const [sheetNote, setSheetNote] = useState<string | null>(null)
 
   const plan = useMemo(() => (sheetPlan ? resolvePlan(sheetPlan.context, sheetPlan.overrides) : null), [sheetPlan])
   if (!sheetPlan || !plan || !clientId) return null
@@ -44,14 +45,11 @@ export function StepSheetApprove() {
   const failedCount = Object.values(results).filter((result) => !result.ok).length
   const missingCopy = items.filter(({ row }) => !row.primaryText.trim() || !row.headline.trim())
   const unanswered = pendingQuestions(plan)
-  // La columna de estado es el proceso de la tarea: solo las filas creadas bien pasan a "EN REVISIÓN".
-  const statusHeader = context.interpretation.columns.find((column) => column.role === 'status' && context.grid.headers.includes(column.header))?.header ?? null
 
+  // La app solo lee el sheet: el resultado queda en el listado de revisión, no en la columna de estado.
   async function run() {
     if (!plan || !clientId) return
     setRunning(true)
-    setSheetNote(null)
-    const statusUpdates = new Map<number, boolean>()
     for (const { row, ad } of pending) {
       updateRow(row.id, { status: 'creating', error: undefined })
       try {
@@ -66,28 +64,14 @@ export function StepSheetApprove() {
         const reused = result.reused.ad ? ' (ya existía, no se duplicó)' : ''
         setResults((current) => ({ ...current, [row.id]: { ok: true, message: `Creado en pausa${reused}` } }))
         updateRow(row.id, { status: 'done', metaAdId: result.adId })
-        if (statusUpdates.get(ad.rowNumber) !== false) statusUpdates.set(ad.rowNumber, true)
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'No se pudo crear en Meta.'
         setResults((current) => ({ ...current, [row.id]: { ok: false, message } }))
         updateRow(row.id, { status: 'error', error: message })
-        statusUpdates.set(ad.rowNumber, false)
-      }
-    }
-    const okRows = [...statusUpdates].filter(([, ok]) => ok).map(([rowNumber]) => rowNumber)
-    if (!statusHeader) {
-      setSheetNote('El sheet no tiene una columna de estado: no se escribió nada en el sheet.')
-    } else if (okRows.length) {
-      try {
-        const response = await writeSheetStatusRequest(context.planId, { clientId, updates: okRows.map((rowNumber) => ({ rowNumber, ok: true })) })
-        const failedRows = [...statusUpdates].filter(([, ok]) => !ok).length
-        const failedNote = failedRows ? ` ${failedRows} filas con error quedaron sin cambios en el sheet.` : ''
-        setSheetNote(response.updated ? `${response.updated} filas marcadas "EN REVISIÓN" en ${statusHeader}.${failedNote}` : response.skipped ?? null)
-      } catch (cause) {
-        setSheetNote(cause instanceof Error ? `No se pudo escribir el estado en el sheet: ${cause.message}` : 'No se pudo escribir el estado en el sheet.')
       }
     }
     setRunning(false)
+    await mutate(reviewUrl(context.planId, clientId))
   }
 
   const finished = items.length > 0 && doneCount === items.length
@@ -120,11 +104,11 @@ export function StepSheetApprove() {
 
       {!finished && (
         <p className="text-pretty text-[11.5px] leading-relaxed text-[#777]">
-          {statusHeader ? `Las filas creadas bien pasan a "EN REVISIÓN" en la columna ${statusHeader}. Las que fallen quedan como estaban en el sheet.` : 'El sheet no tiene una columna de estado: no voy a escribir nada en el sheet.'}
+          No se escribe nada en el sheet. Al terminar, revisá cada anuncio en el Administrador de anuncios desde el listado de revisión.
         </p>
       )}
 
-      {sheetNote && <p className="text-[11.5px] text-[#777]" role="status">{sheetNote}</p>}
+      {doneCount > 0 && <SheetReviewList planId={context.planId} clientId={clientId} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
         <Button size="sm" variant="outline" disabled={running} onClick={() => setStep(2)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Volver a configurar'}</Button>

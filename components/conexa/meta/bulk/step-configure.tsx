@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { generateCopies } from '@/lib/bulk/api'
+import { regenerateCopyRequest } from '@/lib/conexa/bulk/client'
 import { adName, derivePlacement } from '@/lib/bulk/group-assets'
 import { useBulkStore } from '@/lib/bulk/store'
 import { CTAS, PRIMARY_TEXT_LIMIT, adsetDestinationInfo, adsetStatusLabel, objectiveLabel, groupAdsetsByCampaign, isAdsetActive, type BulkAdset, type BulkRow, type CTA } from '@/lib/bulk/types'
@@ -116,8 +117,25 @@ function CampaignAdsetPicker({ row, adsets, currentAdset, applyLabel, onChange, 
   )
 }
 
-function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientName: string; selected: boolean; applyLabel: string; onApply: (field: ApplyField, value: string) => void }) {
+function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientId: string; clientName: string; selected: boolean; applyLabel: string; onApply: (field: ApplyField, value: string) => void }) {
   const updateRow = useBulkStore((state) => state.updateRow)
+  const planId = useBulkStore((state) => state.sheetPlan?.context.planId)
+  const [regenerating, setRegenerating] = useState(false)
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+
+  async function regenerate() {
+    if (!planId || !row.planAdId) return
+    setRegenerating(true)
+    setRegenerateError(null)
+    try {
+      const copy = await regenerateCopyRequest(planId, { clientId, planAdId: row.planAdId })
+      updateRow(row.id, { ...copy, aiGenerated: true })
+    } catch (error) {
+      setRegenerateError(error instanceof Error ? error.message : 'No se pudo regenerar.')
+    } finally {
+      setRegenerating(false)
+    }
+  }
   const toggleSelected = useBulkStore((state) => state.toggleSelected)
   const { state, issues } = validateRow(row)
   const currentAdset = adsets.find((adset) => adset.id === row.adsetId)
@@ -176,9 +194,17 @@ function Row({ row, index, adsets, clientName, selected, applyLabel, onApply }: 
           className={cn('min-h-0 w-[280px] resize-none leading-relaxed', fieldClass)}
         />
         <div className="mt-1 flex items-center justify-between">
-          {row.aiGenerated ? <span className="text-[10px] font-semibold text-[#5B5FE8]">{'✦ Copy de Conexa'}</span> : <span />}
+          {row.aiGenerated ? <span className="text-[10px] font-semibold text-[#5B5FE8]">{'✦ Generado por IA'}</span> : <span />}
           <span className={cn('font-mono text-[10px]', overLimit ? 'font-semibold text-[#a86412]' : 'text-[#999]')}>{`${row.primaryText.length}/${PRIMARY_TEXT_LIMIT}`}</span>
         </div>
+        {planId && row.planAdId && row.status !== 'done' && (
+          <div className="mt-1 flex flex-col gap-0.5">
+            <button type="button" disabled={regenerating} onClick={regenerate} className="self-start text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#aaa] disabled:no-underline">
+              {regenerating ? 'Mirando el creativo…' : 'Regenerar'}
+            </button>
+            {regenerateError && <span role="alert" className="text-[10px] text-[#c23b3b]">{regenerateError}</span>}
+          </div>
+        )}
         <div className="mt-1">
           <CopyActions value={row.primaryText} applyLabel={applyLabel} onApply={() => onApply('primaryText', row.primaryText)} />
         </div>
@@ -293,7 +319,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => <Row key={row.id} row={row} index={index} adsets={adsets} clientName={clientName} selected={selected.includes(row.id)} applyLabel={applyLabel} onApply={applyCopy} />)}
+              {rows.map((row, index) => <Row key={row.id} row={row} index={index} adsets={adsets} clientId={clientId} clientName={clientName} selected={selected.includes(row.id)} applyLabel={applyLabel} onApply={applyCopy} />)}
             </tbody>
           </table>
         </div>

@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { Check, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ANSWER_EXCLUDE, type PlanAnswer, type PlanQuestion } from '@/lib/conexa/bulk/types'
+import { ANSWER_CREATE, ANSWER_EXCLUDE, type PlanAnswer, type PlanQuestion } from '@/lib/conexa/bulk/types'
+
+const SPECIAL_VALUES = new Set([ANSWER_CREATE, ANSWER_EXCLUDE])
 
 const inputClass = 'min-w-0 flex-1 rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[12px] text-[#141414] outline-none focus:border-[#5B5FE8]'
 const chipClass = 'rounded-full border px-2.5 py-1 text-left text-[11.5px] transition-colors'
@@ -141,12 +143,27 @@ function QuestionBody({ question, onAnswer }: { question: PlanQuestion; onAnswer
   }
 
   const query = filter.trim().toLowerCase()
-  const options = query ? question.options.filter((option) => `${option.label} ${option.hint ?? ''}`.toLowerCase().includes(query)) : question.options
   const multi = question.kind === 'multi'
+  const matching = query ? question.options.filter((option) => `${option.label} ${option.hint ?? ''}`.toLowerCase().includes(query)) : question.options
+  // En las de varias opciones, crear y excluir son acciones aparte: no se tildan junto con los conjuntos.
+  const options = multi ? matching.filter((option) => !SPECIAL_VALUES.has(option.value)) : matching
+  const specialOptions = multi ? question.options.filter((option) => SPECIAL_VALUES.has(option.value)) : []
+  const allPicked = options.length > 0 && options.every((option) => picked.includes(option.value))
 
   return (
     <div className="flex flex-col gap-2">
       {question.searchable && <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Buscar…" aria-label={`Buscar opciones para ${question.field}`} className={inputClass} />}
+      {multi && options.length > 1 && (
+        <label className="flex items-center gap-2 self-start text-[11.5px] font-medium text-[#141414]">
+          <input
+            type="checkbox"
+            checked={allPicked}
+            onChange={() => setPicked((current) => (allPicked ? current.filter((value) => !options.some((option) => option.value === value)) : [...new Set([...current, ...options.map((option) => option.value)])]))}
+            className="size-3.5 accent-[#5B5FE8]"
+          />
+          {`Seleccionar todos (${options.length})`}
+        </label>
+      )}
       <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto" role={multi ? 'group' : 'radiogroup'} aria-label={question.prompt}>
         {options.map((option) => {
           const selected = multi ? picked.includes(option.value) : question.answer?.value === option.value
@@ -159,8 +176,13 @@ function QuestionBody({ question, onAnswer }: { question: PlanQuestion; onAnswer
               aria-checked={multi ? undefined : selected}
               aria-pressed={multi ? selected : undefined}
               onClick={() => (multi ? setPicked((current) => (current.includes(option.value) ? current.filter((value) => value !== option.value) : [...current, option.value])) : onAnswer({ value: option.value }))}
-              className={cn(chipClass, selected ? 'border-[#5B5FE8] bg-[#5B5FE8]/10 text-[#4347c9]' : suggested ? 'border-[#5B5FE8]/50 text-[#141414]' : 'border-[#e5e5e0] text-[#333] hover:border-[#141414]')}
+              className={cn(chipClass, multi && 'inline-flex items-center gap-1.5', selected ? 'border-[#5B5FE8] bg-[#5B5FE8]/10 text-[#4347c9]' : suggested ? 'border-[#5B5FE8]/50 text-[#141414]' : 'border-[#e5e5e0] text-[#333] hover:border-[#141414]')}
             >
+              {multi && (
+                <span aria-hidden="true" className={cn('flex size-3.5 shrink-0 items-center justify-center rounded-sm border', selected ? 'border-[#5B5FE8] bg-[#5B5FE8] text-white' : 'border-[#bbb] bg-white')}>
+                  {selected && <Check className="size-2.5" />}
+                </span>
+              )}
               <span className="font-medium">{option.label}</span>
               {option.hint && <span className="text-[#888]">{` · ${option.hint}`}</span>}
               {suggested && !selected && <span className="text-[#5B5FE8]">{' · sugerido'}</span>}
@@ -170,9 +192,16 @@ function QuestionBody({ question, onAnswer }: { question: PlanQuestion; onAnswer
         {!options.length && <span className="text-[11px] text-[#999]">Ninguna opción coincide.</span>}
       </div>
       {multi && (
-        <button type="button" disabled={!picked.length} onClick={() => onAnswer({ values: picked })} className="self-start rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
-          {picked.length ? `Usar ${picked.length} seleccionado${picked.length > 1 ? 's' : ''}` : 'Elegí al menos uno'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={!picked.length} onClick={() => onAnswer({ values: picked })} className="rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
+            {picked.length ? `Usar ${picked.length} seleccionado${picked.length > 1 ? 's' : ''}${question.field === 'Conjunto' && picked.length > 1 ? ` · ${picked.length} anuncios por pieza` : ''}` : 'Elegí al menos uno'}
+          </button>
+          {specialOptions.map((option) => (
+            <button key={option.value} type="button" onClick={() => onAnswer({ value: option.value })} className="text-[11px] text-[#555] underline-offset-2 hover:text-[#141414] hover:underline">
+              {option.hint ? `${option.label} (${option.hint})` : option.label}
+            </button>
+          ))}
+        </div>
       )}
       {question.allowFree && <FreeAnswer placeholder={question.freePlaceholder} initial={question.answer?.text} onSubmit={(text) => onAnswer({ text })} />}
     </div>

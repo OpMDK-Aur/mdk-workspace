@@ -6,7 +6,10 @@ import type { CreativeSource, ExecuteAdResult, PlanContext, PlanOverrides, Sheet
 // Hasta activar CONEXA_BULK_PLANS_DB=true no se consulta la base: todo vive en memoria del proceso.
 export const persistenceEnabled = () => process.env.CONEXA_BULK_PLANS_DB === 'true'
 
-type StoredItem = ExecuteAdResult & { idempotencyKey: string; planId: string }
+type StoredItem = ExecuteAdResult & {
+  idempotencyKey: string; planId: string; rowNumber?: number; rowKey?: string; contentHash?: string; createdAt?: string
+  reviewStatus?: 'pending' | 'ok' | 'excluded'; reviewNote?: string | null
+}
 type Memory = {
   interpretations: Map<string, { id: string; headers: string[]; interpretation: SheetInterpretation }>
   aliases: Map<string, Record<string, string>>
@@ -124,7 +127,8 @@ export async function findExecutedItem(idempotencyKey: string): Promise<ExecuteA
 
 export async function saveItemResult(planId: string, itemKey: string, rowNumber: number, idempotencyKey: string, payload: unknown, result: ExecuteAdResult) {
   if (!persistenceEnabled()) {
-    memory.items.set(idempotencyKey, { ...result, idempotencyKey, planId })
+    const meta = payload as { rowKey?: string; contentHash?: string } | null
+    memory.items.set(idempotencyKey, { ...result, idempotencyKey, planId, rowNumber, rowKey: meta?.rowKey, contentHash: meta?.contentHash, createdAt: new Date().toISOString() })
     return
   }
   const record = {
@@ -137,6 +141,66 @@ export async function saveItemResult(planId: string, itemKey: string, rowNumber:
   // Si la columna answers todavía no existe, se guarda igual: las respuestas también viajan dentro de payload.
   if (error) await db().from('bulk_plan_items').upsert(record, { onConflict: 'idempotency_key' })
   }
+
+export type ReviewStatus = 'pending' | 'ok' | 'excluded'
+export type ReviewItem = {
+  idempotencyKey: string; itemKey: string; rowNumber: number; accountId: string; adId: string
+  reviewStatus: ReviewStatus; reviewNote: string | null; createdAt: string
+}
+
+export async function listReviewItems(planId: string): Promise<ReviewItem[]> {
+  if (!persistenceEnabled()) {
+    return [...memory.items.values()].filter((item) => item.planId === planId && item.ok).map((item) => ({
+      idempotencyKey: item.idempotencyKey, itemKey: item.itemId, rowNumber: item.rowNumber ?? 0, accountId: item.ok ? item.accountId : '', adId: item.ok ? item.adId : '',
+      reviewStatus: item.reviewStatus ?? 'pending', reviewNote: item.reviewNote ?? null, createdAt: item.createdAt ?? new Date().toISOString(),
+    }))
+  }
+  const { data, error } = await db().from('bulk_plan_items')
+    .select('idempotency_key, item_key, row_number, meta_ad_id, result, review_status, review_note, updated_at')
+    .eq('plan_id', planId).eq('state', 'done').order('row_number').limit(1000)
+  if (error) throw new Error(`No se pudo leer la revisión: ${error.message}`)
+  return (data ?? []).filter((row) => row.meta_ad_id).map((row) => ({
+    idempotencyKey: row.idempotency_key, itemKey: row.item_key, rowNumber: row.row_number, adId: row.meta_ad_id,
+    accountId: (row.result as { accountId?: string } | null)?.accountId ?? '',
+    reviewStatus: (row.review_status ?? 'pending') as ReviewStatus, reviewNote: row.review_note, createdAt: row.updated_at,
+  }))
+}
+
+export async function setReviewStatus(planId: string, idempotencyKey: string, status: ReviewStatus, note: string | null, userId: string) {
+  if (!persistenceEnabled()) {
+    const cached = memory.items.get(idempotencyKey)
+    if (cached && cached.planId === planId) Object.assign(cached, { reviewStatus: status, reviewNote: note })
+    return
+  }
+  const { error } = await db().from('bulk_plan_items')
+    .update({ review_status: status, review_note: note, reviewed_at: status === 'pending' ? null : new Date().toISOString(), reviewed_by: status === 'pending' ? null : userId })
+    .eq('plan_id', planId).eq('idempotency_key', idempotencyKey)
+  if (error) throw new Error(`No se pudo guardar la revisión: ${error.message}`)
+}
+
+// Filas creadas en lotes anteriores del mismo sheet, por clave de fila (sheet + número de fila) con su hash de contenido.
+export type PreviousRow = { planId: string; rowKey: string; contentHash: string; createdAt: string }
+export async function findPreviousRows(spreadsheetId: string, rowKeys: string[]): Promise<PreviousRow[]> {
+  if (!rowKeys.length) return []
+  if (!persistenceEnabled()) {
+    return [...memory.items.values()].filter((item) => item.ok && item.rowKey && rowKeys.includes(item.rowKey)).map((item) => ({
+      planId: item.planId, rowKey: item.rowKey!, contentHash: item.contentHash ?? '', createdAt: item.createdAt ?? new Date().toISOString(),
+    }))
+  }
+  const results: PreviousRow[] = []
+  for (let index = 0; index < rowKeys.length; index += 200) {
+    const { data } = await db().from('bulk_plan_items')
+      .select('plan_id, payload, updated_at')
+      .eq('state', 'done')
+      .in('payload->>rowKey', rowKeys.slice(index, index + 200))
+      .limit(2000)
+    for (const row of data ?? []) {
+      const payload = row.payload as { rowKey?: string; contentHash?: string } | null
+      if (payload?.rowKey) results.push({ planId: row.plan_id, rowKey: payload.rowKey, contentHash: payload.contentHash ?? '', createdAt: row.updated_at })
+    }
+  }
+  return results.filter((row) => row.planId && row.rowKey.startsWith(`${spreadsheetId}:`))
+}
 
 export async function listItemResults(planId: string): Promise<ExecuteAdResult[]> {
   if (!persistenceEnabled()) return [...memory.items.values()].filter((item) => item.planId === planId)
