@@ -221,6 +221,15 @@ const GENERIC_ACCOUNT_TOKENS = new Set(['provisoria', 'cuenta', 'cuentas', 'publ
 const accountTokens = (value: string) => normalizeText(value).split(/[^a-z0-9]+/).filter((token) => token.length >= 4 && !/^\d+$/.test(token) && !GENERIC_ACCOUNT_TOKENS.has(token))
 
 /**
+ * Names of every ad account the token reaches, in one user-level list. It doesn't count against each account's
+ * limit, so names still show while an account is throttled.
+ */
+export const listAdAccountNames = unstable_cache(async (): Promise<Record<string, string>> => {
+  const all = await listAll<{ id: string; name?: string }>('me/adaccounts', { fields: 'id,name' }, { pageSize: 200 })
+  return Object.fromEntries(all.filter((account) => account.name).map((account) => [account.id.replace(/^act_/, ''), account.name!]))
+}, ['conexa-ad-account-names-v1'], { revalidate: 600 })
+
+/**
  * Clients often run campaigns from an ad account that was never linked in the app (e.g. a "Provisoria" one).
  * Looks for token-accessible accounts whose name shares a distinctive word with the client or its linked
  * accounts, and keeps only those that actually hold one of the wanted campaign names.
@@ -359,10 +368,9 @@ export async function loadInventory(accountIds: string[], { campaignsOnly = fals
   const results = await Promise.allSettled(accountIds.map(campaignsOnly ? loadAccountCampaigns : loadAccountInventory))
   const inventory: Inventory = { accounts: [], campaigns: [], adsets: [], ads: [], currency: {} }
   const warnings: string[] = []
-  // A throttled account would reject the name lookup too and only extend the block.
-  const failedNames = await Promise.all(results.map((result, index) => result.status === 'rejected' && !(result.reason instanceof MetaRateLimitError)
-    ? metaGet<{ name?: string }>(act(accountIds[index]), { fields: 'name' }).then((account) => account.name).catch(() => undefined)
-    : undefined))
+  // The account-level lookup would be throttled with the account itself; the token-wide list is not.
+  const names = results.some((result) => result.status === 'rejected') ? await listAdAccountNames().catch(() => ({} as Record<string, string>)) : {}
+  const failedNames = accountIds.map((id) => names[id.replace(/^act_/, '')])
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
       const name = failedNames[index] ?? accountIds[index]
