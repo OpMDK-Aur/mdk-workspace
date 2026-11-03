@@ -105,7 +105,8 @@ const MIN_PAGE_SIZE = 10
  * Heavy edges ask for small pages; if Meta still says the page is too heavy, the page size is halved and the
  * same cursor is asked again. Between pages it slows down when the usage headers get close to the limit.
  */
-async function listAll<T>(path: string, params: Record<string, string>, options: { pageSize?: number; maxItems?: number } = {}) {
+async function listAll<T>(path: string, params: Record<string, string>, options: { pageSize?: number; maxItems?: number; timeBudgetMs?: number } = {}) {
+  const deadline = options.timeBudgetMs ? Date.now() + options.timeBudgetMs : Infinity
   const token = await getMetaAccessToken()
   if (!token) throw new MetaReadError('META_ADS_ACCESS_TOKEN no está configurado.')
   const maxItems = options.maxItems ?? 5000
@@ -130,6 +131,7 @@ async function listAll<T>(path: string, params: Record<string, string>, options:
     after = result.payload.paging?.cursors?.after
     url = result.payload.paging?.next
     if (!url) break
+    if (Date.now() > deadline) break
     const pct = usagePct(result.headers)
     if (pct >= 90) await sleep(5_000)
     else if (pct >= 75) await sleep(1_500)
@@ -187,7 +189,7 @@ async function loadAccountInventoryFresh(accountId: string): Promise<Inventory> 
   // Ads carry the full creative, which makes each item expensive; that edge uses small pages.
   const campaigns = await listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }, { pageSize: 200 })
   const adsets = await listAll<RawAdset>(`${act(accountId)}/adsets`, { fields: 'id,name,campaign_id,effective_status,destination_type,daily_budget,optimization_goal,promoted_object,end_time,targeting{facebook_positions,instagram_positions,messenger_positions}', filtering: ACTIVE_FILTER }, { pageSize: 200 })
-  const ads = await listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,created_time,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec,asset_feed_spec{call_to_actions,bodies,titles}}', filtering: ACTIVE_FILTER }, { pageSize: 50, maxItems: 1000 })
+  const ads = await listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,created_time,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec,asset_feed_spec{call_to_actions,bodies,titles}}', filtering: ACTIVE_FILTER }, { pageSize: 50, maxItems: 1000, timeBudgetMs: 90_000 })
   return {
     accounts: [{ id: accountId, name: account.name ?? accountId }],
     currency: { [accountId]: currency },
@@ -334,8 +336,27 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   if (blocked) inventory.formAccessIssue = blocked
 }
 
-export async function loadInventory(accountIds: string[]) {
-  const results = await Promise.allSettled(accountIds.map(loadAccountInventory))
+// Reading a sheet only needs each account's name and campaigns; the ads (with their creatives) are the slow part
+// and are only read when the plan is built.
+async function loadAccountCampaignsFresh(accountId: string): Promise<Inventory> {
+  const account = await metaGet<{ name?: string; currency?: string }>(act(accountId), { fields: 'name,currency' })
+  const currency = account.currency ?? 'USD'
+  const campaigns = await listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }, { pageSize: 200 })
+  return {
+    accounts: [{ id: accountId, name: account.name ?? accountId }],
+    currency: { [accountId]: currency },
+    campaigns: campaigns.map((item): InventoryCampaign => ({ id: item.id, accountId, name: item.name ?? '', objective: item.objective ?? '', status: item.effective_status ?? '', dailyBudget: minorToMajor(item.daily_budget, currency), isCbo: Boolean(item.daily_budget) })),
+    adsets: [], ads: [],
+  }
+}
+
+function loadAccountCampaigns(accountId: string): Promise<Inventory> {
+  const id = accountId.replace(/^act_/, '')
+  return unstable_cache(() => loadAccountCampaignsFresh(id), ['conexa-campaigns-v1', id], { revalidate: INVENTORY_TTL_SECONDS, tags: [inventoryTag(id)] })()
+}
+
+export async function loadInventory(accountIds: string[], { campaignsOnly = false }: { campaignsOnly?: boolean } = {}) {
+  const results = await Promise.allSettled(accountIds.map(campaignsOnly ? loadAccountCampaigns : loadAccountInventory))
   const inventory: Inventory = { accounts: [], campaigns: [], adsets: [], ads: [], currency: {} }
   const warnings: string[] = []
   // A throttled account would reject the name lookup too and only extend the block.

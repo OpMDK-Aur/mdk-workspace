@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   if ('error' in google) return google.error
 
   try {
-    const [grid, { inventory }] = await Promise.all([readSheetGrid(google.accessToken, url), loadInventory([...access.accountIds])])
+    const [grid, { inventory }] = await Promise.all([readSheetGrid(google.accessToken, url), loadInventory([...access.accountIds], { campaignsOnly: true })])
     const result = await interpretSheet({ clientId: access.clientId, grid, clientContext: clampText(body?.clientContext, 2000), inventory, userId: access.userId })
     return NextResponse.json({ ...result, grid, spreadsheetId: parsed.id, persisted: persistenceEnabled() } satisfies InterpretResponse)
   } catch (error) {
