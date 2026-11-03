@@ -33,6 +33,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!body.item.ad.name?.trim() || !body.item.ad.primaryText?.trim() || !body.item.ad.headline?.trim()) return NextResponse.json({ error: 'Faltan nombre, texto principal o título.' }, { status: 400 })
 
   await markPlanApproved(id, access.userId)
-  const result = await executeAd({ ...body, planId: id }, { accountIds: access.accountIds, pageIds: access.pageIds })
+  // Accounts found at plan time because they hold the sheet's campaigns are allowed for this approved plan only.
+  const accountIds = new Set([...access.accountIds, ...plan.context.inventory.accounts.filter((account) => account.unlinked).map((account) => account.id)])
+  const result = await executeAd({ ...body, planId: id }, { accountIds, pageIds: access.pageIds })
   return NextResponse.json(result, { status: result.ok ? 200 : 400 })
 }

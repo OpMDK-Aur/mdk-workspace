@@ -1,6 +1,7 @@
 import 'server-only'
 import { getMetaAccessToken } from '@/lib/meta-ads/token'
-import type { Inventory, InventoryAd, InventoryAdset, InventoryCampaign } from './types'
+import { campaignNameKey, normalizeText } from './text'
+import type { Inventory, InventoryAccount, InventoryAd, InventoryAdset, InventoryCampaign } from './types'
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const META_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
@@ -86,6 +87,32 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
       }
     }),
   }
+}
+
+const GENERIC_ACCOUNT_TOKENS = new Set(['provisoria', 'cuenta', 'cuentas', 'publicitaria', 'automotores', 'automotriz', 'grupo', 'meta', 'ads', 'business', 'manager'])
+const accountTokens = (value: string) => normalizeText(value).split(/[^a-z0-9]+/).filter((token) => token.length >= 4 && !/^\d+$/.test(token) && !GENERIC_ACCOUNT_TOKENS.has(token))
+
+/**
+ * Clients often run campaigns from an ad account that was never linked in the app (e.g. a "Provisoria" one).
+ * Looks for token-accessible accounts whose name shares a distinctive word with the client or its linked
+ * accounts, and keeps only those that actually hold one of the wanted campaign names.
+ */
+export async function discoverSiblingAccounts(linked: InventoryAccount[], clientName: string, wantedNames: string[]) {
+  const wanted = new Set(wantedNames.map(campaignNameKey).filter(Boolean))
+  const tokens = new Set([clientName, ...linked.map((account) => account.name)].flatMap(accountTokens))
+  if (!wanted.size || !tokens.size) return []
+  const linkedIds = new Set(linked.map((account) => account.id.replace(/^act_/, '')))
+  const all = await listAll<{ id: string; name?: string }>('me/adaccounts', { fields: 'id,name' })
+  const candidates = all
+    .map((account) => ({ id: account.id.replace(/^act_/, ''), name: account.name ?? '' }))
+    .filter((account) => !linkedIds.has(account.id) && accountTokens(account.name).some((token) => tokens.has(token)))
+    .slice(0, 6)
+  const hits = await Promise.all(candidates.map(async (account) => {
+    const campaigns = await listAll<{ name?: string }>(`${act(account.id)}/campaigns`, { fields: 'name', filtering: ACTIVE_FILTER }).catch(() => [])
+    const found = campaigns.filter((campaign) => wanted.has(campaignNameKey(campaign.name ?? ''))).map((campaign) => campaign.name ?? '')
+    return found.length ? { ...account, found } : null
+  }))
+  return hits.filter((hit): hit is NonNullable<typeof hit> => Boolean(hit))
 }
 
 export async function loadInventory(accountIds: string[]) {

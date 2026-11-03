@@ -41,7 +41,8 @@ export type InterpretResponse = {
   persisted: boolean
 }
 
-export type InventoryAccount = { id: string; name: string }
+// unlinked: the account isn't linked to the client in the app, but it holds campaigns from the sheet.
+export type InventoryAccount = { id: string; name: string; unlinked?: boolean }
 export type InventoryCampaign = { id: string; accountId: string; name: string; objective: string; status: string; dailyBudget?: number; isCbo: boolean }
 export type InventoryAdset = { id: string; accountId: string; campaignId: string; name: string; status: string; destination: string; dailyBudget?: number; pageId?: string; optimizationGoal?: string; hasPixel: boolean; endTime?: string; positions?: string[]; whatsappNumber?: string }
 export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; status?: string; leadFormId?: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }

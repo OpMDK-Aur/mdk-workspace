@@ -44,7 +44,7 @@ export async function resolveBulkClient(clientId: string) {
 
   const savedPageIds = parsePageIds(data.meta_page_id)
   const pageIds = savedPageIds.length ? savedPageIds : [await autoResolvePage(clientId, data.nombre_del_negocio ?? '', [...accountIds])].filter((id): id is string => Boolean(id))
-  return { pageId: pageIds[0] ?? null, pageIds, accountIds }
+  return { pageId: pageIds[0] ?? null, pageIds, accountIds, clientName: data.nombre_del_negocio ?? '' }
 }
 
 /**
