@@ -682,12 +682,13 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const byUse = [...usage.entries()].sort((a, b) => b[1] - a[1])
     const scope = active.length ? 'activos' : 'pausados'
     const info = (id: string) => inventory.leadForms?.[id]
-    const formLabel = (id: string) => (info(id)?.name ? `${info(id)!.name} · ID ${id}` : `Formulario ID ${id}`)
-    const statusLabel = (id: string) => (info(id)?.status ? ` · ${info(id)!.status}` : info(id) && !info(id)!.name ? ' · sin acceso a la página para ver nombre y estado' : '')
+    // Siempre nombre + ID; si Meta no deja leer el nombre, se dice por qué en vez de dejarlo vacío.
+    const formLabel = (id: string) => `${info(id)?.name ?? 'Nombre no disponible'} · ID ${id}`
+    const statusLabel = (id: string) => (info(id)?.status ? ` · ${info(id)!.status}` : info(id)?.nameError ? ` · ${info(id)!.nameError}` : '')
 
     if (byUse.length === 1) {
       const [id, count] = byUse[0]
-      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto` }
+      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}` }
       leadForms.set(adset.key, result)
       return result
     }
@@ -696,7 +697,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const pageError = adset.pageId ? inventory.pageAccessErrors?.[adset.pageId] : undefined
     const options = byUse.length
       ? byUse.map(([id, count]) => ({ value: id, label: formLabel(id), hint: `usado por ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}` }))
-      : pageForms.map((form) => ({ value: form.id, label: form.name ? `${form.name} · ID ${form.id}` : `Formulario ID ${form.id}`, hint: 'activo en la página del conjunto' }))
+      : pageForms.map((form) => ({ value: form.id, label: formLabel(form.id), hint: 'activo en la página del conjunto' }))
     const answer = ask({
       id: `lead-form:${adset.key}`, kind: options.length ? 'choice' : 'text', field: 'Formulario',
       prompt: `¿Qué formulario instantáneo uso en los anuncios nuevos de "${adset.name}"?`,

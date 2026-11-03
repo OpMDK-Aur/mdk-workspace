@@ -46,7 +46,7 @@ export type InventoryAccount = { id: string; name: string; unlinked?: boolean }
 export type InventoryCampaign = { id: string; accountId: string; name: string; objective: string; status: string; dailyBudget?: number; isCbo: boolean }
 export type InventoryAdset = { id: string; accountId: string; campaignId: string; name: string; status: string; destination: string; dailyBudget?: number; pageId?: string; optimizationGoal?: string; hasPixel: boolean; endTime?: string; positions?: string[]; whatsappNumber?: string }
 export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; status?: string; createdTime?: string; leadFormId?: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }
-export type LeadFormInfo = { id: string; name?: string; status?: string; pageId?: string; pageName?: string }
+export type LeadFormInfo = { id: string; name?: string; status?: string; pageId?: string; pageName?: string; nameError?: string }
 export type Inventory = {
   accounts: InventoryAccount[]; campaigns: InventoryCampaign[]; adsets: InventoryAdset[]; ads: InventoryAd[]; currency: Record<string, string>
   // Details of the forms used by the ads, and the active forms of each form-adset page (fallback when an adset has none).

@@ -129,9 +129,12 @@ export async function discoverSiblingAccounts(linked: InventoryAccount[], client
   return hits.filter((hit): hit is NonNullable<typeof hit> => Boolean(hit))
 }
 
+const NO_PAGE_ACCESS = 'el token de Meta no tiene acceso a la página que tiene el formulario: asigná la página al usuario del sistema en el Business Manager con permiso de clientes potenciales'
+
 /**
- * Form names and status need the token of the page that owns the form. Page tokens come from me/accounts;
- * when the page isn't there, the user token is tried and the form keeps only its id if Meta refuses.
+ * Form names and status can only be read with the token of the page that owns the form.
+ * Page tokens come from me/accounts and, for pages not listed there, from the businesses' owned and client pages.
+ * With a page token, one leadgen_forms call names every form of that page; forms still unnamed are read one by one.
  */
 export async function loadLeadFormDetails(inventory: Inventory) {
   const formAdsets = inventory.adsets.filter((adset) => adset.destination === 'ON_AD' || inventory.ads.some((ad) => ad.adsetId === adset.id && ad.leadFormId))
@@ -139,8 +142,6 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   const pageIds = [...new Set(formAdsets.map((adset) => adset.pageId).filter((id): id is string => Boolean(id)))].slice(0, 10)
   if (!formIds.length && !pageIds.length) return
   const token = await getMetaAccessToken()
-  const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }).catch(() => [])
-  const pageToken = new Map(pages.filter((page) => page.access_token).map((page) => [page.id, page.access_token!]))
   const getWith = async <T>(path: string, params: Record<string, string>, accessToken?: string | null) => {
     const response = await fetch(`${META_BASE_URL}/${path}?${new URLSearchParams({ ...params, access_token: accessToken ?? '' })}`, { cache: 'no-store' })
     const payload = await response.json().catch(() => null) as ({ error?: { message?: string } } & T) | null
@@ -148,33 +149,51 @@ export async function loadLeadFormDetails(inventory: Inventory) {
     return payload as T
   }
 
+  const pageToken = new Map<string, string>()
+  const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }).catch(() => [])
+  for (const page of pages) if (page.access_token) pageToken.set(page.id, page.access_token)
+  if (pageIds.some((id) => !pageToken.has(id))) {
+    const businesses = await listAll<{ id: string }>('me/businesses', { fields: 'id' }).catch(() => [])
+    for (const business of businesses.slice(0, 10)) {
+      for (const edge of ['owned_pages', 'client_pages']) {
+        if (pageIds.every((id) => pageToken.has(id))) break
+        const found = await listAll<{ id: string; access_token?: string }>(`${business.id}/${edge}`, { fields: 'id,access_token' }).catch(() => [])
+        for (const page of found) if (page.access_token && !pageToken.has(page.id)) pageToken.set(page.id, page.access_token)
+      }
+    }
+  }
+
   inventory.leadForms = {}
   inventory.pageForms = {}
   inventory.pageAccessErrors = {}
-  const pageOfForm = new Map(inventory.ads.filter((ad) => ad.leadFormId).map((ad) => [ad.leadFormId!, inventory.adsets.find((adset) => adset.id === ad.adsetId)?.pageId]))
-  await Promise.all(formIds.map(async (id) => {
-    const ownPageToken = pageToken.get(pageOfForm.get(id) ?? '')
-    for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
-      try {
-        const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
-        inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id, pageName: form.page?.name }
-        return
-      } catch {}
-    }
-    inventory.leadForms![id] = { id }
-  }))
   await Promise.all(pageIds.map(async (pageId) => {
     const accessToken = pageToken.get(pageId)
     if (!accessToken) {
-      inventory.pageAccessErrors![pageId] = 'El token de Meta no tiene acceso a esta página (falta pages_read_engagement en el Business Manager)'
+      inventory.pageAccessErrors![pageId] = `No puedo leer los formularios: ${NO_PAGE_ACCESS}`
       return
     }
     try {
-      const result = await getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '100' }, accessToken)
-      inventory.pageForms![pageId] = (result.data ?? []).filter((form) => form.status === 'ACTIVE').map((form) => ({ id: form.id, name: form.name, status: form.status, pageId }))
+      const result = await getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '200' }, accessToken)
+      const forms = (result.data ?? []).map((form) => ({ id: form.id, name: form.name, status: form.status, pageId }))
+      for (const form of forms) inventory.leadForms![form.id] = form
+      inventory.pageForms![pageId] = forms.filter((form) => form.status === 'ACTIVE')
     } catch (error) {
       inventory.pageAccessErrors![pageId] = error instanceof Error ? error.message : 'Meta no devolvió los formularios de la página'
     }
+  }))
+
+  const pageOfForm = new Map(inventory.ads.filter((ad) => ad.leadFormId).map((ad) => [ad.leadFormId!, inventory.adsets.find((adset) => adset.id === ad.adsetId)?.pageId]))
+  await Promise.all(formIds.filter((id) => !inventory.leadForms![id]?.name).map(async (id) => {
+    const pageId = pageOfForm.get(id)
+    const ownPageToken = pageToken.get(pageId ?? '')
+    for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
+      try {
+        const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
+        inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id ?? pageId, pageName: form.page?.name }
+        return
+      } catch {}
+    }
+    inventory.leadForms![id] = { id, pageId, nameError: ownPageToken ? 'Meta no devolvió el nombre del formulario' : NO_PAGE_ACCESS }
   }))
 }
 
