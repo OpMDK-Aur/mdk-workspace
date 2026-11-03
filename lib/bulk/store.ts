@@ -74,7 +74,8 @@ export const useBulkStore = create<BulkState>((set, get) => ({
     set({ sheetPlan: { context, overrides: {} }, rows: [], selected: [], publishPhase: 'idle', publishProgress: 0, step: 'plan' })
   },
   setPlanOverrides: (overrides) => set((state) => (state.sheetPlan ? { sheetPlan: { ...state.sheetPlan, overrides } } : state)),
-  setPlanRows: (rows) => set({ rows, selected: [], step: 2 }),
+  // En la carga por sheet, solo los anuncios seleccionados pasan a "Aprobar y crear"; arrancan todos tildados.
+  setPlanRows: (rows) => set({ rows, selected: rows.map((row) => row.id), step: 2 }),
   exitSheetPlan: () => {
     for (const row of get().rows) revokeAssetUrls(row.assets)
     set({ sheetPlan: null, rows: [], selected: [], step: 1 })
