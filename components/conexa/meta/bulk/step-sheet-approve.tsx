@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBulkStore } from '@/lib/bulk/store'
@@ -10,6 +10,7 @@ import { executePlanAdRequest, reviewUrl } from '@/lib/conexa/bulk/client'
 import { SheetReviewList } from './sheet-review-list'
 import { buildExecuteRequest, driveFileUrl, publishedFiles } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
+import { PLAN_NOT_FOUND } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
 
 type ItemResult = { ok: boolean; message: string }
@@ -32,6 +33,9 @@ export function StepSheetApprove() {
   const [confirmed, setConfirmed] = useState(false)
   const [running, setRunning] = useState(false)
   const [results, setResults] = useState<Record<string, ItemResult>>({})
+  const [cancelling, setCancelling] = useState(false)
+  const [stopNote, setStopNote] = useState<string | null>(null)
+  const cancelRef = useRef(false)
 
   const plan = useMemo(() => (sheetPlan ? resolvePlan(sheetPlan.context, sheetPlan.overrides) : null), [sheetPlan])
   if (!sheetPlan || !plan || !clientId) return null
@@ -49,8 +53,16 @@ export function StepSheetApprove() {
   // La app solo lee el sheet: el resultado queda en el listado de revisión, no en la columna de estado.
   async function run() {
     if (!plan || !clientId) return
+    cancelRef.current = false
+    setCancelling(false)
+    setStopNote(null)
     setRunning(true)
     for (const { row, ad } of pending) {
+      // Cancelar no corta el anuncio en curso (puede estar a mitad de camino en Meta); frena antes del siguiente.
+      if (cancelRef.current) {
+        setStopNote('Cancelaste la creación. Los anuncios que no se intentaron quedaron sin crear; podés retomarlos cuando quieras.')
+        break
+      }
       updateRow(row.id, { status: 'creating', error: undefined })
       try {
         const files = publishedFiles(ad)
@@ -66,11 +78,18 @@ export function StepSheetApprove() {
         updateRow(row.id, { status: 'done', metaAdId: result.adId })
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'No se pudo crear en Meta.'
+        // Si el servidor no tiene el plan, va a fallar igual para todos: se corta en vez de subir más archivos.
+        if (message === PLAN_NOT_FOUND) {
+          updateRow(row.id, { status: 'idle', error: undefined })
+          setStopNote(PLAN_NOT_FOUND)
+          break
+        }
         setResults((current) => ({ ...current, [row.id]: { ok: false, message } }))
         updateRow(row.id, { status: 'error', error: message })
       }
     }
     setRunning(false)
+    setCancelling(false)
     await mutate(reviewUrl(context.planId, clientId))
   }
 
@@ -108,10 +127,34 @@ export function StepSheetApprove() {
         </p>
       )}
 
+      {stopNote && <p className="text-pretty rounded-lg border border-[#f0d9a8] bg-[#fdf6e7] px-3 py-2 text-[11.5px] leading-relaxed text-[#8a5f0d]" role="status">{stopNote}</p>}
+
       {doneCount > 0 && <SheetReviewList planId={context.planId} clientId={clientId} />}
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
-        <Button size="sm" variant="outline" disabled={running} onClick={() => setStep(2)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Volver a configurar'}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" disabled={running} onClick={() => setStep(2)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Volver a configurar'}</Button>
+          {running ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={cancelling}
+              onClick={() => {
+                cancelRef.current = true
+                setCancelling(true)
+              }}
+              className="h-9 rounded-full border-[#e8c4bc] bg-white px-4 text-[11.5px] text-[#c0432c] hover:bg-[#fbefec] hover:text-[#a33722]"
+            >
+              {cancelling ? 'Cancelando… termina el anuncio en curso' : 'Cancelar'}
+            </Button>
+          ) : (
+            !finished && (
+              <Button size="sm" variant="ghost" onClick={exitSheetPlan} className="h-9 rounded-full px-4 text-[11.5px] text-[#777] hover:bg-[#f5f5f3] hover:text-[#141414]">
+                Cancelar carga
+              </Button>
+            )
+          )}
+        </div>
         {finished ? (
           <Button size="sm" onClick={exitSheetPlan} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">Terminar</Button>
         ) : (

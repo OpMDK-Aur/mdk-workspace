@@ -129,14 +129,16 @@ export async function discoverSiblingAccounts(linked: InventoryAccount[], client
   return hits.filter((hit): hit is NonNullable<typeof hit> => Boolean(hit))
 }
 
-const NO_PAGE_ACCESS = 'el token de Meta no tiene acceso a la página que tiene el formulario: asigná la página al usuario del sistema en el Business Manager con permiso de clientes potenciales'
-const NO_PAGE_PERMISSION = 'al token de Meta de la app le falta el permiso pages_read_engagement, y sin él Meta no deja leer los nombres de los formularios. Hay que generar el token del usuario del sistema con ese permiso (y leads_retrieval)'
+// The token can have every permission and still not reach a page: the page must be assigned to the token's user.
+const noPageAccess = (pageId?: string) => `el usuario del token de Meta no tiene asignada la página${pageId ? ` ${pageId}` : ''}, que es la dueña del formulario: asignásela en el Business Manager (Páginas → Asignar personas) con acceso a clientes potenciales`
+const NO_PAGE_PERMISSION = 'al token de Meta le falta el permiso pages_read_engagement, y sin él Meta no deja leer los nombres de los formularios'
 const RATE_LIMITED = 'Meta limitó las consultas de la app por ahora (#4). Volvé a generar el plan en unos minutos para ver los nombres'
 
-// Permission and rate-limit errors repeat for every form, so the first one stops the lookup and is shown once.
-function blockingReason(message: string) {
+// Rate limits repeat for every form, so the first one stops the lookup. A permission error only means
+// "missing permission" when the token reaches no page at all; otherwise that page just isn't assigned.
+function blockingReason(message: string, reachesSomePage: boolean) {
   if (/\(#(4|17|32|613)\)|request limit/i.test(message)) return RATE_LIMITED
-  if (/\(#(10|200)\)|pages_read_engagement|Page Public/i.test(message)) return NO_PAGE_PERMISSION
+  if (!reachesSomePage && /\(#(10|200)\)|pages_read_engagement|Page Public/i.test(message)) return NO_PAGE_PERMISSION
   return null
 }
 
@@ -178,14 +180,14 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   let blocked: string | null = null
   const note = (error: unknown) => {
     const message = error instanceof Error ? error.message : ''
-    blocked ??= blockingReason(message)
+    blocked ??= blockingReason(message, pageToken.size > 0)
     return message
   }
 
   await Promise.all(pageIds.map(async (pageId) => {
     const accessToken = pageToken.get(pageId)
     if (!accessToken) {
-      inventory.pageAccessErrors![pageId] = `No puedo leer los formularios: ${NO_PAGE_ACCESS}`
+      inventory.pageAccessErrors![pageId] = `No puedo leer los formularios: ${noPageAccess(pageId)}`
       return
     }
     try {
@@ -215,7 +217,7 @@ export async function loadLeadFormDetails(inventory: Inventory) {
         }
       }
     }
-    if (!inventory.leadForms![id]?.name) inventory.leadForms![id] = { id, pageId, nameError: blocked ?? (ownPageToken ? 'Meta no devolvió el nombre del formulario' : NO_PAGE_ACCESS) }
+    if (!inventory.leadForms![id]?.name) inventory.leadForms![id] = { id, pageId, nameError: blocked ?? (ownPageToken ? 'Meta no devolvió el nombre del formulario' : noPageAccess(pageId)) }
   }
   if (blocked) inventory.formAccessIssue = blocked
 }
