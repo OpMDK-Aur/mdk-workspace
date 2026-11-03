@@ -957,9 +957,11 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
 
         const reuseCopy = (effective === 'replace' || effective === 'add_formats') && match ? inventory.ads.find((ad) => ad.id === match!.adId) : undefined
         const generated = context.generatedCopy[copyKey(row.rowNumber, piece)]
-        const primaryText = instruction.primaryText || cell(row, 'primary_text') || reuseCopy?.primaryText || (effective === 'create' ? generated?.primaryText : '') || ''
-        const headline = instruction.headline || cell(row, 'headline') || reuseCopy?.headline || (effective === 'create' ? generated?.headline : '') || ''
-        const aiCopy = Boolean(generated && effective === 'create' && !instruction.primaryText && !cell(row, 'primary_text') && primaryText === generated.primaryText)
+        // El copy generado del creativo vale para cualquier anuncio que se crea y no trae texto propio ni reutilizado.
+        const creates = effective !== 'skip' && effective !== 'unknown'
+        const primaryText = instruction.primaryText || cell(row, 'primary_text') || reuseCopy?.primaryText || (creates ? generated?.primaryText : '') || ''
+        const headline = instruction.headline || cell(row, 'headline') || reuseCopy?.headline || (creates ? generated?.headline : '') || ''
+        const aiCopy = Boolean(generated && creates && primaryText === generated.primaryText)
 
         // El sufijo _{n} se agrega al final, solo si el mismo nombre se repite en el conjunto.
         const name = instruction.adNameMode === 'today' ? context.today : instruction.adName || cell(row, 'ad_name') || piece

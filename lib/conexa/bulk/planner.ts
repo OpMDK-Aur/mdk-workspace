@@ -75,13 +75,18 @@ async function generateCopy(context: PlanContext, googleToken: string) {
   const targets = [...new Map(plan.ads
     .filter((ad) => ad.action !== 'skip' && ad.action !== 'unknown' && !ad.primaryText && ad.files.length)
     .map((ad) => [copyKey(ad.rowNumber, ad.piece), ad])).entries()].slice(0, MAX_COPY_ITEMS)
-  if (!targets.length) return { copy: {}, failed: 0 }
+  if (!targets.length) return { copy: {}, failed: 0, reasons: [] }
   const results = await mapLimited(targets, async ([key, ad]) => {
     const input = creativeCopyInput(context, plan, ad)
-    return [key, input ? await copyFromCreative(googleToken, context.clientContext ?? '', input) : null] as const
+    return [key, input ? await copyFromCreative(googleToken, context.clientContext ?? '', input) : { error: 'La pieza no tiene archivos' }] as const
   })
-  const copy = Object.fromEntries(results.filter(([, value]) => value).map(([key, value]) => [key, value!]))
-  return { copy, failed: results.length - Object.keys(copy).length }
+  const copy: Record<string, { primaryText: string; headline: string }> = {}
+  const reasons: string[] = []
+  for (const [key, value] of results) {
+    if ('error' in value) reasons.push(value.error)
+    else copy[key] = value
+  }
+  return { copy, failed: reasons.length, reasons: [...new Set(reasons)].slice(0, 3) }
 }
 
 export async function buildPlanContext(input: {
@@ -108,9 +113,9 @@ export async function buildPlanContext(input: {
   else context.warnings.push('No pude interpretar la columna de observaciones: revisá esos anuncios a mano.')
 
   try {
-    const { copy, failed } = await generateCopy(context, input.googleToken)
+    const { copy, failed, reasons } = await generateCopy(context, input.googleToken)
     context.generatedCopy = copy
-    if (failed) context.warnings.push(`No pude generar el copy de ${failed} pieza${failed > 1 ? 's' : ''} a partir del creativo: completalo o usá "Regenerar" en Configurar anuncios.`)
+    if (failed) context.warnings.push(`No pude generar el copy de ${failed} pieza${failed > 1 ? 's' : ''} a partir del creativo (${reasons.join(' · ')}): completalo o usá "Regenerar" en Configurar anuncios.`)
   } catch {
     context.warnings.push('No pude generar el copy de los anuncios nuevos: completalo en el paso Configurar anuncios.')
   }

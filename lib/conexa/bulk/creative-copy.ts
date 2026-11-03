@@ -25,16 +25,32 @@ export function primaryCreative(ad: Pick<PlanAd, 'files' | 'formats'>) {
   return ad.files[index] ?? ad.files[0]
 }
 
-// Drive thumbnails exist for images and videos (a representative frame), so both go through the same path.
-async function driveImage(googleToken: string, fileId: string) {
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+const DRIVE_FILES = 'https://www.googleapis.com/drive/v3/files'
+
+type CreativeImage = { data: Uint8Array; mediaType: string }
+
+// Images are downloaded as they are. Videos (and huge images) use the Drive thumbnail, a representative frame;
+// thumbnailLink is short-lived and not always reachable with a bearer token, so it's only the fallback.
+async function driveImage(googleToken: string, fileId: string): Promise<CreativeImage | { error: string }> {
   const headers = { Authorization: `Bearer ${googleToken}` }
-  const meta = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=thumbnailLink&supportsAllDrives=true`, { headers, cache: 'no-store' })
-  if (!meta.ok) return null
-  const { thumbnailLink } = await meta.json() as { thumbnailLink?: string }
-  if (!thumbnailLink) return null
-  const image = await fetch(thumbnailLink.replace(/=s\d+$/, '=s1024'), { headers, cache: 'no-store' })
-  if (!image.ok) return null
-  return { data: new Uint8Array(await image.arrayBuffer()), mediaType: image.headers.get('content-type') ?? 'image/jpeg' }
+  const id = encodeURIComponent(fileId)
+  const metaResponse = await fetch(`${DRIVE_FILES}/${id}?fields=mimeType,size,thumbnailLink&supportsAllDrives=true`, { headers, cache: 'no-store' })
+  if (!metaResponse.ok) return { error: `Drive respondió ${metaResponse.status} al leer el archivo` }
+  const meta = await metaResponse.json() as { mimeType?: string; size?: string; thumbnailLink?: string }
+
+  if (meta.mimeType?.startsWith('image/') && Number(meta.size ?? 0) <= MAX_IMAGE_BYTES) {
+    const file = await fetch(`${DRIVE_FILES}/${id}?alt=media&supportsAllDrives=true`, { headers, cache: 'no-store' })
+    if (file.ok) return { data: new Uint8Array(await file.arrayBuffer()), mediaType: meta.mimeType }
+    if (!meta.thumbnailLink) return { error: `Drive respondió ${file.status} al descargar la imagen` }
+  }
+  if (!meta.thumbnailLink) return { error: meta.mimeType?.startsWith('video/') ? 'Drive todavía no generó una miniatura del video' : 'El archivo no es una imagen ni tiene miniatura' }
+  const thumbnailUrl = meta.thumbnailLink.replace(/=s\d+$/, '=s1024')
+  for (const init of [{ headers }, {}]) {
+    const thumbnail = await fetch(thumbnailUrl, { ...init, cache: 'no-store' })
+    if (thumbnail.ok) return { data: new Uint8Array(await thumbnail.arrayBuffer()), mediaType: thumbnail.headers.get('content-type') ?? 'image/jpeg' }
+  }
+  return { error: 'No pude descargar la miniatura del video desde Drive' }
 }
 
 const within = (copy: Copy) => copy.primaryText.trim().length > 0 && copy.headline.trim().length > 0
@@ -47,10 +63,14 @@ const SYSTEM = `Escribís el texto principal y el título de un anuncio de Meta 
 - Texto principal: como máximo ${PRIMARY_TEXT_MAX} caracteres en total. Título: como máximo ${HEADLINE_MAX} caracteres.
 - Sin emojis, sin hashtags, sin comillas.`
 
-/** Returns null when the creative can't be read or the model can't respect the rules: the field stays empty. */
-export async function copyFromCreative(googleToken: string, clientContext: string, input: CreativeCopyInput): Promise<Copy | null> {
-  const image = await driveImage(googleToken, input.file.id).catch(() => null)
-  if (!image) return null
+/** When the creative can't be read or the model can't respect the rules, the field stays empty and the reason is returned. */
+export async function copyFromCreative(googleToken: string, clientContext: string, input: CreativeCopyInput): Promise<Copy | { error: string }> {
+  const image = await driveImage(googleToken, input.file.id).catch((error: unknown) => ({ error: error instanceof Error ? error.message : 'Error al leer Drive' }))
+  if ('error' in image) {
+    console.error('[bulk-copy] creative unreadable', input.file.id, input.file.name, image.error)
+    return { error: `${input.file.name}: ${image.error}` }
+  }
+  let lastError = 'La IA no respetó los largos de 125 y 40 caracteres'
   const details = [
     `Datos de la fila (marca, modelo, modalidad): ${input.attributes.join(' · ') || 'sin datos'}`,
     input.campaign ? `Campaña: ${input.campaign}` : '',
@@ -75,11 +95,13 @@ export async function copyFromCreative(googleToken: string, clientContext: strin
       })
       const copy = { primaryText: output.primaryText.trim(), headline: output.headline.trim() }
       if (within(copy)) return copy
+      console.error('[bulk-copy] copy out of limits', input.file.name, copy.primaryText.length, copy.headline.length)
     } catch (error) {
-      console.error('[bulk-copy] creative copy failed', error)
+      lastError = `La IA no respondió: ${error instanceof Error ? error.message : 'error desconocido'}`
+      console.error('[bulk-copy] creative copy failed', input.file.name, error)
     }
   }
-  return null
+  return { error: lastError }
 }
 
 export function creativeCopyInput(context: PlanContext, plan: ResolvedPlan, ad: PlanAd): CreativeCopyInput | null {
