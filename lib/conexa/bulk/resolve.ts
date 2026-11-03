@@ -47,7 +47,10 @@ function resolveAnswer(question: Pick<PlanQuestion, 'kind' | 'options' | 'folder
   }
   if (question.kind === 'text') return answer.text?.trim() ? { text: answer.text.trim(), label: answer.text.trim() } : {}
   if (question.kind === 'multi') {
-    const values = (answer.values ?? []).filter((value) => question.options.some((option) => option.value === value))
+    // Las opciones especiales (excluir, crear) y las respuestas guardadas de cuando la pregunta era de una sola opción llegan en value.
+    const single = question.options.find((option) => option.value === answer.value)
+    if (single && !answer.values?.length) return SPECIAL.has(single.value) ? { value: single.value, label: single.label } : { value: single.value, values: [single.value], label: single.label }
+    const values = (answer.values ?? []).filter((value) => !SPECIAL.has(value) && question.options.some((option) => option.value === value))
     return values.length ? { values, label: question.options.filter((option) => values.includes(option.value)).map((option) => option.label).join(', ') } : {}
   }
   const picked = question.options.find((option) => option.value === answer.value)
@@ -138,7 +141,10 @@ export function expandAbbreviation(value: string, names: string[]) {
 
 export const nameHasModel = (name: string, model: string) => {
   const key = normalizeText(model)
+  // campaignNameKey iguala 0 y O en tokens con dígitos ("2O8" = "208"); el prefijo acepta abreviaturas ("Part" = "Partner").
+  const modelKey = campaignNameKey(model)
   return attributeMatches(name, model) || (key.length >= 3 && nameTokens(name).some((token) => token.startsWith(key)))
+    || (modelKey.length >= 2 && campaignNameKey(name).split(' ').some((token) => token === modelKey || (modelKey.length >= 3 && token.startsWith(modelKey))))
 }
 
 const SEPARATORS = [' - ', ' | ', ' / ', '_', '-']
@@ -158,6 +164,15 @@ function suggestName(pool: string[], extra: string[], fallback: string) {
   const tail = extra.filter((value) => value && !prefix.some((part) => sameText(part, value)))
   const result = [...prefix, ...tail]
   return result.length ? result.join(separator) : fallback
+}
+
+// Identidad de la fila entre lotes: sheet + número de fila, y el hash de su contenido sin la columna de estado
+// (el estado lo cambia el equipo a mano y no hace que la fila sea un pedido distinto).
+export function rowIdentity(context: Pick<PlanContext, 'spreadsheetId' | 'grid' | 'interpretation'>, rowNumber: number) {
+  const statusColumns = new Set(context.interpretation.columns.filter((column) => column.role === 'status').map((column) => context.grid.headers.indexOf(column.header)))
+  const row = context.grid.rows.find((item) => item.rowNumber === rowNumber)
+  const content = row ? row.cells.map((value, index) => (statusColumns.has(index) ? '' : normalizeText(value ?? ''))).join('\u241f') : ''
+  return { rowKey: `${context.spreadsheetId}:${rowNumber}`, contentHash: hashText(content) }
 }
 
 export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {}): ResolvedPlan {
@@ -202,7 +217,19 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   }
 
   const vocabulary = Object.fromEntries(Object.entries(interpretation.actionVocabulary).map(([key, value]) => [normalizeText(key), value]))
-  const excluded = new Set(overrides.excludedRows ?? [])
+  // Una fila ya creada en un lote anterior (mismo contenido) arranca destildada; si cambió, es un pedido nuevo.
+  const previousOf = (rowNumber: number): PlanRow['previous'] => {
+    const { rowKey, contentHash } = rowIdentity(context, rowNumber)
+    const earlier = context.previousRows?.[rowKey]
+    if (!earlier || earlier.planId === context.planId) return undefined
+    return { kind: earlier.contentHash === contentHash ? 'created' : 'modified', date: earlier.createdAt, planId: earlier.planId }
+  }
+  const previousByRow = new Map(grid.rows.map((row) => [row.rowNumber, previousOf(row.rowNumber)]))
+  const includeCreated = new Set(overrides.includeCreatedRows ?? [])
+  const excluded = new Set([
+    ...(overrides.excludedRows ?? []),
+    ...[...previousByRow].filter(([rowNumber, previous]) => previous?.kind === 'created' && !includeCreated.has(rowNumber)).map(([rowNumber]) => rowNumber),
+  ])
   const answers = overrides.answers ?? {}
   const accounts = inventory.accounts
   const campaignsIn = (accountId: string) => inventory.campaigns.filter((campaign) => campaign.accountId === accountId)
@@ -236,7 +263,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
   }
   const sharedFolderRows = (row: Cells) => [...new Set(linkIds(row).flatMap((id) => rowsByFolder.get(id) ?? [])
     .filter((other) => other.rowNumber !== row.rowNumber && signatureOf(other) !== signatureOf(row)).map((other) => other.rowNumber))].sort((a, b) => a - b)
-  const leadForms = new Map<string, { leadFormId?: string; pending: boolean }>()
+  const leadForms = new Map<string, { leadFormId?: string; pending: boolean; note?: string }>()
   const placementQuestions: string[] = []
   const placementGroups = new Map<string, number[]>()
 
@@ -418,37 +445,41 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       key: `${campaign.accountId}::adset::${adset.id}`, campaignKey: campaign.key, accountId: campaign.accountId, name: adset.name, mode: 'existing', existingIds: [adset.id], options,
       pageId: adset.pageId, destination: adset.destination, rows: [row.rowNumber], reason, state: 'ready', issues: [],
     })
+    const pickedAdsets = (answer: Resolved | undefined) => {
+      const chosen = existingAdsets.filter((adset) => answer?.values?.includes(adset.id))
+      return chosen.map((adset) => register(existingPlan(adset, chosen.length > 1 ? `Respondiste: ${chosen.length} conjuntos, un anuncio en cada uno` : `Respondiste: se carga en "${adset.name}"`)))
+    }
+    const modelRule = isLeadsCampaign(campaign) ? 'En campañas de clientes potenciales los anuncios van al conjunto del modelo de la fila.' : 'La instrucción pide crear los anuncios en el conjunto del modelo.'
+    placeInModelAdset = placeInModelAdset || isLeadsCampaign(campaign)
 
     if (campaign.mode === 'existing') {
       if (adsetName) {
         const match = existingAdsets.find((adset) => sameCampaignName(adset.name, adsetName))
         if (match) return [register(existingPlan(match, 'Conjunto encontrado por nombre exacto'))]
         const answer = ask({
-          id: `adset:${campaign.key}::${normalizeText(adsetName)}`, kind: 'choice', field: 'Conjunto',
+          id: `adset:${campaign.key}::${normalizeText(adsetName)}`, kind: 'multi', field: 'Conjunto', allowFree: false,
           prompt: `No encontré el conjunto "${adsetName}" en "${campaign.name}". ¿Dónde cargo los anuncios?`,
-          why: existingAdsets.length ? `La campaña tiene ${existingAdsets.length} conjuntos y ninguno se llama así` : 'La campaña no tiene conjuntos',
-          options: [...adsetOptions, { value: ANSWER_CREATE, label: `Crear "${adsetName}" nuevo en esta campaña`, hint: 'en pausa' }, excludeOption()],
-          target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Escribí el nombre de otro conjunto…',
+          why: `${existingAdsets.length ? `La campaña tiene ${existingAdsets.length} conjuntos y ninguno se llama así` : 'La campaña no tiene conjuntos'}. Podés elegir varios: se crea un anuncio en cada uno.`,
+          options: [{ value: ANSWER_CREATE, label: `Crear "${adsetName}" nuevo en esta campaña`, hint: 'en pausa' }, ...adsetOptions, excludeOption()],
+          target: 'campaign', targetKey: campaign.key,
         }, row.rowNumber)
-        if (!answer?.value) return []
-        const chosen = existingAdsets.find((adset) => adset.id === answer.value)
-        if (chosen) return [register(existingPlan(chosen, `Respondiste: se carga en "${chosen.name}"`))]
+        if (!answer) return []
+        if (answer.value !== ANSWER_CREATE) return pickedAdsets(answer)
       } else if (placeInModelAdset && existingAdsets.length) {
         const model = modelOf(row)
         const candidates = model ? existingAdsets.filter((adset) => nameHasModel(adset.name, model)) : []
         if (candidates.length === 1) return [register(existingPlan(candidates[0], `Instrucción: conjunto del modelo "${model}"`))]
         const ordered = [...candidates, ...existingAdsets.filter((adset) => !candidates.includes(adset))]
         const answer = ask({
-          id: `model-adset:${campaign.key}::${normalizeText(model ?? '')}`, kind: 'choice', field: 'Conjunto',
-          prompt: !model ? `La fila no indica modelo. ¿En qué conjunto de "${campaign.name}" creo los anuncios?`
-            : candidates.length ? `Hay ${candidates.length} conjuntos de "${model}" en "${campaign.name}". ¿En cuál creo los anuncios?`
-            : `No encontré un conjunto de "${model}" en "${campaign.name}". ¿En cuál creo los anuncios?`,
-          why: 'La instrucción pide crear los anuncios en el conjunto del modelo',
-          options: [...ordered.map((adset) => ({ value: adset.id, label: adset.name, hint: candidates.includes(adset) ? 'coincide' : adset.status === 'ACTIVE' ? 'activo' : 'pausado' })), excludeOption()],
-          target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Escribí parte del nombre del conjunto…',
+          id: `model-adset:${campaign.key}::${normalizeText(model ?? '')}`, kind: 'multi', field: 'Conjunto', allowFree: false,
+          prompt: !model ? `La fila no indica modelo. ¿En qué conjuntos de "${campaign.name}" creo los anuncios?`
+            : candidates.length ? `Hay ${candidates.length} conjuntos de "${model}" en "${campaign.name}". ¿En cuáles creo los anuncios?`
+            : `No encontré un conjunto de "${model}" en "${campaign.name}". ¿En cuáles creo los anuncios?`,
+          why: `${modelRule} Podés elegir varios: se crea un anuncio en cada uno.`,
+          options: [...ordered.map((adset) => ({ value: adset.id, label: adset.name, hint: candidates.includes(adset) ? `coincide con "${model}"` : adset.status === 'ACTIVE' ? 'activo' : 'pausado' })), excludeOption()],
+          target: 'campaign', targetKey: campaign.key,
         }, row.rowNumber)
-        const chosen = existingAdsets.find((adset) => adset.id === answer?.value)
-        return chosen ? [register(existingPlan(chosen, `Respondiste: se carga en "${chosen.name}"`))] : []
+        return pickedAdsets(answer)
       } else if (existingAdsets.length) {
         // Sin columna de conjunto se localiza el existente con los atributos de la fila; crear uno nuevo es solo elección explícita.
         const active = existingAdsets.filter((adset) => adset.status === 'ACTIVE')
@@ -466,20 +497,17 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
           return [register(existingPlan(best.adset, `Conjunto elegido por coincidencia con ${best.hits.map((hit) => `"${hit.toUpperCase()}"`).join(', ')}`))]
         }
         const answer = ask({
-          id: `adset-choice:${campaign.key}::${attributes.join('|')}`, kind: 'choice', field: 'Conjunto',
-          prompt: `¿En cuál de estos conjuntos de "${campaign.name}" cargo los anuncios?`,
-          why: best?.hits.length ? `Varios conjuntos coinciden con los datos de la fila (${best.hits.join(', ')})` : `Hay ${pool.length} conjuntos${active.length ? ' activos' : ''} y ninguno coincide claramente con los datos de la fila`,
+          id: `adset-choice:${campaign.key}::${attributes.join('|')}`, kind: 'multi', field: 'Conjunto', allowFree: false,
+          prompt: `¿En cuáles de estos conjuntos de "${campaign.name}" cargo los anuncios?`,
+          why: `${best?.hits.length ? `Varios conjuntos coinciden con los datos de la fila (${best.hits.join(', ')})` : `Hay ${pool.length} conjuntos${active.length ? ' activos' : ''} y ninguno coincide claramente con los datos de la fila`}. Podés elegir varios: se crea un anuncio en cada uno.`,
           options: [
             ...scored.map(({ adset, hits }) => ({ value: adset.id, label: adset.name, hint: hits.length ? `coincide: ${hits.join(', ')}` : adset.status === 'ACTIVE' ? 'activo' : 'pausado' })),
             { value: ANSWER_CREATE, label: 'Crear conjunto nuevo', hint: 'en pausa' },
             excludeOption(),
           ],
-          target: 'campaign', targetKey: campaign.key, freePlaceholder: 'Escribí parte del nombre del conjunto…',
+          target: 'campaign', targetKey: campaign.key,
         }, row.rowNumber)
-        if (!answer?.value) return []
-        const chosen = existingAdsets.find((adset) => adset.id === answer.value)
-        if (chosen) return [register(existingPlan(chosen, `Respondiste: se carga en "${chosen.name}"`))]
-        if (answer.value !== ANSWER_CREATE) return []
+        if (answer?.value !== ANSWER_CREATE) return pickedAdsets(answer)
       }
     }
 
@@ -631,31 +659,55 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     return placed
   }
 
-  // Formulario instantáneo de los anuncios activos del conjunto; se pregunta si hay varios o ninguno.
+  function isLeadsCampaign(campaign: PlanCampaign) {
+    const id = campaign.existingId ?? campaign.meta?.id ?? campaign.reference?.id
+    const objective = inventory.campaigns.find((item) => item.id === id)?.objective ?? campaign.reference?.objective ?? ''
+    return objective === 'OUTCOME_LEADS' || objective === 'LEAD_GENERATION'
+  }
+
+  // El formulario sale de los anuncios del conjunto destino (activos; si no hay, los pausados más recientes).
+  // Nunca de la cuenta entera: ahí se mezclan formularios de otras modalidades y de otras páginas.
   function leadFormFor(adset: PlanAdset, rowNumber: number) {
     const cached = leadForms.get(adset.key)
     if (cached) {
       if (cached.pending) ask({ id: `lead-form:${adset.key}`, kind: 'choice', field: 'Formulario', prompt: '', why: '', options: [], target: 'adset', targetKey: adset.key }, rowNumber)
       return cached
     }
-    const running = inventory.ads.filter((ad) => adset.existingIds.includes(ad.adsetId) && ad.status === 'ACTIVE' && ad.leadFormId)
-    const forms = [...new Set(running.map((ad) => ad.leadFormId!))]
-    if (forms.length === 1) {
-      const result = { leadFormId: forms[0], pending: false }
+    const sourceIds = adset.existingIds.length ? adset.existingIds : adset.reference ? [adset.reference.id] : []
+    const withForm = inventory.ads.filter((ad) => sourceIds.includes(ad.adsetId) && ad.leadFormId)
+    const active = withForm.filter((ad) => ad.status === 'ACTIVE')
+    const used = active.length ? active : [...withForm].sort((a, b) => (b.createdTime ?? '').localeCompare(a.createdTime ?? ''))
+    const usage = new Map<string, number>()
+    for (const ad of used) usage.set(ad.leadFormId!, (usage.get(ad.leadFormId!) ?? 0) + 1)
+    const byUse = [...usage.entries()].sort((a, b) => b[1] - a[1])
+    const scope = active.length ? 'activos' : 'pausados'
+    const info = (id: string) => inventory.leadForms?.[id]
+    const formLabel = (id: string) => (info(id)?.name ? `${info(id)!.name} · ID ${id}` : `Formulario ID ${id}`)
+    const statusLabel = (id: string) => (info(id)?.status ? ` · ${info(id)!.status}` : info(id) && !info(id)!.name ? ' · sin acceso a la página para ver nombre y estado' : '')
+
+    if (byUse.length === 1) {
+      const [id, count] = byUse[0]
+      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto` }
       leadForms.set(adset.key, result)
       return result
     }
-    const accountForms = [...new Set(inventory.ads.filter((ad) => ad.accountId === adset.accountId && ad.leadFormId).map((ad) => ad.leadFormId!))]
-    const pool = forms.length ? forms : accountForms
-    const usedBy = (id: string) => inventory.ads.filter((ad) => ad.leadFormId === id).map((ad) => ad.name).slice(0, 2).join(', ')
+
+    const pageForms = adset.pageId ? inventory.pageForms?.[adset.pageId] ?? [] : []
+    const pageError = adset.pageId ? inventory.pageAccessErrors?.[adset.pageId] : undefined
+    const options = byUse.length
+      ? byUse.map(([id, count]) => ({ value: id, label: formLabel(id), hint: `usado por ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}` }))
+      : pageForms.map((form) => ({ value: form.id, label: form.name ? `${form.name} · ID ${form.id}` : `Formulario ID ${form.id}`, hint: 'activo en la página del conjunto' }))
     const answer = ask({
-      id: `lead-form:${adset.key}`, kind: pool.length ? 'choice' : 'text', field: 'Formulario',
+      id: `lead-form:${adset.key}`, kind: options.length ? 'choice' : 'text', field: 'Formulario',
       prompt: `¿Qué formulario instantáneo uso en los anuncios nuevos de "${adset.name}"?`,
-      why: forms.length ? `Los anuncios activos del conjunto usan ${forms.length} formularios distintos` : 'El conjunto no tiene anuncios activos con formulario',
-      options: pool.length ? [...pool.map((id) => ({ value: id, label: `Formulario ${id}`, hint: usedBy(id) })), excludeOption()] : [],
+      why: byUse.length
+        ? `Los anuncios ${scope} del conjunto usan ${byUse.length} formularios distintos`
+        : `Ningún anuncio del conjunto tiene formulario${pageForms.length ? '; estos son los formularios activos de la página del conjunto' : pageError ? `. ${pageError}: pegá el ID del formulario` : ''}`,
+      options: options.length ? [...options, excludeOption()] : [],
       target: 'adset', targetKey: adset.key, freePlaceholder: 'ID del formulario instantáneo',
     }, rowNumber)
-    const result = { leadFormId: answer?.value || answer?.text, pending: !answer }
+    const chosen = answer?.value || answer?.text
+    const result = { leadFormId: chosen, pending: !answer, note: chosen ? `${formLabel(chosen)} · elegido por vos` : undefined }
     leadForms.set(adset.key, result)
     return result
   }
@@ -739,7 +791,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const sheetAction: CanonicalAction | undefined = roles.has('action') && !processOnly ? (vocabulary[normalizeText(rawAction)] ?? (rawAction ? 'unknown' : undefined)) : undefined
     const manualAction = overrides.actionByRow?.[row.rowNumber]
     const planRow: PlanRow = {
-      rowNumber: row.rowNumber, excluded: excluded.has(row.rowNumber), filteredOut, ignored, ...account,
+      rowNumber: row.rowNumber, excluded: excluded.has(row.rowNumber), previous: previousByRow.get(row.rowNumber), filteredOut, ignored, ...account,
       action: manualAction ?? sheetAction ?? 'create', actionSource: manualAction ? 'manual' : sheetAction ? 'sheet' : 'inferred', state: 'ready', issues: [],
     }
     rows.push(planRow)
@@ -869,8 +921,12 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     planRow.campaignKey = campaign.key
     planRow.adsetKey = targets[0]?.key
 
+    const leadsCampaign = isLeadsCampaign(campaign)
     for (const adset of targets) {
-      const leadFormId = instruction.reuseLeadForm ? leadFormFor(adset, row.rowNumber).leadFormId : undefined
+      // Cada conjunto resuelve su propio formulario, también cuando la fila va a varios conjuntos.
+      const needsForm = Boolean(instruction.reuseLeadForm) || adset.destination === 'ON_AD' || (leadsCampaign && !adset.destination)
+      const form = needsForm ? leadFormFor(adset, row.rowNumber) : undefined
+      const leadFormId = form?.leadFormId
       for (const { key: folderKey, label: piece, files, ignored: pieceIgnored } of pieces) {
         const pieceKey = `${row.rowNumber}:${folderKey}:${adset.key}`
         const placements = assignPlacements(files)
@@ -911,7 +967,8 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
         const pageId = adset.pageId ?? context.pageIds[0]
         if (badge !== 'Sin cambios' && !pageId) issues.push({ field: 'Página', message: 'No hay página de Facebook para el anuncio', where: 'Asigná la página del cliente en Meta Ads' })
         const url = destinationUrl(instruction.url) || destinationUrl(cell(row, 'url')) || destinationUrl(context.batchDefaults.url)
-        if (badge !== 'Sin cambios' && !NO_URL_DESTINATION.test(adset.destination ?? '') && !leadFormId && !url) issues.push({ field: 'URL', message: 'Falta la URL de destino', where: 'Valores por defecto del lote o Contexto del cliente' })
+        if (badge !== 'Sin cambios' && needsForm && !leadFormId && form && !form.pending) issues.push({ field: 'Formulario', message: 'El conjunto es de formulario y no hay formulario instantáneo', where: 'Respondé la pregunta de formulario del conjunto' })
+        if (badge !== 'Sin cambios' && !needsForm && !NO_URL_DESTINATION.test(adset.destination ?? '') && !leadFormId && !url) issues.push({ field: 'URL', message: 'Falta la URL de destino', where: 'Valores por defecto del lote o Contexto del cliente' })
 
         const why = effective === 'skip' ? (match ? `Ya existe "${match.name}" con esta pieza: sin cambios` : 'La acción del sheet no aplica a esta pieza')
           : effective === 'add_formats' ? `En Drive hay ${formats.filter((format) => !match?.formats.includes(format)).join(', ')} que el anuncio actual no tiene: se crea un anuncio nuevo`
@@ -922,7 +979,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
           id: pieceKey, rowNumber: row.rowNumber, accountId: campaign.accountId, campaignKey: campaign.key, adsetKey: adset.key, piece, files, formats, comparison, match,
           slots: Object.fromEntries(placements.slots), placementWarnings: placements.warnings, ignoredFiles: pieceIgnored,
           action: effective, badge, name, primaryText, headline, aiCopy,
-          cta: instruction.cta || cell(row, 'cta') || context.batchDefaults.cta, url, leadFormId,
+          cta: instruction.cta || cell(row, 'cta') || context.batchDefaults.cta, url, leadFormId, leadFormNote: form?.note,
           reason: pendingMatch ? 'Esperando tu respuesta sobre la coincidencia' : why,
           state: issues.length ? 'blocked' : 'ready', issues,
           idempotencyKey: hashText([context.spreadsheetId, row.rowNumber, normalizeText(piece), adset.key, files.map((file) => `${file.id}@${file.modifiedTime ?? ''}`).join(',')].join('|')),

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { parseSpreadsheetUrl, readSheetGrid } from '@/lib/google/sheet-import'
 import { confirmInterpretation } from '@/lib/conexa/bulk/interpret'
-import { discoverSiblingAccounts, loadInventory } from '@/lib/conexa/bulk/inventory'
+import { discoverSiblingAccounts, loadInventory, loadLeadFormDetails } from '@/lib/conexa/bulk/inventory'
 import { campaignNameKey } from '@/lib/conexa/bulk/text'
-import { savePlan } from '@/lib/conexa/bulk/persistence'
+import { findPreviousRows, savePlan } from '@/lib/conexa/bulk/persistence'
+import { rowIdentity } from '@/lib/conexa/bulk/resolve'
 import { buildPlanContext } from '@/lib/conexa/bulk/planner'
 import { bulkErrorResponse, clampText, requireBulkAccess, requireGoogle } from '@/lib/conexa/bulk/route-helpers'
 import { sheetInterpretationSchema, type SheetInterpretation } from '@/lib/conexa/bulk/types'
@@ -55,12 +56,20 @@ export async function POST(request: Request) {
   try {
     const [grid, loaded] = await Promise.all([readSheetGrid(google.accessToken, url), loadInventory([...access.accountIds])])
     await addSiblingAccounts(loaded, grid, interpretation.data, access.clientName)
+    await loadLeadFormDetails(loaded.inventory).catch((error) => loaded.warnings.push(`No pude leer los datos de los formularios: ${error instanceof Error ? error.message : 'error de Meta'}`))
     const interpretationId = await confirmInterpretation(access.clientId, grid, interpretation.data, access.userId)
     const context = await buildPlanContext({
       planId: crypto.randomUUID(), clientId: access.clientId, sheetUrl: url, spreadsheetId: parsed.id, googleToken: google.accessToken, grid,
       interpretation: interpretation.data, rowFilter, inventory: loaded.inventory, inventoryWarnings: loaded.warnings, clientContext: clampText(body?.clientContext, 2000),
       batchDefaults: { cta: clampText(body?.batchDefaults?.cta, 40) || 'Más información', url: clampText(body?.batchDefaults?.url, 500) || (clampText(body?.clientContext, 2000).match(/https?:\/\/[^\s"'<>]+/i)?.[0] ?? '') }, pageIds: access.pageIds,
     })
+    try {
+      const previous = await findPreviousRows(parsed.id, grid.rows.map((row) => rowIdentity(context, row.rowNumber).rowKey))
+      context.previousRows = {}
+      for (const row of previous.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) context.previousRows[row.rowKey] = row
+    } catch (error) {
+      context.warnings.push(`No pude revisar si alguna fila ya se creó en un lote anterior: ${error instanceof Error ? error.message : 'error'}`)
+    }
     context.planId = await savePlan(context, interpretationId, access.userId)
     return NextResponse.json({ context })
   } catch (error) {

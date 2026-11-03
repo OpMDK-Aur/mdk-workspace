@@ -7,9 +7,10 @@ import { useBulkStore } from '@/lib/bulk/store'
 import { savePlanOverridesRequest } from '@/lib/conexa/bulk/client'
 import { planToRows, actingAds } from '@/lib/conexa/bulk/plan-rows'
 import { pendingQuestions, resolvePlan } from '@/lib/conexa/bulk/resolve'
-import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type InstructionChip, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides } from '@/lib/conexa/bulk/types'
+import { ACTION_LABELS, ANSWER_EXCLUDE, CANONICAL_ACTIONS, type CanonicalAction, type InstructionChip, type ItemState, type PlanAnswer, type PlanBadge, type PlanIssue, type PlanOverrides, type PlanRow } from '@/lib/conexa/bulk/types'
 import { Button } from '@/components/ui/button'
 import { PlanQuestions } from './plan-questions'
+import { SheetReviewList } from './sheet-review-list'
 
 const selectClass = 'rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[11.5px] text-[#141414] outline-none focus:border-[#5B5FE8]'
 
@@ -85,6 +86,32 @@ function Legend() {
   )
 }
 
+function PreviousBatch({ previous }: { previous: NonNullable<PlanRow['previous']> }) {
+  const clientId = useBulkStore((state) => state.clientId)
+  const [open, setOpen] = useState(false)
+  const date = new Date(previous.date).toLocaleDateString('es-AR')
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className={cn('text-[11px] font-medium', previous.kind === 'created' ? 'text-[#147a52]' : 'text-[#8a5f0d]')}>
+        {previous.kind === 'created' ? `Ya creado el ${date}` : `Esta fila se modificó desde la carga del ${date}: se trata como pedido nuevo`}
+        {clientId && (
+          <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="ml-2 font-normal text-[#5B5FE8] underline-offset-2 hover:underline">
+            {open ? 'Ocultar revisión' : 'Ver revisión de ese lote'}
+          </button>
+        )}
+      </span>
+      {open && clientId && <SheetReviewList planId={previous.planId} clientId={clientId} />}
+    </div>
+  )
+}
+
+// "Fila 3 → 4 anuncios en 4 conjuntos" cuando la fila se reparte en varios conjuntos.
+function fanoutLabel(ads: Array<{ rowNumber: number; adsetKey: string; badge: PlanBadge }>, rowNumber: number) {
+  const rowAds = ads.filter((ad) => ad.rowNumber === rowNumber && ad.badge !== 'Sin cambios')
+  const adsets = new Set(rowAds.map((ad) => ad.adsetKey)).size
+  return adsets > 1 ? `Fila ${rowNumber} → ${rowAds.length} anuncios en ${adsets} conjuntos` : `Fila ${rowNumber}`
+}
+
 function Section({ title, count, actions, children }: { title: string; count: number; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-[#ececea] bg-white">
@@ -118,6 +145,19 @@ export function StepPlan() {
   const update = (patch: Partial<PlanOverrides>) => setPlanOverrides({ ...overrides, ...patch })
   const toggleRow = (rowNumber: number) => {
     const current = new Set(overrides.excludedRows ?? [])
+    const planRow = plan.rows.find((item) => item.rowNumber === rowNumber)
+    // Las filas ya creadas arrancan destildadas por el lote anterior, no por excludedRows.
+    if (planRow?.previous?.kind === 'created') {
+      const included = new Set(overrides.includeCreatedRows ?? [])
+      if (planRow.excluded) {
+        included.add(rowNumber)
+        current.delete(rowNumber)
+      } else {
+        included.delete(rowNumber)
+      }
+      update({ includeCreatedRows: [...included], excludedRows: [...current] })
+      return
+    }
     if (current.has(rowNumber)) current.delete(rowNumber)
     else current.add(rowNumber)
     update({ excludedRows: [...current] })
@@ -286,6 +326,7 @@ export function StepPlan() {
                   </select>
                 </label>
               )}
+              {row.previous && <PreviousBatch previous={row.previous} />}
               {!row.excluded && row.issues.length > 0 ? <IssueLine issues={row.issues} /> : <span className="text-[10.5px] text-[#999]">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>}
               {!row.excluded && row.instructions && row.instructions.length > 0 && <InstructionChips chips={row.instructions} />}
             </div>
@@ -385,8 +426,9 @@ export function StepPlan() {
             <StateIcon state={ad.state} />
             <div className="flex min-w-[200px] flex-1 flex-col">
               <span className="truncate text-[12.5px] font-medium text-[#141414]">{ad.name}</span>
-              <span className="text-[11px] text-[#777]">{`Fila ${ad.rowNumber} · ${ad.piece} · ${ad.formats.join(', ') || 'sin formatos'}`}</span>
-              {ad.issues.length > 0 ? <IssueLine issues={ad.issues} /> : <span className="text-[10.5px] text-[#999]">{ad.reason}</span>}
+                <span className="text-[11px] text-[#777]">{`${fanoutLabel(ads, ad.rowNumber)} · ${ad.piece} · ${ad.formats.join(', ') || 'sin formatos'}`}</span>
+                {ad.issues.length > 0 ? <IssueLine issues={ad.issues} /> : <span className="text-[10.5px] text-[#999]">{ad.reason}</span>}
+                {ad.leadFormNote && <span className="text-[10.5px] text-[#555]">{`Formulario: ${ad.leadFormNote}`}</span>}
             </div>
             {ad.match && !ad.match.certain && (
               <div className="flex items-center gap-1.5 text-[11px] text-[#8a5f0d]">

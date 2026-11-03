@@ -45,8 +45,15 @@ export type InterpretResponse = {
 export type InventoryAccount = { id: string; name: string; unlinked?: boolean }
 export type InventoryCampaign = { id: string; accountId: string; name: string; objective: string; status: string; dailyBudget?: number; isCbo: boolean }
 export type InventoryAdset = { id: string; accountId: string; campaignId: string; name: string; status: string; destination: string; dailyBudget?: number; pageId?: string; optimizationGoal?: string; hasPixel: boolean; endTime?: string; positions?: string[]; whatsappNumber?: string }
-export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; status?: string; leadFormId?: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }
-export type Inventory = { accounts: InventoryAccount[]; campaigns: InventoryCampaign[]; adsets: InventoryAdset[]; ads: InventoryAd[]; currency: Record<string, string> }
+export type InventoryAd = { id: string; accountId: string; adsetId: string; name: string; status?: string; createdTime?: string; leadFormId?: string; creativeId?: string; creativeName?: string; thumbnail?: string; primaryText: string; headline: string }
+export type LeadFormInfo = { id: string; name?: string; status?: string; pageId?: string; pageName?: string }
+export type Inventory = {
+  accounts: InventoryAccount[]; campaigns: InventoryCampaign[]; adsets: InventoryAdset[]; ads: InventoryAd[]; currency: Record<string, string>
+  // Details of the forms used by the ads, and the active forms of each form-adset page (fallback when an adset has none).
+  leadForms?: Record<string, LeadFormInfo>
+  pageForms?: Record<string, LeadFormInfo[]>
+  pageAccessErrors?: Record<string, string>
+}
 
 export type DriveFileRef = { id: string; name: string; mimeType: string; width: number; height: number; modifiedTime?: string }
 export type CreativeSource = { adAccountId: string; adId: string; creativeId?: string; driveFileId: string; driveModifiedTime?: string; format: string }
@@ -78,10 +85,15 @@ export type PlanContext = {
   pageIds: string[]
   today: string
   warnings: string[]
+  clientContext?: string
+  // Latest earlier batch that created each row, keyed by rowKey (sheet + row number).
+  previousRows?: Record<string, { planId: string; contentHash: string; createdAt: string }>
 }
 
 export type PlanOverrides = {
   excludedRows?: number[]
+  // Rows already created in an earlier batch start unchecked; these were checked again on purpose.
+  includeCreatedRows?: number[]
   accountByRow?: Record<number, string>
   campaignDecision?: Record<string, 'use_existing' | 'create' | string>
   adsetChoice?: Record<string, string[]>
@@ -203,6 +215,7 @@ export type PlanAd = {
   cta: string
   url: string
   leadFormId?: string
+  leadFormNote?: string
   reason: string
   state: ItemState
   issues: PlanIssue[]
@@ -212,6 +225,7 @@ export type PlanAd = {
 export type PlanRow = {
   rowNumber: number
   excluded: boolean
+  previous?: { kind: 'created' | 'modified'; date: string; planId: string }
   filteredOut: boolean
   ignored: boolean
   accountId?: string
@@ -246,6 +260,9 @@ export type ExecuteAdRequest = {
     id: string
     rowNumber: number
     idempotencyKey: string
+    // Set by the server: sheet + row number, and the hash of the row content, to spot re-imported rows.
+    rowKey?: string
+    contentHash?: string
     accountId: string
     answers?: Record<string, PlanAnswer>
     campaign: { mode: 'existing'; id: string } | { mode: 'create'; key: string; name: string; referenceId: string; dailyBudget?: number }

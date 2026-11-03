@@ -44,7 +44,21 @@ async function listAll<T>(path: string, params: Record<string, string>) {
 type RawCampaign = { id: string; name?: string; objective?: string; effective_status?: string; daily_budget?: string }
 type RawAdset = { id: string; name?: string; campaign_id?: string; effective_status?: string; destination_type?: string; daily_budget?: string; optimization_goal?: string; end_time?: string; promoted_object?: { page_id?: string; pixel_id?: string; whatsapp_phone_number?: string }; targeting?: { facebook_positions?: string[]; instagram_positions?: string[]; messenger_positions?: string[] } }
 type RawCta = { value?: { lead_gen_form_id?: string } }
-type RawAd = { id: string; name?: string; adset_id?: string; effective_status?: string; creative?: { id?: string; name?: string; thumbnail_url?: string; body?: string; title?: string; object_story_spec?: { link_data?: { message?: string; name?: string; call_to_action?: RawCta }; video_data?: { message?: string; title?: string; call_to_action?: RawCta } } } }
+type RawAd = {
+  id: string; name?: string; adset_id?: string; effective_status?: string; created_time?: string
+  creative?: {
+    id?: string; name?: string; thumbnail_url?: string; body?: string; title?: string
+    object_story_spec?: { link_data?: { message?: string; name?: string; call_to_action?: RawCta }; video_data?: { message?: string; title?: string; call_to_action?: RawCta } }
+    asset_feed_spec?: { call_to_actions?: RawCta[]; bodies?: Array<{ text?: string }>; titles?: Array<{ text?: string }> }
+  }
+}
+
+// Ads with per-placement or dynamic creatives carry the form in asset_feed_spec, not in object_story_spec.
+const leadFormOf = (creative: RawAd['creative']) => {
+  const story = creative?.object_story_spec
+  return story?.link_data?.call_to_action?.value?.lead_gen_form_id || story?.video_data?.call_to_action?.value?.lead_gen_form_id
+    || creative?.asset_feed_spec?.call_to_actions?.map((cta) => cta?.value?.lead_gen_form_id).find(Boolean) || undefined
+}
 
 const ACTIVE_FILTER = JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW'] }])
 
@@ -60,7 +74,7 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
   const [campaigns, adsets, ads] = await Promise.all([
     listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }),
     listAll<RawAdset>(`${act(accountId)}/adsets`, { fields: 'id,name,campaign_id,effective_status,destination_type,daily_budget,optimization_goal,promoted_object,end_time,targeting{facebook_positions,instagram_positions,messenger_positions}', filtering: ACTIVE_FILTER }),
-    listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec}', filtering: ACTIVE_FILTER }),
+    listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,created_time,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec,asset_feed_spec{call_to_actions,bodies,titles}}', filtering: ACTIVE_FILTER }),
   ])
   return {
     accounts: [{ id: accountId, name: account.name ?? accountId }],
@@ -79,11 +93,11 @@ export async function loadAccountInventory(accountId: string): Promise<Inventory
     ads: ads.map((item): InventoryAd => {
       const story = item.creative?.object_story_spec
       return {
-        id: item.id, accountId, adsetId: item.adset_id ?? '', name: item.name ?? '', status: item.effective_status,
-        leadFormId: story?.link_data?.call_to_action?.value?.lead_gen_form_id || story?.video_data?.call_to_action?.value?.lead_gen_form_id || undefined,
+        id: item.id, accountId, adsetId: item.adset_id ?? '', name: item.name ?? '', status: item.effective_status, createdTime: item.created_time,
+        leadFormId: leadFormOf(item.creative),
         creativeId: item.creative?.id, creativeName: item.creative?.name, thumbnail: item.creative?.thumbnail_url,
-        primaryText: item.creative?.body || story?.link_data?.message || story?.video_data?.message || '',
-        headline: item.creative?.title || story?.link_data?.name || story?.video_data?.title || '',
+        primaryText: item.creative?.body || story?.link_data?.message || story?.video_data?.message || item.creative?.asset_feed_spec?.bodies?.[0]?.text || '',
+        headline: item.creative?.title || story?.link_data?.name || story?.video_data?.title || item.creative?.asset_feed_spec?.titles?.[0]?.text || '',
       }
     }),
   }
@@ -113,6 +127,55 @@ export async function discoverSiblingAccounts(linked: InventoryAccount[], client
     return found.length ? { ...account, found } : null
   }))
   return hits.filter((hit): hit is NonNullable<typeof hit> => Boolean(hit))
+}
+
+/**
+ * Form names and status need the token of the page that owns the form. Page tokens come from me/accounts;
+ * when the page isn't there, the user token is tried and the form keeps only its id if Meta refuses.
+ */
+export async function loadLeadFormDetails(inventory: Inventory) {
+  const formAdsets = inventory.adsets.filter((adset) => adset.destination === 'ON_AD' || inventory.ads.some((ad) => ad.adsetId === adset.id && ad.leadFormId))
+  const formIds = [...new Set(inventory.ads.filter((ad) => ad.leadFormId && formAdsets.some((adset) => adset.id === ad.adsetId)).map((ad) => ad.leadFormId!))].slice(0, 60)
+  const pageIds = [...new Set(formAdsets.map((adset) => adset.pageId).filter((id): id is string => Boolean(id)))].slice(0, 10)
+  if (!formIds.length && !pageIds.length) return
+  const token = await getMetaAccessToken()
+  const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }).catch(() => [])
+  const pageToken = new Map(pages.filter((page) => page.access_token).map((page) => [page.id, page.access_token!]))
+  const getWith = async <T>(path: string, params: Record<string, string>, accessToken?: string | null) => {
+    const response = await fetch(`${META_BASE_URL}/${path}?${new URLSearchParams({ ...params, access_token: accessToken ?? '' })}`, { cache: 'no-store' })
+    const payload = await response.json().catch(() => null) as ({ error?: { message?: string } } & T) | null
+    if (!response.ok || payload?.error) throw new MetaReadError(payload?.error?.message || `Meta respondió ${response.status}.`)
+    return payload as T
+  }
+
+  inventory.leadForms = {}
+  inventory.pageForms = {}
+  inventory.pageAccessErrors = {}
+  const pageOfForm = new Map(inventory.ads.filter((ad) => ad.leadFormId).map((ad) => [ad.leadFormId!, inventory.adsets.find((adset) => adset.id === ad.adsetId)?.pageId]))
+  await Promise.all(formIds.map(async (id) => {
+    const ownPageToken = pageToken.get(pageOfForm.get(id) ?? '')
+    for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
+      try {
+        const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
+        inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id, pageName: form.page?.name }
+        return
+      } catch {}
+    }
+    inventory.leadForms![id] = { id }
+  }))
+  await Promise.all(pageIds.map(async (pageId) => {
+    const accessToken = pageToken.get(pageId)
+    if (!accessToken) {
+      inventory.pageAccessErrors![pageId] = 'El token de Meta no tiene acceso a esta página (falta pages_read_engagement en el Business Manager)'
+      return
+    }
+    try {
+      const result = await getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '100' }, accessToken)
+      inventory.pageForms![pageId] = (result.data ?? []).filter((form) => form.status === 'ACTIVE').map((form) => ({ id: form.id, name: form.name, status: form.status, pageId }))
+    } catch (error) {
+      inventory.pageAccessErrors![pageId] = error instanceof Error ? error.message : 'Meta no devolvió los formularios de la página'
+    }
+  }))
 }
 
 export async function loadInventory(accountIds: string[]) {
