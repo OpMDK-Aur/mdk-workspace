@@ -3,8 +3,9 @@ import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import type { CreativeSource, ExecuteAdResult, PlanContext, PlanOverrides, SheetInterpretation } from './types'
 
 // Las tablas se crean con scripts/sql/bulk-sheet-plans.sql, que se corre a mano con autorización.
-// Hasta activar CONEXA_BULK_PLANS_DB=true no se consulta la base: todo vive en memoria del proceso.
-export const persistenceEnabled = () => process.env.CONEXA_BULK_PLANS_DB === 'true'
+// En producción cada pedido puede caer en otra instancia, así que un plan en memoria se "pierde" entre
+// el armado y la creación. Por eso se guarda en la base salvo que CONEXA_BULK_PLANS_DB=false.
+export const persistenceEnabled = () => process.env.CONEXA_BULK_PLANS_DB !== 'false'
 
 type StoredItem = ExecuteAdResult & {
   idempotencyKey: string; planId: string; rowNumber?: number; rowKey?: string; contentHash?: string; createdAt?: string

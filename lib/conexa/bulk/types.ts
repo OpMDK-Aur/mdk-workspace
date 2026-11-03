@@ -273,4 +273,6 @@ export type ExecuteAdRequest = {
   }
 }
 
+export const PLAN_NOT_FOUND = 'El servidor no encuentra este plan (se generó antes de que los planes se guardaran en la base). Volvé a generarlo desde el sheet: lo que ya se creó en Meta se reutiliza, no se duplica.'
+
 export type ExecuteAdResult = { itemId: string; ok: true; campaignId: string; adsetId: string; adId: string; creativeId: string; accountId: string; reused: { campaign: boolean; adset: boolean; ad: boolean } } | { itemId: string; ok: false; error: string; step?: string }

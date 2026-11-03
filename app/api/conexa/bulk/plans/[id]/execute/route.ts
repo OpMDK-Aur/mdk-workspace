@@ -3,6 +3,7 @@ import { isAllowedAssetUrl } from '@/lib/meta-ads/bulk-access'
 import { executeAd } from '@/lib/conexa/bulk/execute'
 import { loadPlan, markPlanApproved } from '@/lib/conexa/bulk/persistence'
 import { answersForAd, pendingQuestions, resolvePlan, rowIdentity } from '@/lib/conexa/bulk/resolve'
+import { PLAN_NOT_FOUND } from '@/lib/conexa/bulk/types'
 import { requireBulkAccess } from '@/lib/conexa/bulk/route-helpers'
 import type { ExecuteAdRequest } from '@/lib/conexa/bulk/types'
 
@@ -16,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const access = await requireBulkAccess(body.clientId)
   if ('error' in access) return access.error
   const plan = await loadPlan(id)
-  if (!plan || plan.context.clientId !== access.clientId) return NextResponse.json({ error: 'Plan no encontrado.' }, { status: 404 })
+  if (!plan || plan.context.clientId !== access.clientId) return NextResponse.json({ error: PLAN_NOT_FOUND, code: 'plan_not_found' }, { status: 404 })
 
   // El servidor recalcula el plan aprobado: solo ejecuta anuncios que existen en él y no están bloqueados.
   const resolved = resolvePlan(plan.context, plan.overrides)
