@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -15,6 +15,9 @@ import { CTAS, PRIMARY_TEXT_LIMIT, adsetDestinationInfo, adsetStatusLabel, objec
 import { isDraft, validateRow } from '@/lib/bulk/validate'
 import { AssetThumb, StateBadge } from './bulk-shared'
 import { NewDestinationDialog, type MetaAccountOption } from './new-destination-dialog'
+
+// Kept outside the component so going back and forth between steps doesn't ask for the same copy again.
+const autoCopyTried = new Set<string>()
 
 const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white'
 const ISSUE_COLOR = { warn: 'text-[#a86412]', info: 'text-[#888]', error: 'text-[#c23b3b]' } as const
@@ -117,7 +120,7 @@ function CampaignAdsetPicker({ row, adsets, currentAdset, applyLabel, onChange, 
   )
 }
 
-function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, onApply }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientId: string; clientName: string; selected: boolean; applyLabel: string; onApply: (field: ApplyField, value: string) => void }) {
+function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, onApply, writingCopy }: { row: BulkRow; index: number; adsets: BulkAdset[]; clientId: string; clientName: string; selected: boolean; applyLabel: string; onApply: (field: ApplyField, value: string) => void; writingCopy: boolean }) {
   const updateRow = useBulkStore((state) => state.updateRow)
   const planId = useBulkStore((state) => state.sheetPlan?.context.planId)
   const [regenerating, setRegenerating] = useState(false)
@@ -199,8 +202,8 @@ function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, o
         </div>
         {planId && row.planAdId && row.status !== 'done' && (
           <div className="mt-1 flex flex-col gap-0.5">
-            <button type="button" disabled={regenerating} onClick={regenerate} className="self-start text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#aaa] disabled:no-underline">
-              {regenerating ? 'Mirando el creativo…' : 'Regenerar'}
+            <button type="button" disabled={regenerating || writingCopy} onClick={regenerate} className="self-start text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#aaa] disabled:no-underline">
+              {regenerating || writingCopy ? 'Mirando el creativo…' : 'Regenerar'}
             </button>
             {regenerateError && <span role="alert" className="text-[10px] text-[#c23b3b]">{regenerateError}</span>}
           </div>
@@ -245,6 +248,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
   const planId = useBulkStore((state) => state.sheetPlan?.context.planId)
   const [writing, setWriting] = useState(false)
   const [writeErrors, setWriteErrors] = useState<string[]>([])
+  const [writingIds, setWritingIds] = useState<Set<string>>(new Set())
 
   const summary = useMemo(() => {
     const states = rows.map((row) => validateRow(row).state)
@@ -266,13 +270,23 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
     updateRows(ids, field === 'adsetId' ? { adsetId: value } : { [field]: value, aiGenerated: false })
   }
 
+  // Sheet rows that arrive without copy get it written from their creative right away, once per row.
+  useEffect(() => {
+    if (!planId) return
+    const targets = rows.filter((row) => row.planAdId && row.status !== 'done' && (!row.primaryText.trim() || !row.headline.trim()) && !autoCopyTried.has(`${planId}:${row.planAdId}`))
+    if (!targets.length) return
+    for (const row of targets) autoCopyTried.add(`${planId}:${row.planAdId}`)
+    setWriting(true)
+    void writeCopiesFromCreatives(planId, targets, { overwrite: false }).finally(() => setWriting(false))
+  }, [planId, rows])
+
   async function writeCopies() {
     const targets = rows.filter((row) => row.status !== 'done' && (selected.length ? selected.includes(row.id) : !row.primaryText.trim() || !row.headline.trim()))
     if (!targets.length) return
     setWriting(true)
     setWriteErrors([])
     try {
-      if (planId) await writeCopiesFromCreatives(planId, targets)
+      if (planId) await writeCopiesFromCreatives(planId, targets, { overwrite: true })
       else {
         const copies = await generateCopies({ clientId, clientName, rows: targets.map(({ id, baseName, adsetId }) => ({ id, baseName, adsetId })) })
         for (const [id, copy] of Object.entries(copies)) updateRow(id, { ...copy, aiGenerated: true })
@@ -283,7 +297,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
   }
 
   // Sheet rows: the copy is written by looking at each row's creative. Rows with the same pieces share one call.
-  async function writeCopiesFromCreatives(currentPlanId: string, targets: BulkRow[]) {
+  async function writeCopiesFromCreatives(currentPlanId: string, targets: BulkRow[], { overwrite }: { overwrite: boolean }) {
     const groups = [...targets.filter((row) => row.planAdId).reduce((map, row) => {
       const key = row.assets.map((asset) => asset.id).sort().join('|') || row.id
       map.set(key, [...(map.get(key) ?? []), row])
@@ -291,18 +305,32 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
     }, new Map<string, BulkRow[]>()).values()]
     const errors: string[] = []
     let next = 0
+    setWritingIds((current) => new Set([...current, ...targets.map((row) => row.id)]))
     await Promise.all(Array.from({ length: Math.min(3, groups.length) }, async () => {
       while (next < groups.length) {
         const group = groups[next++]
         try {
           const copy = await regenerateCopyRequest(currentPlanId, { clientId, planAdId: group[0].planAdId! })
-          for (const row of group) updateRow(row.id, { ...copy, aiGenerated: true })
+          for (const row of group) {
+            // Automatic runs only fill what is still empty, so text typed while it was writing is kept.
+            const current = useBulkStore.getState().rows.find((item) => item.id === row.id)
+            if (!current) continue
+            const primaryText = overwrite || !current.primaryText.trim() ? copy.primaryText : current.primaryText
+            const headline = overwrite || !current.headline.trim() ? copy.headline : current.headline
+            updateRow(row.id, { primaryText, headline, aiGenerated: primaryText === copy.primaryText })
+          }
         } catch (error) {
           errors.push(`${group[0].baseName || group[0].adName}: ${error instanceof Error ? error.message : 'No se pudo generar.'}`)
+        } finally {
+          setWritingIds((current) => {
+            const updated = new Set(current)
+            for (const row of group) updated.delete(row.id)
+            return updated
+          })
         }
       }
     }))
-    setWriteErrors(errors)
+    setWriteErrors((current) => [...current, ...errors])
   }
 
   if (!rows.length) {
@@ -365,7 +393,7 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => <Row key={row.id} row={row} index={index} adsets={adsets} clientId={clientId} clientName={clientName} selected={selected.includes(row.id)} applyLabel={applyLabel} onApply={applyCopy} />)}
+              {rows.map((row, index) => <Row key={row.id} row={row} index={index} adsets={adsets} clientId={clientId} clientName={clientName} selected={selected.includes(row.id)} applyLabel={applyLabel} onApply={applyCopy} writingCopy={writingIds.has(row.id)} />)}
             </tbody>
           </table>
         </div>
