@@ -1,4 +1,5 @@
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 import { getMetaAccessToken } from '@/lib/meta-ads/token'
 import { campaignNameKey, normalizeText } from './text'
 import type { Inventory, InventoryAccount, InventoryAd, InventoryAdset, InventoryCampaign } from './types'
@@ -10,23 +11,67 @@ const MAX_PAGES = 5
 export const act = (accountId: string) => `act_${accountId.replace(/^act_/, '')}`
 
 export class MetaReadError extends Error {}
+export class MetaRateLimitError extends MetaReadError {}
+
+// #4 app, #17/#80000-80014 ad account (Business Use Case), #32 page, #613 custom limits.
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613])
+const isRateLimitCode = (code?: number) => code !== undefined && (RATE_LIMIT_CODES.has(code) || (code >= 80000 && code <= 80014))
+const MAX_INLINE_WAIT_MS = 20_000
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Meta says how long until the account can be called again in these headers (minutes or seconds). */
+function regainAccessMs(headers: Headers) {
+  let ms = 0
+  try {
+    const usage = JSON.parse(headers.get('x-business-use-case-usage') || '{}') as Record<string, Array<{ estimated_time_to_regain_access?: number }>>
+    for (const entries of Object.values(usage)) for (const entry of entries ?? []) ms = Math.max(ms, (entry.estimated_time_to_regain_access ?? 0) * 60_000)
+  } catch {}
+  try {
+    const account = JSON.parse(headers.get('x-ad-account-usage') || '{}') as { reset_time_duration?: number }
+    ms = Math.max(ms, (account.reset_time_duration ?? 0) * 1000)
+  } catch {}
+  return ms
+}
+
+function rateLimitMessage(code: number | undefined, waitMs: number) {
+  const scope = code === 4 ? 'de la app' : code === 32 ? 'a la página' : 'a esta cuenta publicitaria'
+  const when = waitMs > 0 ? `se libera en ~${Math.max(1, Math.ceil(waitMs / 60_000))} min` : 'se libera en unos minutos'
+  return `Meta frenó las consultas ${scope} por exceso de llamadas (otras cargas, reportes o el Administrador de anuncios usan el mismo cupo); ${when}. Volvé a intentar después.`
+}
+
+type MetaPayload = { error?: { message?: string; error_user_msg?: string; code?: number } }
+
+/** Short throttles are waited out and retried; long ones fail with how long until Meta frees the account. */
+async function metaRequest<T>(url: string, init: RequestInit): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(url, { ...init, cache: 'no-store' })
+    const payload = await response.json().catch(() => null) as (MetaPayload & T) | null
+    if (response.ok && !payload?.error) return payload as T
+    const code = payload?.error?.code
+    if (isRateLimitCode(code)) {
+      const waitMs = regainAccessMs(response.headers)
+      const retryIn = waitMs || 2_000 * attempt
+      if (attempt < 3 && retryIn <= MAX_INLINE_WAIT_MS) {
+        await sleep(retryIn)
+        continue
+      }
+      throw new MetaRateLimitError(rateLimitMessage(code, waitMs))
+    }
+    throw new MetaReadError(payload?.error?.error_user_msg || payload?.error?.message || `Meta respondió ${response.status}.`)
+  }
+}
 
 export async function metaGet<T>(path: string, params: Record<string, string>): Promise<T> {
   const token = await getMetaAccessToken()
   if (!token) throw new MetaReadError('META_ADS_ACCESS_TOKEN no está configurado.')
-  const response = await fetch(`${META_BASE_URL}/${path}?${new URLSearchParams({ ...params, access_token: token })}`, { cache: 'no-store' })
-  const payload = await response.json().catch(() => null) as ({ error?: { message?: string; error_user_msg?: string } } & T) | null
-  if (!response.ok || payload?.error) throw new MetaReadError(payload?.error?.error_user_msg || payload?.error?.message || `Meta respondió ${response.status}.`)
-  return payload as T
+  return metaRequest<T>(`${META_BASE_URL}/${path}?${new URLSearchParams({ ...params, access_token: token })}`, {})
 }
 
+// A throttled POST is rejected by Meta before doing anything, so retrying it cannot duplicate objects.
 export async function metaPost<T>(path: string, params: Record<string, string>): Promise<T> {
   const token = await getMetaAccessToken()
   if (!token) throw new MetaReadError('META_ADS_ACCESS_TOKEN no está configurado.')
-  const response = await fetch(`${META_BASE_URL}/${path}`, { method: 'POST', body: new URLSearchParams({ ...params, access_token: token }), cache: 'no-store' })
-  const payload = await response.json().catch(() => null) as ({ error?: { message?: string; error_user_msg?: string } } & T) | null
-  if (!response.ok || payload?.error) throw new MetaReadError(payload?.error?.error_user_msg || payload?.error?.message || `Meta respondió ${response.status}.`)
-  return payload as T
+  return metaRequest<T>(`${META_BASE_URL}/${path}`, { method: 'POST', body: new URLSearchParams({ ...params, access_token: token }) })
 }
 
 async function listAll<T>(path: string, params: Record<string, string>) {
@@ -68,7 +113,23 @@ const minorToMajor = (value: string | undefined, currency: string) => {
   return Number(value) / (zeroDecimal ? 1 : 100)
 }
 
-export async function loadAccountInventory(accountId: string): Promise<Inventory> {
+export const inventoryTag = (accountId: string) => `meta-inventory:${accountId.replace(/^act_/, '')}`
+const INVENTORY_TTL_SECONDS = 120
+
+// Interpret and plan both read the same accounts, and several people can load the same account at once.
+// The cache (shared across instances) and the in-flight map turn those into a single read to Meta.
+const inflight = new Map<string, Promise<Inventory>>()
+export function loadAccountInventory(accountId: string): Promise<Inventory> {
+  const id = accountId.replace(/^act_/, '')
+  const running = inflight.get(id)
+  if (running) return running
+  const cached = unstable_cache(() => loadAccountInventoryFresh(id), ['conexa-inventory-v1', id], { revalidate: INVENTORY_TTL_SECONDS, tags: [inventoryTag(id)] })
+  const promise = cached().finally(() => inflight.delete(id))
+  inflight.set(id, promise)
+  return promise
+}
+
+async function loadAccountInventoryFresh(accountId: string): Promise<Inventory> {
   const account = await metaGet<{ name?: string; currency?: string }>(act(accountId), { fields: 'name,currency' })
   const currency = account.currency ?? 'USD'
   const [campaigns, adsets, ads] = await Promise.all([
@@ -226,7 +287,8 @@ export async function loadInventory(accountIds: string[]) {
   const results = await Promise.allSettled(accountIds.map(loadAccountInventory))
   const inventory: Inventory = { accounts: [], campaigns: [], adsets: [], ads: [], currency: {} }
   const warnings: string[] = []
-  const failedNames = await Promise.all(results.map((result, index) => result.status === 'rejected'
+  // A throttled account would reject the name lookup too and only extend the block.
+  const failedNames = await Promise.all(results.map((result, index) => result.status === 'rejected' && !(result.reason instanceof MetaRateLimitError)
     ? metaGet<{ name?: string }>(act(accountIds[index]), { fields: 'name' }).then((account) => account.name).catch(() => undefined)
     : undefined))
   results.forEach((result, index) => {

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
+import { inventoryTag } from '@/lib/conexa/bulk/inventory'
 import { isAllowedAssetUrl } from '@/lib/meta-ads/bulk-access'
 import { executeAd } from '@/lib/conexa/bulk/execute'
 import { loadPlan, markPlanApproved } from '@/lib/conexa/bulk/persistence'
@@ -38,5 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // Accounts found at plan time because they hold the sheet's campaigns are allowed for this approved plan only.
   const accountIds = new Set([...access.accountIds, ...plan.context.inventory.accounts.filter((account) => account.unlinked).map((account) => account.id)])
   const result = await executeAd({ ...body, planId: id }, { accountIds, pageIds: access.pageIds })
+  // The next plan has to see the campaigns and ad sets just created, or it would offer to create them again.
+  if (result.ok) revalidateTag(inventoryTag(result.accountId), { expire: 0 })
   return NextResponse.json(result, { status: result.ok ? 200 : 400 })
 }
