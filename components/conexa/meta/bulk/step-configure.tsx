@@ -290,7 +290,14 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
       </p>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-[#dcdcd8] bg-white px-4 py-3">
-        <span className="text-[11px] font-medium text-[#555]">{selected.length ? `${selected.length} seleccionados` : 'Sin selección: se aplica a todos'}</span>
+        <span className="text-[11px] font-medium text-[#555]">
+          {fromSheet
+            ? `${selected.length} de ${rows.length} seleccionados · solo estos pasan a Aprobar y crear`
+            : selected.length ? `${selected.length} seleccionados` : 'Sin selección: se aplica a todos'}
+        </span>
+        <button type="button" onClick={() => setSelected(allSelected ? [] : rows.map((row) => row.id))} className="text-[11px] font-semibold text-[#5B5FE8] hover:underline">
+          {allSelected ? 'Quitar selección' : 'Seleccionar todos'}
+        </button>
         <Button size="sm" variant="outline" onClick={writeCopies} disabled={writing} className="h-8 rounded-full border-[#5B5FE8]/50 bg-white text-[11px] text-[#5B5FE8] hover:bg-[#5B5FE8]/5 hover:text-[#5B5FE8]">
           {'✦ Escribir copies con Conexa'}
         </Button>
@@ -327,7 +334,9 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
 
       <div className="flex items-center justify-between">
         <Button size="sm" variant="outline" onClick={() => setStep(fromSheet ? 'plan' : 1)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{fromSheet ? '← Volver al plan de carga' : '← Sumar más archivos'}</Button>
-        <Button size="sm" onClick={() => setStep(3)} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">{'Revisar y publicar →'}</Button>
+        <Button size="sm" disabled={fromSheet && !selected.length} onClick={() => setStep(3)} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+          {fromSheet ? (selected.length ? `Continuar con ${selected.length} ${selected.length === 1 ? 'anuncio' : 'anuncios'} →` : 'Seleccioná al menos un anuncio') : 'Revisar y publicar →'}
+        </Button>
       </div>
     </div>
   )

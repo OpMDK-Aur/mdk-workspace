@@ -25,7 +25,9 @@ async function driveToStorage(clientId: string, file: { id: string; name: string
 
 export function StepSheetApprove() {
   const sheetPlan = useBulkStore((state) => state.sheetPlan)
-  const rows = useBulkStore((state) => state.rows)
+  const allRows = useBulkStore((state) => state.rows)
+  const selected = useBulkStore((state) => state.selected)
+  const rows = allRows.filter((row) => selected.includes(row.id))
   const clientId = useBulkStore((state) => state.clientId)
   const setStep = useBulkStore((state) => state.setStep)
   const updateRow = useBulkStore((state) => state.updateRow)
