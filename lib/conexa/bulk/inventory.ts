@@ -130,6 +130,15 @@ export async function discoverSiblingAccounts(linked: InventoryAccount[], client
 }
 
 const NO_PAGE_ACCESS = 'el token de Meta no tiene acceso a la página que tiene el formulario: asigná la página al usuario del sistema en el Business Manager con permiso de clientes potenciales'
+const NO_PAGE_PERMISSION = 'al token de Meta de la app le falta el permiso pages_read_engagement, y sin él Meta no deja leer los nombres de los formularios. Hay que generar el token del usuario del sistema con ese permiso (y leads_retrieval)'
+const RATE_LIMITED = 'Meta limitó las consultas de la app por ahora (#4). Volvé a generar el plan en unos minutos para ver los nombres'
+
+// Permission and rate-limit errors repeat for every form, so the first one stops the lookup and is shown once.
+function blockingReason(message: string) {
+  if (/\(#(4|17|32|613)\)|request limit/i.test(message)) return RATE_LIMITED
+  if (/\(#(10|200)\)|pages_read_engagement|Page Public/i.test(message)) return NO_PAGE_PERMISSION
+  return null
+}
 
 /**
  * Form names and status can only be read with the token of the page that owns the form.
@@ -166,6 +175,13 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   inventory.leadForms = {}
   inventory.pageForms = {}
   inventory.pageAccessErrors = {}
+  let blocked: string | null = null
+  const note = (error: unknown) => {
+    const message = error instanceof Error ? error.message : ''
+    blocked ??= blockingReason(message)
+    return message
+  }
+
   await Promise.all(pageIds.map(async (pageId) => {
     const accessToken = pageToken.get(pageId)
     if (!accessToken) {
@@ -178,23 +194,30 @@ export async function loadLeadFormDetails(inventory: Inventory) {
       for (const form of forms) inventory.leadForms![form.id] = form
       inventory.pageForms![pageId] = forms.filter((form) => form.status === 'ACTIVE')
     } catch (error) {
-      inventory.pageAccessErrors![pageId] = error instanceof Error ? error.message : 'Meta no devolvió los formularios de la página'
+      inventory.pageAccessErrors![pageId] = note(error) || 'Meta no devolvió los formularios de la página'
     }
   }))
 
   const pageOfForm = new Map(inventory.ads.filter((ad) => ad.leadFormId).map((ad) => [ad.leadFormId!, inventory.adsets.find((adset) => adset.id === ad.adsetId)?.pageId]))
-  await Promise.all(formIds.filter((id) => !inventory.leadForms![id]?.name).map(async (id) => {
+  // Sequential on purpose: one permission or rate-limit error is enough to know the rest will fail too.
+  for (const id of formIds.filter((formId) => !inventory.leadForms![formId]?.name)) {
     const pageId = pageOfForm.get(id)
     const ownPageToken = pageToken.get(pageId ?? '')
-    for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
-      try {
-        const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
-        inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id ?? pageId, pageName: form.page?.name }
-        return
-      } catch {}
+    if (!blocked) {
+      for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
+        try {
+          const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
+          inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id ?? pageId, pageName: form.page?.name }
+          break
+        } catch (error) {
+          note(error)
+          if (blocked) break
+        }
+      }
     }
-    inventory.leadForms![id] = { id, pageId, nameError: ownPageToken ? 'Meta no devolvió el nombre del formulario' : NO_PAGE_ACCESS }
-  }))
+    if (!inventory.leadForms![id]?.name) inventory.leadForms![id] = { id, pageId, nameError: blocked ?? (ownPageToken ? 'Meta no devolvió el nombre del formulario' : NO_PAGE_ACCESS) }
+  }
+  if (blocked) inventory.formAccessIssue = blocked
 }
 
 export async function loadInventory(accountIds: string[]) {

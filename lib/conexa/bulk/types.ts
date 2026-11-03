@@ -53,6 +53,8 @@ export type Inventory = {
   leadForms?: Record<string, LeadFormInfo>
   pageForms?: Record<string, LeadFormInfo[]>
   pageAccessErrors?: Record<string, string>
+  // Why form names couldn't be read (missing page permission or Meta rate limit), shown once per question.
+  formAccessIssue?: string
 }
 
 export type DriveFileRef = { id: string; name: string; mimeType: string; width: number; height: number; modifiedTime?: string }

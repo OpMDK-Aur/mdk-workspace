@@ -684,11 +684,19 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const info = (id: string) => inventory.leadForms?.[id]
     // Siempre nombre + ID; si Meta no deja leer el nombre, se dice por qué en vez de dejarlo vacío.
     const formLabel = (id: string) => `${info(id)?.name ?? 'Nombre no disponible'} · ID ${id}`
-    const statusLabel = (id: string) => (info(id)?.status ? ` · ${info(id)!.status}` : info(id)?.nameError ? ` · ${info(id)!.nameError}` : '')
+    // El motivo de la falta de nombre va una sola vez en la pregunta; por opción solo el estado.
+    const statusLabel = (id: string) => (info(id)?.status ? ` · ${info(id)!.status}` : '')
+    const unnamed = byUse.filter(([id]) => !info(id)?.name)
+    const nameIssue = unnamed.length ? (inventory.formAccessIssue ?? info(unnamed[0][0])?.nameError) : undefined
+    // Sin nombre, lo que ayuda a elegir es qué anuncios usan cada formulario.
+    const adsUsing = (id: string) => {
+      const names = [...new Set(used.filter((ad) => ad.leadFormId === id).map((ad) => ad.name).filter(Boolean))]
+      return names.length ? ` · ${names.slice(0, 2).map((name) => `"${name}"`).join(', ')}${names.length > 2 ? ` y ${names.length - 2} más` : ''}` : ''
+    }
 
     if (byUse.length === 1) {
       const [id, count] = byUse[0]
-      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}` }
+      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}${nameIssue ? ` (sin nombre: ${nameIssue})` : ''}` }
       leadForms.set(adset.key, result)
       return result
     }
@@ -696,13 +704,13 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
     const pageForms = adset.pageId ? inventory.pageForms?.[adset.pageId] ?? [] : []
     const pageError = adset.pageId ? inventory.pageAccessErrors?.[adset.pageId] : undefined
     const options = byUse.length
-      ? byUse.map(([id, count]) => ({ value: id, label: formLabel(id), hint: `usado por ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}` }))
+      ? byUse.map(([id, count]) => ({ value: id, label: formLabel(id), hint: `usado por ${count} anuncio${count > 1 ? 's' : ''} ${scope}${adsUsing(id)}${statusLabel(id)}` }))
       : pageForms.map((form) => ({ value: form.id, label: formLabel(form.id), hint: 'activo en la página del conjunto' }))
     const answer = ask({
       id: `lead-form:${adset.key}`, kind: options.length ? 'choice' : 'text', field: 'Formulario',
       prompt: `¿Qué formulario instantáneo uso en los anuncios nuevos de "${adset.name}"?`,
       why: byUse.length
-        ? `Los anuncios ${scope} del conjunto usan ${byUse.length} formularios distintos`
+        ? `Los anuncios ${scope} del conjunto usan ${byUse.length} formularios distintos.${nameIssue ? ` No muestro los nombres porque ${nameIssue}.` : ''}`
         : `Ningún anuncio del conjunto tiene formulario${pageForms.length ? '; estos son los formularios activos de la página del conjunto' : pageError ? `. ${pageError}: pegá el ID del formulario` : ''}`,
       options: options.length ? [...options, excludeOption()] : [],
       target: 'adset', targetKey: adset.key, freePlaceholder: 'ID del formulario instantáneo',
