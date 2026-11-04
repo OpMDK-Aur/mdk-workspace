@@ -283,24 +283,24 @@ export async function loadLeadFormDetails(inventory: Inventory) {
     return payload as T
   }
 
+  // Page tokens are the way around the app-wide limit (#4): calls made with them count against each page's own
+  // quota. Getting them costs user-token calls, so they are kept for hours and a throttled lookup is never stored.
   const pageToken = new Map<string, string>()
-  const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }).catch(() => [])
-  for (const page of pages) if (page.access_token) pageToken.set(page.id, page.access_token)
-  if (pageIds.some((id) => !pageToken.has(id))) {
-    const businesses = await listAll<{ id: string }>('me/businesses', { fields: 'id' }).catch(() => [])
-    for (const business of businesses.slice(0, 10)) {
-      for (const edge of ['owned_pages', 'client_pages']) {
-        if (pageIds.every((id) => pageToken.has(id))) break
-        const found = await listAll<{ id: string; access_token?: string }>(`${business.id}/${edge}`, { fields: 'id,access_token' }).catch(() => [])
-        for (const page of found) if (page.access_token && !pageToken.has(page.id)) pageToken.set(page.id, page.access_token)
-      }
-    }
-  }
-  // Pages reached through a business role often don't appear in any of those lists but still hand out their token directly.
-  await Promise.all(pageIds.filter((id) => !pageToken.has(id)).map(async (pageId) => {
-    const page = await getWith<{ access_token?: string }>(pageId, { fields: 'access_token' }, token).catch(() => null)
-    if (page?.access_token) pageToken.set(pageId, page.access_token)
+  await Promise.all(pageIds.map(async (pageId) => {
+    const found = await unstable_cache(async () => {
+      const page = await getWith<{ access_token?: string }>(pageId, { fields: 'access_token' }, token)
+      if (!page.access_token) throw new MetaReadError('Meta no devolvió el token de la página.')
+      return page.access_token
+    }, ['conexa-page-token-v1', pageId], { revalidate: 21_600 })().catch(() => null)
+    if (found) pageToken.set(pageId, found)
   }))
+  if (pageIds.some((id) => !pageToken.has(id))) {
+    const listed = await unstable_cache(async () => {
+      const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }, { pageSize: 100 })
+      return Object.fromEntries(pages.filter((page) => page.access_token).map((page) => [page.id, page.access_token!]))
+    }, ['conexa-user-page-tokens-v1'], { revalidate: 21_600 })().catch(() => ({} as Record<string, string>))
+    for (const pageId of pageIds) if (!pageToken.has(pageId) && listed[pageId]) pageToken.set(pageId, listed[pageId])
+  }
 
   inventory.leadForms = {}
   inventory.pageForms = {}
@@ -336,8 +336,10 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   for (const id of formIds.filter((formId) => !inventory.leadForms![formId]?.name)) {
     const pageId = pageOfForm.get(id)
     const ownPageToken = pageToken.get(pageId ?? '')
-    if (!blocked) {
-      for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
+    // A page token still works while the app-wide limit is hit; only the user-token retry is skipped then.
+    const attempts = [ownPageToken, blocked ? null : token].filter((value): value is string => Boolean(value))
+    if (attempts.length) {
+      for (const accessToken of attempts) {
         try {
           // Form names barely change; once read they survive a later throttle or a missing page token.
           const form = await unstable_cache(
