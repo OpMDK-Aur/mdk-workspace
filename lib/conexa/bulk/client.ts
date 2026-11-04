@@ -11,8 +11,14 @@ export class BulkPlanError extends Error {
 async function request<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init.headers } })
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new BulkPlanError(data.error ?? 'No se pudo completar la operación.', data.code === 'google_not_connected')
+  if (!response.ok) throw new BulkPlanError(data.error ?? fallbackMessage(response.status), data.code === 'google_not_connected')
   return data as T
+}
+
+// Without a JSON body the server never answered: usually the request ran out of time.
+function fallbackMessage(status: number) {
+  if (status === 504 || status === 408) return 'Meta o Google tardaron demasiado en responder y la operación se cortó. Probá de nuevo en un minuto.'
+  return `No se pudo completar la operación (error ${status}). Probá de nuevo; si se repite, avisanos.`
 }
 
 export const interpretSheetRequest = (body: { clientId: string; url: string; clientContext?: string }) =>

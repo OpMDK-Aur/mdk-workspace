@@ -105,7 +105,8 @@ const MIN_PAGE_SIZE = 10
  * Heavy edges ask for small pages; if Meta still says the page is too heavy, the page size is halved and the
  * same cursor is asked again. Between pages it slows down when the usage headers get close to the limit.
  */
-async function listAll<T>(path: string, params: Record<string, string>, options: { pageSize?: number; maxItems?: number } = {}) {
+async function listAll<T>(path: string, params: Record<string, string>, options: { pageSize?: number; maxItems?: number; timeBudgetMs?: number } = {}) {
+  const deadline = options.timeBudgetMs ? Date.now() + options.timeBudgetMs : Infinity
   const token = await getMetaAccessToken()
   if (!token) throw new MetaReadError('META_ADS_ACCESS_TOKEN no está configurado.')
   const maxItems = options.maxItems ?? 5000
@@ -130,6 +131,7 @@ async function listAll<T>(path: string, params: Record<string, string>, options:
     after = result.payload.paging?.cursors?.after
     url = result.payload.paging?.next
     if (!url) break
+    if (Date.now() > deadline) break
     const pct = usagePct(result.headers)
     if (pct >= 90) await sleep(5_000)
     else if (pct >= 75) await sleep(1_500)
@@ -187,7 +189,7 @@ async function loadAccountInventoryFresh(accountId: string): Promise<Inventory> 
   // Ads carry the full creative, which makes each item expensive; that edge uses small pages.
   const campaigns = await listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }, { pageSize: 200 })
   const adsets = await listAll<RawAdset>(`${act(accountId)}/adsets`, { fields: 'id,name,campaign_id,effective_status,destination_type,daily_budget,optimization_goal,promoted_object,end_time,targeting{facebook_positions,instagram_positions,messenger_positions}', filtering: ACTIVE_FILTER }, { pageSize: 200 })
-  const ads = await listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,created_time,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec,asset_feed_spec{call_to_actions,bodies,titles}}', filtering: ACTIVE_FILTER }, { pageSize: 50, maxItems: 1000 })
+  const ads = await listAll<RawAd>(`${act(accountId)}/ads`, { fields: 'id,name,adset_id,effective_status,created_time,creative.thumbnail_width(320).thumbnail_height(320){id,name,thumbnail_url,body,title,object_story_spec,asset_feed_spec{call_to_actions,bodies,titles}}', filtering: ACTIVE_FILTER }, { pageSize: 50, maxItems: 1000, timeBudgetMs: 90_000 })
   return {
     accounts: [{ id: accountId, name: account.name ?? accountId }],
     currency: { [accountId]: currency },
@@ -217,6 +219,15 @@ async function loadAccountInventoryFresh(accountId: string): Promise<Inventory> 
 
 const GENERIC_ACCOUNT_TOKENS = new Set(['provisoria', 'cuenta', 'cuentas', 'publicitaria', 'automotores', 'automotriz', 'grupo', 'meta', 'ads', 'business', 'manager'])
 const accountTokens = (value: string) => normalizeText(value).split(/[^a-z0-9]+/).filter((token) => token.length >= 4 && !/^\d+$/.test(token) && !GENERIC_ACCOUNT_TOKENS.has(token))
+
+/**
+ * Names of every ad account the token reaches, in one user-level list. It doesn't count against each account's
+ * limit, so names still show while an account is throttled.
+ */
+export const listAdAccountNames = unstable_cache(async (): Promise<Record<string, string>> => {
+  const all = await listAll<{ id: string; name?: string }>('me/adaccounts', { fields: 'id,name' }, { pageSize: 200 })
+  return Object.fromEntries(all.filter((account) => account.name).map((account) => [account.id.replace(/^act_/, ''), account.name!]))
+}, ['conexa-ad-account-names-v1'], { revalidate: 600 })
 
 /**
  * Clients often run campaigns from an ad account that was never linked in the app (e.g. a "Provisoria" one).
@@ -272,18 +283,23 @@ export async function loadLeadFormDetails(inventory: Inventory) {
     return payload as T
   }
 
+  // Page tokens are the way around the app-wide limit (#4): calls made with them count against each page's own
+  // quota. Getting them costs user-token calls, so they are kept for hours and a throttled lookup is never stored.
   const pageToken = new Map<string, string>()
-  const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }).catch(() => [])
-  for (const page of pages) if (page.access_token) pageToken.set(page.id, page.access_token)
+  await Promise.all(pageIds.map(async (pageId) => {
+    const found = await unstable_cache(async () => {
+      const page = await getWith<{ access_token?: string }>(pageId, { fields: 'access_token' }, token)
+      if (!page.access_token) throw new MetaReadError('Meta no devolvió el token de la página.')
+      return page.access_token
+    }, ['conexa-page-token-v1', pageId], { revalidate: 21_600 })().catch(() => null)
+    if (found) pageToken.set(pageId, found)
+  }))
   if (pageIds.some((id) => !pageToken.has(id))) {
-    const businesses = await listAll<{ id: string }>('me/businesses', { fields: 'id' }).catch(() => [])
-    for (const business of businesses.slice(0, 10)) {
-      for (const edge of ['owned_pages', 'client_pages']) {
-        if (pageIds.every((id) => pageToken.has(id))) break
-        const found = await listAll<{ id: string; access_token?: string }>(`${business.id}/${edge}`, { fields: 'id,access_token' }).catch(() => [])
-        for (const page of found) if (page.access_token && !pageToken.has(page.id)) pageToken.set(page.id, page.access_token)
-      }
-    }
+    const listed = await unstable_cache(async () => {
+      const pages = await listAll<{ id: string; access_token?: string }>('me/accounts', { fields: 'id,access_token' }, { pageSize: 100 })
+      return Object.fromEntries(pages.filter((page) => page.access_token).map((page) => [page.id, page.access_token!]))
+    }, ['conexa-user-page-tokens-v1'], { revalidate: 21_600 })().catch(() => ({} as Record<string, string>))
+    for (const pageId of pageIds) if (!pageToken.has(pageId) && listed[pageId]) pageToken.set(pageId, listed[pageId])
   }
 
   inventory.leadForms = {}
@@ -303,7 +319,10 @@ export async function loadLeadFormDetails(inventory: Inventory) {
       return
     }
     try {
-      const result = await getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '200' }, accessToken)
+      const result = await unstable_cache(
+        () => getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '200' }, accessToken),
+        ['conexa-page-lead-forms-v1', pageId], { revalidate: 600 },
+      )()
       const forms = (result.data ?? []).map((form) => ({ id: form.id, name: form.name, status: form.status, pageId }))
       for (const form of forms) inventory.leadForms![form.id] = form
       inventory.pageForms![pageId] = forms.filter((form) => form.status === 'ACTIVE')
@@ -317,10 +336,16 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   for (const id of formIds.filter((formId) => !inventory.leadForms![formId]?.name)) {
     const pageId = pageOfForm.get(id)
     const ownPageToken = pageToken.get(pageId ?? '')
-    if (!blocked) {
-      for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
+    // A page token still works while the app-wide limit is hit; only the user-token retry is skipped then.
+    const attempts = [ownPageToken, blocked ? null : token].filter((value): value is string => Boolean(value))
+    if (attempts.length) {
+      for (const accessToken of attempts) {
         try {
-          const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
+          // Form names barely change; once read they survive a later throttle or a missing page token.
+          const form = await unstable_cache(
+            () => getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken),
+            ['conexa-lead-form-v1', id], { revalidate: 86_400 },
+          )()
           inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id ?? pageId, pageName: form.page?.name }
           break
         } catch (error) {
@@ -334,14 +359,32 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   if (blocked) inventory.formAccessIssue = blocked
 }
 
-export async function loadInventory(accountIds: string[]) {
-  const results = await Promise.allSettled(accountIds.map(loadAccountInventory))
+// Reading a sheet only needs each account's name and campaigns; the ads (with their creatives) are the slow part
+// and are only read when the plan is built.
+async function loadAccountCampaignsFresh(accountId: string): Promise<Inventory> {
+  const account = await metaGet<{ name?: string; currency?: string }>(act(accountId), { fields: 'name,currency' })
+  const currency = account.currency ?? 'USD'
+  const campaigns = await listAll<RawCampaign>(`${act(accountId)}/campaigns`, { fields: 'id,name,objective,effective_status,daily_budget', filtering: ACTIVE_FILTER }, { pageSize: 200 })
+  return {
+    accounts: [{ id: accountId, name: account.name ?? accountId }],
+    currency: { [accountId]: currency },
+    campaigns: campaigns.map((item): InventoryCampaign => ({ id: item.id, accountId, name: item.name ?? '', objective: item.objective ?? '', status: item.effective_status ?? '', dailyBudget: minorToMajor(item.daily_budget, currency), isCbo: Boolean(item.daily_budget) })),
+    adsets: [], ads: [],
+  }
+}
+
+function loadAccountCampaigns(accountId: string): Promise<Inventory> {
+  const id = accountId.replace(/^act_/, '')
+  return unstable_cache(() => loadAccountCampaignsFresh(id), ['conexa-campaigns-v1', id], { revalidate: INVENTORY_TTL_SECONDS, tags: [inventoryTag(id)] })()
+}
+
+export async function loadInventory(accountIds: string[], { campaignsOnly = false }: { campaignsOnly?: boolean } = {}) {
+  const results = await Promise.allSettled(accountIds.map(campaignsOnly ? loadAccountCampaigns : loadAccountInventory))
   const inventory: Inventory = { accounts: [], campaigns: [], adsets: [], ads: [], currency: {} }
   const warnings: string[] = []
-  // A throttled account would reject the name lookup too and only extend the block.
-  const failedNames = await Promise.all(results.map((result, index) => result.status === 'rejected' && !(result.reason instanceof MetaRateLimitError)
-    ? metaGet<{ name?: string }>(act(accountIds[index]), { fields: 'name' }).then((account) => account.name).catch(() => undefined)
-    : undefined))
+  // The account-level lookup would be throttled with the account itself; the token-wide list is not.
+  const names = results.some((result) => result.status === 'rejected') ? await listAdAccountNames().catch(() => ({} as Record<string, string>)) : {}
+  const failedNames = accountIds.map((id) => names[id.replace(/^act_/, '')])
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
       const name = failedNames[index] ?? accountIds[index]

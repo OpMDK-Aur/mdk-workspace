@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
 import { NextRequest, NextResponse } from 'next/server'
 import { updateAdvertisingAccountName } from '@/lib/ai/repositories/advertising-account-repository'
+import { getMetaAccessToken } from '@/lib/meta-ads/token'
+import { listAdAccountNames } from '@/lib/conexa/bulk/inventory'
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v25.0'
 const GOOGLE_ADS_API_VERSION = 'v23'
@@ -113,14 +115,18 @@ export async function GET(req: NextRequest) {
     known.add(key)
   }
 
-  const metaAccessToken = process.env.META_ADS_ACCESS_TOKEN
+  const metaAccessToken = await getMetaAccessToken()
   if (metaIds.length > 0 && metaAccessToken) {
-    const nombres = await Promise.all(metaIds.map((id) => getMetaAccountName(id, metaAccessToken)))
+    // One list of every account the token reaches; only accounts missing from it are asked one by one.
+    const listed = await listAdAccountNames().catch(() => ({} as Record<string, string>))
+    const nombres = await Promise.all(metaIds.map((id) => listed[id.replace(/^act_/, '')] ?? getMetaAccountName(id, metaAccessToken)))
     await Promise.all(metaIds.map(async (id, i) => {
       const name = nombres[i]
-      if (name) await updateAdvertisingAccountName(supabase, { clienteId: clientId, plataforma: 'meta', idCuenta: id, nombreCuenta: name })
+      const storedName = stored.find((account) => account.plataforma !== 'google' && String(account.id_cuenta).split(',').map((value) => value.trim()).includes(id))?.nombre_cuenta
+      if (name && name !== storedName) await updateAdvertisingAccountName(supabase, { clienteId: clientId, plataforma: 'meta', idCuenta: id, nombreCuenta: name })
     }))
-    metaIds.forEach((id, i) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] || `Cuenta Meta ${id}` }))
+    // Without a name from Meta the stored one stays; only an account never named falls back to its id.
+    metaIds.forEach((id, i) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: nombres[i] || id }))
   } else {
     metaIds.forEach((id) => addAccount({ id: `meta-${id}`, plataforma: 'meta', id_cuenta: id, nombre_cuenta: id }))
   }
