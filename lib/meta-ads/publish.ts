@@ -283,9 +283,27 @@ export async function getSourceAdMedia(adId: string) {
   return media
 }
 
+type InstagramCreative = { creative?: { instagram_user_id?: string } }
+
+/**
+ * Ads that run on Instagram placements need the Instagram account in the creative; Meta no longer infers it from the page.
+ * The ads already running in the same campaign tell which account the client uses; otherwise the page's linked account.
+ */
+async function instagramUserIdFor(adsetId: string, campaignId: string | undefined, pageId: string) {
+  for (const parent of [adsetId, campaignId].filter(Boolean) as string[]) {
+    const ads = await graph<{ data?: InstagramCreative[] }>('anuncios del conjunto', `${parent}/ads`, { params: { fields: 'creative{instagram_user_id}', limit: '25' } }).catch(() => null)
+    const found = ads?.data?.map((ad) => ad.creative?.instagram_user_id).find(Boolean)
+    if (found) return found
+  }
+  const page = await graph<{ instagram_business_account?: { id?: string }; connected_instagram_account?: { id?: string } }>('página', pageId, { params: { fields: 'instagram_business_account,connected_instagram_account' } }).catch(() => null)
+  return page?.instagram_business_account?.id ?? page?.connected_instagram_account?.id
+}
+
 export async function createAd(input: AdInput) {
-  const adset = await graph<{ account_id: string; destination_type?: string }>('conjunto', input.adsetId, { params: { fields: 'account_id,destination_type' } })
+  const adset = await graph<{ account_id: string; destination_type?: string; campaign_id?: string }>('conjunto', input.adsetId, { params: { fields: 'account_id,destination_type,campaign_id' } })
   const accountId = adset.account_id
+  const instagramUserId = await instagramUserIdFor(input.adsetId, adset.campaign_id, input.pageId)
+  const identity = { page_id: input.pageId, ...(instagramUserId ? { instagram_user_id: instagramUserId } : {}) }
   const whatsapp = adset.destination_type === 'WHATSAPP'
   if (!whatsapp && !input.leadFormId && !/^https?:\/\//i.test(input.link)) throw new MetaPublishError('Falta la URL de destino del anuncio.', 'anuncio')
   // Los anuncios con formulario instantáneo no llevan a una web: Meta acepta fb.me como link de relleno.
@@ -295,16 +313,16 @@ export async function createAd(input: AdInput) {
     : { type: CTA_TYPES[input.cta] ?? 'LEARN_MORE', value: { link, ...(input.leadFormId ? { lead_gen_form_id: input.leadFormId } : {}) } }
 
   if (input.placementAssets && input.placementAssets.length > 1) {
-    return createPlacementAd(input, input.placementAssets, accountId, link, callToAction)
+    return createPlacementAd(input, input.placementAssets, accountId, link, callToAction, identity)
   }
 
   let objectStorySpec: Record<string, unknown>
   if (input.asset.kind === 'video') {
     const { videoId, thumbnail } = input.asset.source?.videoId ? await sourceVideo(input.asset.source) : await uploadVideo(accountId, input.asset)
-    objectStorySpec = { page_id: input.pageId, video_data: { video_id: videoId, image_url: thumbnail, message: input.primaryText, title: input.headline, call_to_action: callToAction } }
+    objectStorySpec = { ...identity, video_data: { video_id: videoId, image_url: thumbnail, message: input.primaryText, title: input.headline, call_to_action: callToAction } }
   } else {
     const hash = input.asset.source ? await sourceImageHash(accountId, input.asset) : await uploadImage(accountId, input.asset)
-    objectStorySpec = { page_id: input.pageId, link_data: { image_hash: hash, link, message: input.primaryText, name: input.headline, call_to_action: callToAction } }
+    objectStorySpec = { ...identity, link_data: { image_hash: hash, link, message: input.primaryText, name: input.headline, call_to_action: callToAction } }
   }
 
   const creative = await graph<{ id: string }>('creativo', `${act(accountId)}/adcreatives`, {
@@ -324,6 +342,7 @@ async function createPlacementAd(
   accountId: string,
   link: string,
   callToAction: { type: string; value: Record<string, unknown> },
+  identity: { page_id: string; instagram_user_id?: string },
 ) {
   const images: Array<{ hash: string; adlabels: Array<{ name: string }> }> = []
   const videos: Array<{ video_id: string; thumbnail_url: string; adlabels: Array<{ name: string }> }> = []
@@ -356,7 +375,7 @@ async function createPlacementAd(
   }
   const creative = await graph<{ id: string }>('creativo', `${act(accountId)}/adcreatives`, {
     method: 'POST',
-    params: { name: input.name, object_story_spec: JSON.stringify({ page_id: input.pageId }), asset_feed_spec: JSON.stringify(assetFeedSpec) },
+    params: { name: input.name, object_story_spec: JSON.stringify(identity), asset_feed_spec: JSON.stringify(assetFeedSpec) },
   })
   const ad = await graph<{ id: string }>('anuncio', `${act(accountId)}/ads`, {
     method: 'POST',
