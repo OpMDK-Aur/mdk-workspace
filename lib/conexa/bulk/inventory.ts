@@ -296,6 +296,11 @@ export async function loadLeadFormDetails(inventory: Inventory) {
       }
     }
   }
+  // Pages reached through a business role often don't appear in any of those lists but still hand out their token directly.
+  await Promise.all(pageIds.filter((id) => !pageToken.has(id)).map(async (pageId) => {
+    const page = await getWith<{ access_token?: string }>(pageId, { fields: 'access_token' }, token).catch(() => null)
+    if (page?.access_token) pageToken.set(pageId, page.access_token)
+  }))
 
   inventory.leadForms = {}
   inventory.pageForms = {}
@@ -314,7 +319,10 @@ export async function loadLeadFormDetails(inventory: Inventory) {
       return
     }
     try {
-      const result = await getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '200' }, accessToken)
+      const result = await unstable_cache(
+        () => getWith<{ data?: Array<{ id: string; name?: string; status?: string }> }>(`${pageId}/leadgen_forms`, { fields: 'id,name,status', limit: '200' }, accessToken),
+        ['conexa-page-lead-forms-v1', pageId], { revalidate: 600 },
+      )()
       const forms = (result.data ?? []).map((form) => ({ id: form.id, name: form.name, status: form.status, pageId }))
       for (const form of forms) inventory.leadForms![form.id] = form
       inventory.pageForms![pageId] = forms.filter((form) => form.status === 'ACTIVE')
@@ -331,7 +339,11 @@ export async function loadLeadFormDetails(inventory: Inventory) {
     if (!blocked) {
       for (const accessToken of ownPageToken ? [ownPageToken, token] : [token]) {
         try {
-          const form = await getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken)
+          // Form names barely change; once read they survive a later throttle or a missing page token.
+          const form = await unstable_cache(
+            () => getWith<{ name?: string; status?: string; page?: { id?: string; name?: string } }>(id, { fields: 'name,status,page' }, accessToken),
+            ['conexa-lead-form-v1', id], { revalidate: 86_400 },
+          )()
           inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id ?? pageId, pageName: form.page?.name }
           break
         } catch (error) {
