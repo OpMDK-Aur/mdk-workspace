@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ConexaSupervisorChat } from './conexa/conexa-chat'
+import { ChatAdAccountSelector, type ChatAdAccountSelection } from './conexa/chat-ad-account-selector'
 import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, PanelLeftClose, PanelLeftOpen, RotateCcw, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ import { formatPeriodRange } from '@/lib/conexa/period-range'
 
 const CONTEXT_VIEW = 'Contexto del cliente'
 const SUPERVISOR_VIEW = 'Agente supervisor'
+const EMPTY_CHAT_AD_SELECTION: ChatAdAccountSelection = { meta: [], google: [] }
 const fetchClientMemory = (url: string) => fetch(url).then((response) => (response.ok ? response.json() : { memory: null })).then((result) => (result.memory ?? null) as ClientMemory | null)
 const isContextComplete = (memory: ClientMemory | null | undefined) => Boolean(memory?.profile.industry && memory.profile.commercial_objective && memory.profile.product_type)
 
@@ -77,6 +79,7 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
   const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [reportsLoaded, setReportsLoaded] = useState(false)
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string[]>>({})
+  const [chatAccountsByClient, setChatAccountsByClient] = useState<Record<string, ChatAdAccountSelection>>({})
   const [selectedPages, setSelectedPages] = useState<string[]>([])
   const [crmFilters, setCrmFilters] = useState<CrmAcquisitionFilters>({})
   const { data: clientMemory, isLoading: clientMemoryLoading, mutate: mutateClientMemory } = useSWR(client?.id ? `/api/ai/client-memory?clientId=${encodeURIComponent(client.id)}` : null, fetchClientMemory, { revalidateOnFocus: false })
@@ -189,7 +192,7 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
         {activePlatformKey && <div className="absolute right-4 top-14 z-30 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#999]">Período</span><PeriodSelector period={activePeriod} customRange={activeCustomRange} onChange={(nextPeriod, range) => { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) }} />{metricsLoading && <LoaderCircle className="size-3.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" />}</div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} selectedPages={selectedPages} onPagesChange={setSelectedPages} selectedAccounts={selectedAccounts} onAccountsChange={(platformKey, accounts) => setSelectedAccounts((current) => ({ ...current, [platformKey]: accounts }))} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} selectedAccounts={selectedAccounts} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => { setActive(destination); if (destination === CONTEXT_VIEW) setSidebarOpen(true) }} contextStatus={!client ? 'no-client' : clientMemoryLoading ? 'loading' : isContextComplete(clientMemory) ? 'complete' : 'missing'} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === COPILOT_VIEW ? <CopilotView client={client} /> : active === SUPERVISOR_VIEW ? <SupervisorConfigView /> : active === CONTEXT_VIEW ? <ClientContextView client={client} memory={clientMemory ?? null} loading={clientMemoryLoading} onSaved={(updated) => { mutateClientMemory(updated, { revalidate: false }); setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView loading={metricsLoading} data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} selectedPages={selectedPages} onPagesChange={setSelectedPages} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} selectedPages={selectedPages} onPagesChange={setSelectedPages} selectedAccounts={selectedAccounts} onAccountsChange={(platformKey, accounts) => setSelectedAccounts((current) => ({ ...current, [platformKey]: accounts }))} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} selectedChatAccounts={client ? chatAccountsByClient[client.id] ?? EMPTY_CHAT_AD_SELECTION : EMPTY_CHAT_AD_SELECTION} onChatAccountsChange={(selection) => { if (client?.id) setChatAccountsByClient((current) => ({ ...current, [client.id]: selection })) }} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => { setActive(destination); if (destination === CONTEXT_VIEW) setSidebarOpen(true) }} contextStatus={!client ? 'no-client' : clientMemoryLoading ? 'loading' : isContextComplete(clientMemory) ? 'complete' : 'missing'} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === COPILOT_VIEW ? <CopilotView client={client} /> : active === SUPERVISOR_VIEW ? <SupervisorConfigView /> : active === CONTEXT_VIEW ? <ClientContextView client={client} memory={clientMemory ?? null} loading={clientMemoryLoading} onSaved={(updated) => { mutateClientMemory(updated, { revalidate: false }); setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView loading={metricsLoading} data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} selectedPages={selectedPages} onPagesChange={setSelectedPages} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
       </main>
     </section>
   </div>
@@ -216,7 +219,7 @@ function ReportsView({ client, reports }: { client: Client | null; reports: Arra
 function ApprovalsView({ client, approvals }: { client: Client | null; approvals: Record<string, unknown>[] }) {
   const [status, setStatus] = useState('Pendientes')
   const rows = approvals.filter((item) => Boolean(item.action_plan || item.recommendation || item.recommendation_id || item.source === 'ai' || item.created_by === 'ai')).map((item) => [item.created_at ? new Date(String(item.created_at)).toLocaleDateString('es-AR') : 'Sin fecha', String(item.platform ?? item.plataforma ?? 'Plataforma'), String(item.action_plan ?? item.recommendation ?? item.action ?? item.accion ?? 'Plan de acción'), String(item.entity_name ?? item.campaign_name ?? item.entity_id ?? 'Entidad')])
-  return <div className="h-full overflow-y-auto p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acción</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-xs text-[#9a9a9a]">No hay planes de acción generados por la IA.</td></tr> : rows.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
+  return <div className="h-full overflow-y-auto p-6 md:p-10"><div className="mb-5"><h1 className="text-xl font-bold">Aprobaciones</h1><p className="text-xs text-[#888]">Ninguna acción se ejecuta en las plataformas sin tu aprobación explícita.</p></div><div className="mb-4 flex gap-6 border-b border-[#dededb] text-[10px] font-semibold text-[#999]">{['Pendientes', 'Aprobadas', 'Ejecutadas', 'Rechazadas', 'Fallidas'].map((item) => <button key={item} type="button" onClick={() => setStatus(item)} className={cn('border-b-2 px-1 pb-2', status === item ? 'border-[#5b5fe8] text-[#5b5fe8]' : 'border-transparent')}>{item}</button>)}</div><div className="overflow-hidden rounded-xl border border-[#dededb] bg-white"><table className="w-full text-left text-[10px]"><thead className="bg-[#fafaf8] text-[#888]"><tr><th className="p-3">Fecha</th><th>Plataforma</th><th>Acci��n</th><th>Entidad</th><th>Cambio</th><th>Estado</th><th></th></tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-xs text-[#9a9a9a]">No hay planes de acción generados por la IA.</td></tr> : rows.map((row) => <tr key={row[0] + row[1]} className="border-t border-[#eee]"><td className="p-3">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>—</td><td><span className="rounded-full bg-[#fff0df] px-2 py-1 text-[9px] font-bold text-[#c87519]">PENDIENTE</span></td><td><Button variant="outline" className="mr-3 h-7 rounded-full px-3 text-[10px]">Ver detalle</Button></td></tr>)}</tbody></table></div></div>
 }
 
 function Home({ client, period, platforms, connected, data, onAsk, selectedAccounts, onAccountsChange, selectedPages, onPagesChange }: { client: Client | null; period: string; platforms: Platform[]; connected: number; data: ConexaData; onAsk: () => void; selectedPages: string[]; onPagesChange: (pages: string[]) => void; selectedAccounts: Record<string, string[]>; onAccountsChange: (platformKey: string, accounts: string[]) => void }) {
@@ -890,18 +893,38 @@ function ClientContextView({ client, memory, loading, onSaved }: { client: Clien
   </div>
 }
 
-function ConexaChat({ client, onNavigate, onReportCreated, contextStatus, selectedAccounts = {} }: { client: Client | null; selectedAccounts?: Record<string, string[]>; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void; contextStatus: 'no-client' | 'loading' | 'complete' | 'missing' }) {
+function ConexaChat({ client, onNavigate, onReportCreated, contextStatus, selectedChatAccounts, onChatAccountsChange }: { client: Client | null; selectedChatAccounts: ChatAdAccountSelection; onChatAccountsChange: (selection: ChatAdAccountSelection) => void; period: string; clients: Client[]; crmAcquisition?: CrmAcquisitionReport; onSelectClient: (client: Client) => void; onNavigate: (destination: string) => void; onReportCreated: (report: GeneratedReport, replaceId?: string) => void; contextStatus: 'no-client' | 'loading' | 'complete' | 'missing' }) {
   const chatLocked = contextStatus === 'missing' || contextStatus === 'loading'
   const [model, setModel] = useState<string>(CHAT_MODELS[0].value)
   const chatModels = CHAT_MODELS
   const [showReport, setShowReport] = useState(false)
   const [reportContent, setReportContent] = useState('')
   const [resetSignal, setResetSignal] = useState(0)
+  const [isChatBusy, setIsChatBusy] = useState(false)
+  const previousAccountScope = useRef<{ clientId: string | null; scope: string } | null>(null)
+  const selectedAdAccountScope = [
+    ...selectedChatAccounts.meta.map((id) => `meta:${id}`),
+    ...selectedChatAccounts.google.map((id) => `google:${id}`),
+  ].sort().join('|')
+  useEffect(() => {
+    const clientId = client?.id ?? null
+    const previous = previousAccountScope.current
+    if (previous?.clientId === clientId && previous.scope !== selectedAdAccountScope) {
+      setResetSignal((value) => value + 1)
+      setShowReport(false)
+      setReportContent('')
+    }
+    previousAccountScope.current = { clientId, scope: selectedAdAccountScope }
+  }, [client?.id, selectedAdAccountScope])
   const handleResetClick = () => { if (window.confirm('¿Empezar un chat nuevo? El chat actual queda guardado en el historial de la izquierda.')) setResetSignal((value) => value + 1) }
   const handleCreateReport = (content: string) => {
     setReportContent(content)
     setShowReport(true)
-    const title = `Análisis · ${client?.nombre_del_negocio ?? 'Cliente'}`
+    const selectedAdsScope = [
+      selectedChatAccounts.meta.length ? `Meta Ads ${selectedChatAccounts.meta.join(', ')}` : null,
+      selectedChatAccounts.google.length ? `Google Ads ${selectedChatAccounts.google.join(', ')}` : null,
+    ].filter(Boolean).join(' · ')
+    const title = `Análisis · ${client?.nombre_del_negocio ?? 'Cliente'}${selectedAdsScope ? ` · ${selectedAdsScope}` : ''}`
     const clientName = client?.nombre_del_negocio ?? 'Cliente'
     const createdAt = new Date().toISOString()
     // The report reflects only the selected chat answer. The dashboard's CRM
@@ -916,11 +939,12 @@ function ConexaChat({ client, onNavigate, onReportCreated, contextStatus, select
       .catch(() => {})
   }
   return <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f4f1] p-4 text-[#141414]">
-    <div className="flex items-center justify-between rounded-t-2xl border border-b-0 border-[#dcdcd8] bg-[#ffffff] px-5 py-3 text-[#141414]">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-[#dcded8] bg-[#ffffff] px-4 py-2.5 text-[#141414] sm:px-5">
       <h1 className="text-[15px] font-bold">Chat / Análisis</h1>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ChatAdAccountSelector client={client} selected={selectedChatAccounts} onChange={onChatAccountsChange} disabled={chatLocked || isChatBusy} />
         <label className="flex items-center gap-2 text-[11px] text-[#777]">Modelo<select value={model} onChange={(event) => setModel(event.target.value)} className="rounded-lg border border-[#dededb] bg-white px-2 py-1.5 text-[11px]">{chatModels.map((item) => <option key={item.value} value={item.value}>{item.label}{item.recommended ? ' · Recomendado' : ''}</option>)}</select></label>
-        <button type="button" onClick={handleResetClick} className="flex h-8 items-center gap-1.5 rounded-full border border-[#E6E6E1] bg-white px-3 text-[11px] font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]"><RotateCcw className="size-3.5" aria-hidden="true" />Resetear chat</button>
+        <button type="button" onClick={handleResetClick} disabled={isChatBusy} className="flex h-8 items-center gap-1.5 rounded-full border border-[#E6E6E1] bg-white px-3 text-[11px] font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8] disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw className="size-3.5" aria-hidden="true" />Resetear chat</button>
       </div>
     </div>
     <div className={cn('grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 overflow-hidden rounded-b-2xl border border-t-0 border-[#e6e6e3] bg-white p-3 [&>*]:min-h-0 [&>*:last-child]:h-full [&>*:last-child]:max-h-full', showReport ? 'grid-cols-[minmax(0,1fr)_360px]' : 'grid-cols-[minmax(0,1fr)]')}>
@@ -939,16 +963,22 @@ function ConexaChat({ client, onNavigate, onReportCreated, contextStatus, select
           resetSignal={resetSignal}
           onCreateReport={handleCreateReport}
           model={model}
-          metaAccountId={(selectedAccounts.meta?.length ? selectedAccounts.meta.map((id) => `act_${id.replace(/^act_/, '')}`) : [...(client?.meta_ads_account_ids ?? []), ...(client?.meta_ads_account_id ? [client.meta_ads_account_id] : [])]).filter(Boolean).join(',') || undefined}
-          googleCustomerId={(selectedAccounts.google?.length ? selectedAccounts.google : [...(client?.google_ads_customer_ids ?? []), ...(client?.google_ads_customer_id ? [client.google_ads_customer_id] : [])]).filter(Boolean).join(',') || undefined}
+          metaAccountId={selectedChatAccounts.meta.length ? selectedChatAccounts.meta.join(',') : undefined}
+          googleCustomerId={selectedChatAccounts.google.length ? selectedChatAccounts.google.join(',') : undefined}
           analyticsPropertyId={client?.analytics_property_id ?? undefined}
+          onBusyChange={setIsChatBusy}
         />
       </div>
       {showReport && <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[#e6e6e3] bg-white shadow-sm">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#eee] p-5 pb-4"><div><p className="text-[11px] font-bold uppercase tracking-[.08em] text-[#5b5fe8]">Conexa · Informe</p><h2 className="mt-1 text-lg font-bold">Informe del análisis</h2></div><button type="button" onClick={() => setShowReport(false)} className="text-xs text-[#888] hover:text-[#222]">Cerrar</button></div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 text-sm leading-6 text-[#333]">
           <section><h3 className="mb-1 font-bold text-[#5b5fe8]">Resumen ejecutivo</h3><MessageContent content={reportContent || 'El informe se generó a partir del último análisis de Conexa.'} /></section>
-          <section><h3 className="mb-1 font-bold text-[#5b5fe8]">Fuentes conectadas</h3><p>Meta Ads · Google Ads · GA4 · CRM</p></section>
+          <section><h3 className="mb-1 font-bold text-[#5b5fe8]">Alcance del análisis</h3><p>{[
+            selectedChatAccounts.meta.length ? `Meta Ads · ${selectedChatAccounts.meta.length} cuenta${selectedChatAccounts.meta.length === 1 ? '' : 's'}` : null,
+            selectedChatAccounts.google.length ? `Google Ads · ${selectedChatAccounts.google.length} cuenta${selectedChatAccounts.google.length === 1 ? '' : 's'}` : null,
+            client?.analytics_property_id ? 'GA4 disponible' : null,
+            client?.crm_type ? 'CRM disponible' : null,
+          ].filter(Boolean).join(' · ') || 'No se seleccionaron fuentes para este análisis.'}</p></section>
           <div className="pt-2"><button type="button" onClick={() => onNavigate('Informes')} className="w-full rounded-lg bg-[#5b5fe8] px-4 py-2.5 text-sm font-semibold text-white">Abrir informes</button></div>
         </div>
       </aside>}

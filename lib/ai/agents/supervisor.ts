@@ -169,7 +169,11 @@ export async function streamSupervisorResponse(
   const config = await agentConfigRepository.getSupervisor(context.userId)
   const catalogToolKeys = getCatalogToolKeys()
   const enabledToolKeys = [...new Set([...config.enabledTools, ...SUPERVISOR_REQUIRED_TOOL_KEYS])]
-  const definitions = getToolDefinitions(enabledToolKeys)
+  const definitions = getToolDefinitions(enabledToolKeys).filter((definition) => {
+    if (definition.key === 'get_meta_metrics') return Boolean(context.metaAccountId?.trim())
+    if (definition.key === 'get_google_metrics') return Boolean(context.googleCustomerId?.trim())
+    return true
+  })
   const exposedToolKeys = definitions.map((definition) => definition.key)
   console.log('[multiagent-tools]', {
     agentSlug: 'supervisor',
@@ -215,6 +219,8 @@ export async function streamSupervisorResponse(
     const key = resultKey(toolKey, range)
     const cached = toolResults.get(key)
     if (cached) return cached
+    if (toolKey === 'get_meta_metrics' && !context.metaAccountId?.trim()) return Promise.resolve(null)
+    if (toolKey === 'get_google_metrics' && !context.googleCustomerId?.trim()) return Promise.resolve(null)
     const definition = getToolDefinitions([toolKey])[0]
     if (!definition) return Promise.resolve(null)
     const pending = Promise.resolve(definition.execute({ dateFrom: range.from, dateTo: range.to }, context))
@@ -328,7 +334,7 @@ export async function streamSupervisorResponse(
     const connected = platformPrefetch.filter((platform) => platform.connected && exposedToolKeys.includes(platform.toolKey))
     if (!connected.length) return ''
     const summaries = await Promise.all(connected.map(async (platform) => summarizePlatform(platform.label, await runTool(platform.toolKey, range))))
-    return `DATOS REALES DE PAUTA (${range.from} a ${range.to}), obtenidos de las cuentas conectadas. Usalos en la respuesta; no digas que falta información ni que no hay actividad si el TOTAL figura con gasto:\n${summaries.join('\n')}`
+    return `DATOS REALES DE PAUTA (${range.from} a ${range.to}), obtenidos exclusivamente de las cuentas de Ads seleccionadas. Usalos en la respuesta; no digas que falta información ni que no hay actividad si el TOTAL figura con gasto:\n${summaries.join('\n')}`
   }
   const prefetchMissingPlatforms = async () => {
     const range = currentRange()
@@ -380,6 +386,7 @@ export async function streamSupervisorResponse(
       ...(monthlyReportMode ? [MONTHLY_REPORT_INSTRUCTION] : []),
       ...(context.conversationWorkingContext ? [`CONTEXTO ESTRUCTURADO DE CONVERSACIÓN (prioridad sobre defaults): ${JSON.stringify(context.conversationWorkingContext)}. Para “estos cambios”, “esos cambios” o “últimos cambios”, reutilizá exactamente referenced_change_events y no hagas una búsqueda genérica. Para cuentas, campañas, grupos y períodos reutilizá sus IDs y fechas. Si hay varias cuentas, agrupá por plataforma + cuenta; nunca elijas una arbitrariamente. Si el contexto tiene otro client_id, no lo uses.`] : []),
       ...(context.analysisRunState?.comparisonDefinition ? [`El backend detectó una comparación obligatoria. Consultá primero el período CURRENT ${context.analysisRunState.comparisonDefinition.current.from} a ${context.analysisRunState.comparisonDefinition.current.to}; luego consultá el período COMPARISON ${context.analysisRunState.comparisonDefinition.comparison.from} a ${context.analysisRunState.comparisonDefinition.comparison.to}, usando la misma plataforma y cuentas. Finalmente ejecutá run_performance_analyst. No afirmes subidas o bajadas sin ambos períodos.`] : []),
+      'ALCANCE ESTRICTO DE CUENTAS ADS: consultá únicamente las cuentas publicitarias que get_account_context devuelve en cuentas_publicitarias para este análisis. Nunca amplíes la selección a otras cuentas o plataformas usando la ficha del cliente, historiales, selecciones anteriores o datos inferidos. Si la herramienta de una plataforma no está disponible, no se seleccionaron cuentas de esa plataforma y no debés intentar consultarla. GA4 y CRM del cliente activo siguen disponibles según lo que pida la consulta, pero no habilitan otras cuentas de Ads. El historial de mensajes de un análisis corresponde a la selección actual.',
     ].join('\n\n'),
     messages,
     tools,

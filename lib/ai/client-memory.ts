@@ -70,7 +70,7 @@ export function buildClientMemory(row?: Record<string, unknown> | null, performa
   return { profile, sources, missing_fields, completeness: missing_fields.length === CLIENT_MEMORY_FIELDS.length ? 'empty' : missing_fields.length ? 'partial' : 'complete', performance_90d }
 }
 
-type MetricRow = { platform: string | null; metric_date: string | null; campaign_type: string | null; campaign_objective: string | null; result_type: string | null; currency: string | null; spend: number | string | null; leads: number | string | null; conversions: number | string | null }
+type MetricRow = { platform: string | null; account_id?: string | null; metric_date: string | null; campaign_type: string | null; campaign_objective: string | null; result_type: string | null; currency: string | null; spend: number | string | null; leads: number | string | null; conversions: number | string | null }
 const num = (value: unknown) => typeof value === 'number' ? value : Number(value ?? 0) || 0
 const unique = (values: (string | null)[]) => [...new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))]
 
