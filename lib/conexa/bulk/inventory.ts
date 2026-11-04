@@ -252,17 +252,34 @@ export async function discoverSiblingAccounts(linked: InventoryAccount[], client
   return hits.filter((hit): hit is NonNullable<typeof hit> => Boolean(hit))
 }
 
-// The token can have every permission and still not reach a page: the page must be assigned to the token's user.
-const noPageAccess = (pageId?: string) => `el usuario del token de Meta no tiene asignada la página${pageId ? ` ${pageId}` : ''}, que es la dueña del formulario: asignásela en el Business Manager (Páginas → Asignar personas) con acceso a clientes potenciales`
-const NO_PAGE_PERMISSION = 'al token de Meta le falta el permiso pages_read_engagement, y sin él Meta no deja leer los nombres de los formularios'
-const RATE_LIMITED = 'Meta limitó las consultas de la app por ahora (#4). Volvé a generar el plan en unos minutos para ver los nombres'
+// The app's permissions are all granted; what usually fails is access to the specific page that owns the form.
+// Each message says what happened and what to do, in words a non-technical user can act on.
+const pageRef = (pageId?: string) => `la página de Facebook${pageId ? ` ${pageId}` : ''} (la dueña de los formularios)`
+const pageNotShared = (pageId?: string) =>
+  `Conexa no tiene acceso a ${pageRef(pageId)}. Pasa cuando esa página no se marcó al conectar Meta o cuando tu usuario no tiene un rol en ella. Para arreglarlo, en "Administrar conexión" reconectá Meta y marcá esa página; si no aparece en la lista, pedí que en el Business Manager te asignen la página con rol "Anuncios" o superior`
+const leadsAccessRestricted = (pageId?: string) =>
+  `Conexa entra a ${pageRef(pageId)}, pero la página tiene restringido el acceso a clientes potenciales. Para arreglarlo, en el Business Manager andá a Configuración del negocio → Integraciones → Acceso a clientes potenciales y habilitá a tu usuario y a la app MDK`
+const NO_PAGES_REACHED =
+  'la conexión con Meta no llega a ninguna página de Facebook, y los formularios solo se leen desde su página. Para arreglarlo, en "Administrar conexión" reconectá Meta, aceptá todos los permisos y marcá todas las páginas del cliente'
+const RATE_LIMITED =
+  'Meta frenó por unos minutos las consultas de Conexa por exceso de llamadas (error #4). No es un problema de permisos: volvé a generar el plan en unos minutos y los nombres van a aparecer'
+
+const isRateLimit = (message: string) => /\(#(4|17|32|613)\)|request limit|too many calls/i.test(message)
+const isPermissionError = (message: string) => /\(#(10|200|190)\)|permission|leads|pages_read_engagement|Page Public|does not exist|Unsupported get request/i.test(message)
 
 // Rate limits repeat for every form, so the first one stops the lookup. A permission error only means
-// "missing permission" when the token reaches no page at all; otherwise that page just isn't assigned.
+// "no page access at all" when the token reaches no page; otherwise it is about that one page.
 function blockingReason(message: string, reachesSomePage: boolean) {
-  if (/\(#(4|17|32|613)\)|request limit/i.test(message)) return RATE_LIMITED
-  if (!reachesSomePage && /\(#(10|200)\)|pages_read_engagement|Page Public/i.test(message)) return NO_PAGE_PERMISSION
+  if (isRateLimit(message)) return RATE_LIMITED
+  if (!reachesSomePage && isPermissionError(message)) return NO_PAGES_REACHED
   return null
+}
+
+function formReadIssue(message: string, hasPageToken: boolean, pageId?: string) {
+  if (isRateLimit(message)) return RATE_LIMITED
+  if (!hasPageToken) return pageNotShared(pageId)
+  if (isPermissionError(message)) return leadsAccessRestricted(pageId)
+  return `Meta no devolvió el nombre${message ? ` y respondió: "${message}"` : ''}`
 }
 
 /**
@@ -315,7 +332,7 @@ export async function loadLeadFormDetails(inventory: Inventory) {
   await Promise.all(pageIds.map(async (pageId) => {
     const accessToken = pageToken.get(pageId)
     if (!accessToken) {
-      inventory.pageAccessErrors![pageId] = `No puedo leer los formularios: ${noPageAccess(pageId)}`
+      inventory.pageAccessErrors![pageId] = pageToken.size ? pageNotShared(pageId) : NO_PAGES_REACHED
       return
     }
     try {
@@ -327,7 +344,7 @@ export async function loadLeadFormDetails(inventory: Inventory) {
       for (const form of forms) inventory.leadForms![form.id] = form
       inventory.pageForms![pageId] = forms.filter((form) => form.status === 'ACTIVE')
     } catch (error) {
-      inventory.pageAccessErrors![pageId] = note(error) || 'Meta no devolvió los formularios de la página'
+      inventory.pageAccessErrors![pageId] = formReadIssue(note(error), true, pageId)
     }
   }))
 
@@ -338,6 +355,7 @@ export async function loadLeadFormDetails(inventory: Inventory) {
     const ownPageToken = pageToken.get(pageId ?? '')
     // A page token still works while the app-wide limit is hit; only the user-token retry is skipped then.
     const attempts = [ownPageToken, blocked ? null : token].filter((value): value is string => Boolean(value))
+    let lastError = ''
     if (attempts.length) {
       for (const accessToken of attempts) {
         try {
@@ -349,12 +367,17 @@ export async function loadLeadFormDetails(inventory: Inventory) {
           inventory.leadForms![id] = { id, name: form.name, status: form.status, pageId: form.page?.id ?? pageId, pageName: form.page?.name }
           break
         } catch (error) {
-          note(error)
+          // The page-token error says more about access than the user-token retry, so it is the one kept.
+          const message = note(error)
+          if (accessToken === ownPageToken || !lastError) lastError = message
           if (blocked) break
         }
       }
     }
-    if (!inventory.leadForms![id]?.name) inventory.leadForms![id] = { id, pageId, nameError: blocked ?? (ownPageToken ? 'Meta no devolvió el nombre del formulario' : noPageAccess(pageId)) }
+    if (!inventory.leadForms![id]?.name) {
+      const nameError = blocked ?? (pageId && inventory.pageAccessErrors![pageId]) ?? formReadIssue(lastError, Boolean(ownPageToken), pageId)
+      inventory.leadForms![id] = { id, pageId, nameError }
+    }
   }
   if (blocked) inventory.formAccessIssue = blocked
 }

@@ -696,7 +696,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
 
     if (byUse.length === 1) {
       const [id, count] = byUse[0]
-      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}${nameIssue ? ` (sin nombre: ${nameIssue})` : ''}` }
+      const result = { leadFormId: id, pending: false, note: `${formLabel(id)} · tomado de ${count} anuncio${count > 1 ? 's' : ''} ${scope} del conjunto${statusLabel(id)}${nameIssue ? `. No muestro el nombre porque ${nameIssue}.` : ''}` }
       leadForms.set(adset.key, result)
       return result
     }
@@ -711,7 +711,7 @@ export function resolvePlan(context: PlanContext, overrides: PlanOverrides = {})
       prompt: `¿Qué formulario instantáneo uso en los anuncios nuevos de "${adset.name}"?`,
       why: byUse.length
         ? `Los anuncios ${scope} del conjunto usan ${byUse.length} formularios distintos.${nameIssue ? ` No muestro los nombres porque ${nameIssue}.` : ''}`
-        : `Ningún anuncio del conjunto tiene formulario${pageForms.length ? '; estos son los formularios activos de la página del conjunto' : pageError ? `. ${pageError}: pegá el ID del formulario` : ''}`,
+        : `Ningún anuncio del conjunto tiene formulario${pageForms.length ? '; estos son los formularios activos de la página del conjunto' : pageError ? `. No puedo listar los formularios de la página porque ${pageError}. Mientras tanto, pegá el ID del formulario` : ''}`,
       options: options.length ? [...options, excludeOption()] : [],
       target: 'adset', targetKey: adset.key, freePlaceholder: 'ID del formulario instantáneo',
     }, rowNumber)
