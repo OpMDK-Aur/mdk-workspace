@@ -64,6 +64,7 @@ interface ConexaChatProps {
   /** Id(s) de cuenta de Google Ads del cliente (separados por coma si son varios). */
   googleCustomerId?: string
   analyticsPropertyId?: string
+  onBusyChange?: (busy: boolean) => void
 }
 
 type PersistedMessage = {
@@ -173,16 +174,23 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
   const { clientId, resetSignal } = props
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [history, setHistory] = useState<PersistedMessage[]>([])
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(Boolean(clientId))
   const [isResetting, setIsResetting] = useState(false)
+  const [sessionBusy, setSessionBusy] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
   const lastResetSignal = useRef(resetSignal)
 
   useEffect(() => {
+    props.onBusyChange?.(isLoadingHistory || isResetting || sessionBusy)
+  }, [props.onBusyChange, isLoadingHistory, isResetting, sessionBusy])
+
+  useEffect(() => {
     if (!clientId) {
       setConversationId(null)
       setHistory([])
+      setIsLoadingHistory(false)
+      setIsResetting(false)
       return
     }
 
@@ -280,6 +288,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
       onReset={handleReset}
       onOpenConversation={handleOpenConversation}
       isResetting={isResetting}
+      onBusyChange={setSessionBusy}
     />
   )
 }
@@ -292,6 +301,7 @@ function ConexaChatSession({
   metaAccountId,
   googleCustomerId,
   analyticsPropertyId,
+  onBusyChange,
   conversationId,
   initialMessages,
   onReset,
@@ -374,6 +384,7 @@ function ConexaChatSession({
   })
 
   const isBusy = status === 'submitted' || status === 'streaming'
+  useEffect(() => { onBusyChange?.(isBusy) }, [isBusy, onBusyChange])
   const lastMessage = messages.at(-1)
   const lastAssistantHasContent = lastMessage?.role === 'assistant' && (messageText(lastMessage).length > 0 || hasReportPart(lastMessage))
   // AI SDK puede crear el mensaje assistant antes de recibir su primer token.

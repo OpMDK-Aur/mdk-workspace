@@ -85,8 +85,8 @@ export const chatRequestSchema = z.object({
       clientId: z.string().uuid().optional(),
       conversationId: z.string().uuid().optional(),
       accountId: z.string().max(200).optional(),
-      metaAccountId: z.string().max(200).optional(),
-      googleCustomerId: z.string().max(200).optional(),
+      metaAccountId: z.string().max(2000).optional(),
+      googleCustomerId: z.string().max(2000).optional(),
       analyticsPropertyId: z.string().max(200).optional(),
       model: z.enum(['anthropic/claude-sonnet-5', 'openai/o4-mini', 'openai/gpt-5.6-luna-fast', 'spacexai/grok-4.6', 'inception/mercury-2.5', 'openai/gpt-6-sol']).optional(),
       // .catch(undefined): si el cliente manda un scoreConfig incompleto o

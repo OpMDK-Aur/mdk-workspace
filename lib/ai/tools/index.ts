@@ -250,8 +250,8 @@ function compactRecords(records: unknown[] | null | undefined, limit: number, co
 
 /**
  * Convierte el string (potencialmente separado por comas) de cuenta(s)
- * seleccionada(s) en la UI en un set de ids normalizados. Devuelve null
- * cuando no hay selección explícita, para no restringir nada en ese caso.
+ * seleccionada(s) en la UI en un set de ids normalizados. null significa que
+ * no hay selección explícita y, por lo tanto, ninguna cuenta de Ads está habilitada.
  */
 function parseSelectedAccountIds(value: string | undefined, normalize: (id: string) => string): Set<string> | null {
   if (!value) return null
@@ -260,6 +260,15 @@ function parseSelectedAccountIds(value: string | undefined, normalize: (id: stri
     .map((id) => normalize(id.trim()))
     .filter(Boolean)
   return ids.length > 0 ? new Set(ids) : null
+}
+
+function selectedAccountIdCandidates(metaAccountId?: string, googleCustomerId?: string) {
+  const metaIds = (metaAccountId ?? '').split(',').map((id) => normalizeMetaAccountId(id.trim())).filter(Boolean)
+  const googleIds = (googleCustomerId ?? '').split(',').map((id) => id.trim()).filter(Boolean)
+  return [...new Set([
+    ...metaIds.flatMap((id) => [id, `act_${id}`]),
+    ...googleIds.flatMap((id) => [id, normalizeCustomerId(id)]),
+  ])]
 }
 
 function addGoogleSnapshot(context: ExecutionContext, account: { id_cuenta: string; nombre_cuenta: string | null; moneda: string | null }, metrics: Awaited<ReturnType<typeof getGoogleAccountMetrics>>) {
@@ -393,9 +402,9 @@ const getAccountContext: ToolDefinition = {
     }
     const safeAccounts = allAccounts.filter((account) => {
       const platform = account.plataforma?.toLowerCase()
-      if (platform === 'meta' && metaSelection) return metaSelection.has(normalizeMetaAccountId(account.id_cuenta))
-      if (platform === 'google' && googleSelection) return googleSelection.has(normalizeCustomerId(account.id_cuenta))
-      return true
+      if (platform === 'meta') return Boolean(metaSelection?.has(normalizeMetaAccountId(account.id_cuenta)))
+      if (platform === 'google') return Boolean(googleSelection?.has(normalizeCustomerId(account.id_cuenta)))
+      return false
     })
 
     const google = safeAccounts.find((account) => account.plataforma?.toLowerCase() === 'google')
@@ -427,7 +436,7 @@ const getAccountContext: ToolDefinition = {
       available: true,
       client_id: client.id,
       nombre_del_negocio: client.nombre_del_negocio,
-      tarjeta_cliente: compactValue(client, CONTEXT_FIELD_LIMIT),
+      tarjeta_cliente: compactValue(Object.fromEntries(Object.entries(client).filter(([key]) => !['meta_ads_account_id', 'meta_ads_account_ids', 'google_ads_customer_id', 'google_ads_customer_ids'].includes(key))), CONTEXT_FIELD_LIMIT),
       cuentas_publicitarias: safeAccounts,
       tareas: compactRecords(tasks, CONTEXT_FIELD_LIMIT, 40),
       comentarios_cliente_en_periodo: compactRecords(clientComments, CONTEXT_COMMENT_LIMIT, 80),
@@ -459,8 +468,20 @@ const getClientMemory: ToolDefinition = {
     const from = new Date(today); from.setUTCDate(from.getUTCDate() - 89)
     const dateFrom = from.toISOString().slice(0, 10)
     const dateTo = today.toISOString().slice(0, 10)
-    const { data: historicalRows, error: historicalError } = await (await createClient()).from('paid_media_daily_metrics').select('platform, metric_date, campaign_type, campaign_objective, result_type, currency, spend, leads, conversions').eq('client_id', context.clientId).gte('metric_date', dateFrom).lte('metric_date', dateTo)
-    const performance_90d = historicalError ? { ...emptyClientMemory().performance_90d, date_from: dateFrom, date_to: dateTo, error: 'historical_metrics_unavailable' } : buildPerformance90d((historicalRows ?? []) as MetricRow[], today)
+    const metaSelection = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
+    const googleSelection = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
+    const selectedAccountIds = selectedAccountIdCandidates(context.metaAccountId, context.googleCustomerId)
+    const historicalResult = selectedAccountIds.length
+      ? await (await createClient()).from('paid_media_daily_metrics').select('platform, account_id, metric_date, campaign_type, campaign_objective, result_type, currency, spend, leads, conversions').eq('client_id', context.clientId).in('account_id', selectedAccountIds).gte('metric_date', dateFrom).lte('metric_date', dateTo)
+      : { data: [], error: null }
+    const { data: historicalRows, error: historicalError } = historicalResult
+    const selectedHistory = (historicalRows ?? []).filter((row) => {
+      const accountId = String(row.account_id ?? '')
+      if (row.platform?.toLowerCase() === 'meta') return Boolean(metaSelection?.has(normalizeMetaAccountId(accountId)))
+      if (row.platform?.toLowerCase() === 'google') return Boolean(googleSelection?.has(normalizeCustomerId(accountId)))
+      return false
+    })
+    const performance_90d = historicalError ? { ...emptyClientMemory().performance_90d, date_from: dateFrom, date_to: dateTo, error: 'historical_metrics_unavailable' } : buildPerformance90d(selectedHistory as MetricRow[], today)
     if (historicalError) console.error('[v0] get_client_memory historical metrics unavailable:', historicalError.message)
     const memory = buildClientMemory(data as Record<string, unknown> | null, performance_90d)
     if (context.analysisRunState) context.analysisRunState.clientMemory = memory
@@ -528,7 +549,8 @@ const getIndustryBenchmark: ToolDefinition = {
 
 const getMetaMetrics: ToolDefinition = {
   key: 'get_meta_metrics',
-  description: 'Consulta métricas reales de Meta Ads de las cuentas activas del cliente seleccionado, incluyendo gasto, leads/resultados, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM.',
+    description: 'Consulta métricas reales exclusivamente de las cuentas de Meta Ads seleccionadas para el cliente activo, incluyendo gasto, leads/resultados, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM.',
+
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -605,7 +627,8 @@ const getMetaMetrics: ToolDefinition = {
 
 const getGoogleMetrics: ToolDefinition = {
   key: 'get_google_metrics',
-  description: 'Consulta métricas reales de Google Ads de las cuentas activas del cliente seleccionado, incluyendo gasto, leads/conversiones, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
+    description: 'Consulta métricas reales exclusivamente de las cuentas de Google Ads seleccionadas para el cliente activo, incluyendo gasto, leads/conversiones, campañas, anuncios e IDs necesarios para cruzar utm_id o source_id del CRM. Cada cuenta incluye conversion_actions con el nombre exacto de la acción de conversión, conversiones, valor y campañas relacionadas; totals.leads es únicamente el total agregado.',
+
   inputSchema: z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional(), accountId: z.string().optional() }),
   async execute(input: { dateFrom?: string; dateTo?: string; accountId?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
@@ -752,9 +775,15 @@ const getAccountChangeHistory: ToolDefinition = {
   async execute(input: { platform?: 'google' | 'meta' | null; dateFrom?: string | null; dateTo?: string | null; accountId?: string | null; entityType?: string | null; entityId?: string | null; sourceEventIds?: string[] | null; fieldCategories?: string[] | null; actorEmail?: string | null; limit?: number | null }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, events: [], message: 'No hay un cliente activo seleccionado.' }
     if ((input.dateFrom && !input.dateTo) || (!input.dateFrom && input.dateTo)) return { available: false, events: [], message: 'Debes indicar dateFrom y dateTo juntos.' }
+    const metaSelection = parseSelectedAccountIds(context.metaAccountId, normalizeMetaAccountId)
+    const googleSelection = parseSelectedAccountIds(context.googleCustomerId, normalizeCustomerId)
+    if (!metaSelection && !googleSelection) return { available: false, events: [], message: 'Seleccioná al menos una cuenta de Ads antes de consultar su historial.' }
+    if (input.platform === 'meta' && !metaSelection) return { available: false, events: [], message: 'No hay cuentas de Meta Ads seleccionadas para este análisis.' }
+    if (input.platform === 'google' && !googleSelection) return { available: false, events: [], message: 'No hay cuentas de Google Ads seleccionadas para este análisis.' }
     const limit = Math.min(Math.max(input.limit ?? 100, 1), 200)
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'running', label: `Consultando historial${input.platform ? ` de ${input.platform}` : ''}...` })
-    let query = (await createClient()).from('paid_media_change_events').select('platform, account_id, account_name, source_event_id, occurred_at, actor_id, actor_name, actor_email, client_type, entity_type, entity_id, entity_name, operation, changed_fields, field_categories, source, raw_metadata').eq('client_id', context.clientId).order('occurred_at', { ascending: false }).limit(limit)
+    const selectedAccountIds = selectedAccountIdCandidates(context.metaAccountId, context.googleCustomerId)
+    let query = (await createClient()).from('paid_media_change_events').select('platform, account_id, account_name, source_event_id, occurred_at, actor_id, actor_name, actor_email, client_type, entity_type, entity_id, entity_name, operation, changed_fields, field_categories, source, raw_metadata').eq('client_id', context.clientId).in('account_id', selectedAccountIds).order('occurred_at', { ascending: false }).limit(limit)
     if (input.platform) query = query.eq('platform', input.platform)
     if (input.accountId) query = query.eq('account_id', input.accountId)
     if (input.sourceEventIds?.length) query = query.in('source_event_id', input.sourceEventIds)
@@ -766,7 +795,12 @@ const getAccountChangeHistory: ToolDefinition = {
     if (input.fieldCategories?.length) query = query.overlaps('field_categories', input.fieldCategories)
     const { data, error } = await query
     if (error) { context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_account_change_history', status: 'error', label: 'No se pudo leer el historial de cambios' }); return { available: false, events: [], message: 'No se pudo leer el historial persistido.' } }
-    const events = (data ?? []).map((row) => ({ platform: row.platform, account_id: row.account_id, occurred_at: row.occurred_at, actor: { id: row.actor_id, name: row.actor_name, email: row.actor_email }, source: row.source, entity: { type: row.entity_type, id: row.entity_id, name: row.entity_name }, operation: row.operation, changed_fields: row.changed_fields ?? [], metadata: { resource_name: row.source_event_id, client_type: row.client_type, raw_change_resource_type: row.entity_type } }))
+    const events = (data ?? []).filter((row) => {
+      const accountId = String(row.account_id ?? '')
+      if (row.platform === 'meta') return Boolean(metaSelection?.has(normalizeMetaAccountId(accountId)))
+      if (row.platform === 'google') return Boolean(googleSelection?.has(normalizeCustomerId(accountId)))
+      return false
+    }).map((row) => ({ platform: row.platform, account_id: row.account_id, occurred_at: row.occurred_at, actor: { id: row.actor_id, name: row.actor_name, email: row.actor_email }, source: row.source, entity: { type: row.entity_type, id: row.entity_id, name: row.entity_name }, operation: row.operation, changed_fields: row.changed_fields ?? [], metadata: { resource_name: row.source_event_id, client_type: row.client_type, raw_change_resource_type: row.entity_type } }))
     if (context.analysisRunState) upsertChangeHistory(context.analysisRunState, events)
     if (context.conversationWorkingContext && events.length) {
       context.conversationWorkingContext = mergeWorkingContext(context.conversationWorkingContext, contextFromEvents(context.clientId, events, input.dateFrom && input.dateTo ? { from: input.dateFrom, to: input.dateTo } : null))
