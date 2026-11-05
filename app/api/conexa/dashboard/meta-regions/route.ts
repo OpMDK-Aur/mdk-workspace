@@ -28,7 +28,7 @@ async function getRegionRows(accountId: string, accountName: string | null, toke
   let pages = 0
 
   while (nextUrl && pages < 20) {
-    const response = await fetch(nextUrl, { cache: 'no-store' })
+    const response = await fetch(nextUrl, { next: { revalidate: 60 * 60 } })
     const payload = await response.json().catch(() => null) as { data?: Array<Record<string, unknown>>; paging?: { next?: string }; error?: { message?: string } } | null
     if (!response.ok || payload?.error) throw new Error(payload?.error?.message ?? `Meta respondió ${response.status}`)
 

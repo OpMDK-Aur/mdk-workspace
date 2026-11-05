@@ -40,27 +40,31 @@ export async function GET(request: NextRequest) {
   const clientId = request.nextUrl.searchParams.get('clientId') ?? ''
   if (!CLIENT_ID.test(clientId)) return NextResponse.json({ error: 'Falta un ID de cliente válido.' }, { status: 400 })
 
-  const access = await authorizeClient(clientId)
-  if ('response' in access) return access.response
-
-  const storage = access.admin.storage.from(BUCKET)
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  let canUpload = false
+  if (user) {
+    const { data: visibleClient } = await supabase.from('clientes').select('id').eq('id', clientId).maybeSingle()
+    canUpload = Boolean(visibleClient)
+  }
+  const storage = createAdminClient().storage.from(BUCKET)
   const { data: objects, error: listError } = await storage.list(folderFor(clientId), { limit: 10, search: 'presupuesto' })
   if (listError) {
     const status = storageUnavailable(listError) ? 503 : 500
-    return NextResponse.json({ configured: false, error: status === 503 ? 'El bucket de presupuesto aún no está disponible.' : 'No se pudo consultar el archivo de presupuesto.' }, { status })
+    return NextResponse.json({ configured: false, canUpload, error: status === 503 ? 'El bucket de presupuesto aún no está disponible.' : 'No se pudo consultar el archivo de presupuesto.' }, { status })
   }
 
   const current = (objects ?? [])
     .filter((object) => object.name === 'presupuesto.xlsx' || object.name === 'presupuesto.csv')
     .sort((left, right) => String(right.updated_at ?? right.created_at ?? '').localeCompare(String(left.updated_at ?? left.created_at ?? '')))[0]
 
-  if (!current) return NextResponse.json({ configured: false, fileName: null, sheets: {}, rowCounts: {} })
+  if (!current) return NextResponse.json({ configured: false, canUpload, fileName: null, sheets: {}, rowCounts: {} })
 
   const extension = current.name.endsWith('.xlsx') ? 'xlsx' : 'csv'
   const { data: file, error: downloadError } = await storage.download(pathFor(clientId, extension))
   if (downloadError || !file) {
     const status = storageUnavailable(downloadError) ? 503 : 500
-    return NextResponse.json({ configured: false, error: status === 503 ? 'El bucket de presupuesto aún no está disponible.' : 'No se pudo leer el archivo de presupuesto.' }, { status })
+    return NextResponse.json({ configured: false, canUpload, error: status === 503 ? 'El bucket de presupuesto aún no está disponible.' : 'No se pudo leer el archivo de presupuesto.' }, { status })
   }
 
   try {
@@ -69,6 +73,7 @@ export async function GET(request: NextRequest) {
       const { general, meta, google, objetivosCpl, ...fileInfo } = parsed
       return NextResponse.json({
         configured: true,
+        canUpload,
         ...fileInfo,
         sheets: { general, meta, google, objetivosCpl },
         publicUrl: publicData.publicUrl,
@@ -76,7 +81,7 @@ export async function GET(request: NextRequest) {
       })
   } catch (cause) {
     console.error('[conexa-dashboard] No se pudo interpretar el presupuesto:', cause)
-    return NextResponse.json({ configured: true, error: 'El archivo guardado no tiene un formato de presupuesto válido.' }, { status: 422 })
+    return NextResponse.json({ configured: true, canUpload, error: 'El archivo guardado no tiene un formato de presupuesto válido.' }, { status: 422 })
   }
 }
 
@@ -130,6 +135,7 @@ export async function POST(request: NextRequest) {
   const { general, meta, google, objetivosCpl, ...fileInfo } = parsed
   return NextResponse.json({
     configured: true,
+    canUpload: true,
     ...fileInfo,
     sheets: { general, meta, google, objetivosCpl },
     publicUrl: publicData.publicUrl,

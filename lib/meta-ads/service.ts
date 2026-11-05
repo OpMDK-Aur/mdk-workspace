@@ -213,7 +213,7 @@ function classifyMetaError(payload: MetaApiErrorPayload | null, httpStatus?: num
 }
 
 async function fetchJson(url: string) {
-  const response = await fetch(url, { cache: 'no-store' })
+  const response = await fetch(url, { next: { revalidate: 60 * 60 } })
   const payload = await response.json().catch(() => null) as MetaApiErrorPayload | null
   if (!response.ok || payload?.error) throw classifyMetaError(payload, response.status)
   return payload as MetaApiErrorPayload & { data?: MetaInsightRow[]; paging?: { next?: string } }
@@ -443,11 +443,11 @@ async function fetchAdsetCatalog(accountId: string, accessToken: string) {
   return items
 }
 
-type MetaAdCreativeInfo = { campaign?: { name?: string }; creative?: Record<string, unknown> }
+type MetaAdCreativeInfo = { campaign?: { name?: string }; preview_shareable_link?: string; creative?: Record<string, unknown> }
 
 // Insights (level=ad) no devuelve creativos: se consultan los anuncios por ID en lotes de 50.
 // Los modificadores thumbnail_width/height van en el campo porque /?ids ignora los parámetros de query.
-const AD_CREATIVE_FIELDS = 'campaign{name},creative.thumbnail_width(600).thumbnail_height(600){id,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}'
+const AD_CREATIVE_FIELDS = 'campaign{name},preview_shareable_link,creative.thumbnail_width(600).thumbnail_height(600){id,image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}'
 
 async function fetchAdCreatives(adIds: string[], accessToken: string) {
   const byId = new Map<string, MetaAdCreativeInfo>()
@@ -570,7 +570,8 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const campaignNameByAd = new Map(adRows.map((row) => [(row as MetaInsightRow & { ad_id?: string }).ad_id ?? '', row.campaign_name ?? '']))
   const creativeInfo = await fetchAdCreatives(ads.filter((ad) => ad.impressions > 0).map((ad) => ad.id), accessToken)
     .catch(() => new Map<string, MetaAdCreativeInfo>())
-  const creatives = ads.map((ad) => {
+  const adsWithPreview = ads.map((ad) => ({ ...ad, preview_url: creativeInfo.get(ad.id)?.preview_shareable_link ?? null }))
+  const creatives = adsWithPreview.map((ad) => {
     const info = creativeInfo.get(ad.id)
     return {
       ...ad,
@@ -603,7 +604,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     account_id: accountId, account_name: input.accountName ?? null, moneda: input.moneda ?? null, zona_horaria: input.zonaHoraria ?? null,
     api_rows_received: rows.length,
     raw_rows: rows.slice(0, 3),
-    date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns, adsets, ads, creatives,
+    date_range: { start: input.dateFrom, end: input.dateTo }, totals, results_by_type: resultsByType, campaigns, adsets, ads: adsWithPreview, creatives,
     ...(adsetCatalog ? { adset_catalog: adsetCatalog } : {}),
     ...(daily ? { daily } : {}),
   }

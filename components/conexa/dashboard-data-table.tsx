@@ -7,7 +7,9 @@ import type { DashboardRecord } from '@/components/conexa/dashboard-types'
 export type DashboardColumn = {
   key: string
   label: string
-  format?: 'number' | 'money' | 'percent'
+  format?: 'number' | 'money' | 'percent' | 'meter'
+  markerKey?: string
+  toneKey?: string
   link?: boolean
   right?: boolean
 }
@@ -106,7 +108,23 @@ export function DashboardDataTable({ title, columns, rows, description, emptyMes
                     const value = row[column.key]
                     return (
                       <td key={`${rowIndex}-${column.key}`} className={`max-w-[280px] px-4 py-2.5 ${column.right ? 'text-right tabular-nums' : ''}`}>
-                        {column.link ? typeof value === 'string' && /^https:\/\//.test(value) ? <a href={value} target="_blank" rel="noopener noreferrer" className="font-medium text-[#4f53d9] underline-offset-2 hover:underline">Vista previa</a> : <button type="button" disabled className="cursor-not-allowed text-[#999]">Vista previa</button> : formatCell(value, column.format)}
+                        {column.link ? typeof value === 'string' && /^https:\/\//.test(value) ? <a href={value} target="_blank" rel="noopener noreferrer" className="font-medium text-[#4f53d9] underline-offset-2 hover:underline">Vista previa</a> : <button type="button" disabled className="cursor-not-allowed text-[#999]">Vista previa</button> : column.format === 'meter' ? value === null || value === undefined ? '—' : (() => {
+                          const percentage = toNumber(value)
+                          const marker = column.markerKey ? toNumber(row[column.markerKey]) : null
+                          const status = String(row.status ?? '').toLowerCase()
+                          const fill = status.includes('sobre') || status.includes('proyección') ? 'bg-[#f87171]' : status.includes('debajo') ? 'bg-[#fbbf24]' : status.includes('sin presupuesto') ? 'bg-[#c8c8c3]' : 'bg-[#4ade80]'
+                          const safePercentage = Math.max(0, Math.min(100, percentage))
+                          return <div className="flex min-w-[130px] items-center gap-2"><div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={safePercentage} aria-label={`${percentage.toFixed(0)}% consumido`} className="relative h-2 min-w-16 flex-1 overflow-visible rounded-full bg-[#eeeee9]"><div className={`h-2 rounded-full ${fill}`} style={{ width: `${safePercentage}%` }} />{marker !== null && <span aria-hidden="true" className="absolute top-[-2px] h-3 w-px bg-[#404040]" style={{ left: `${Math.max(0, Math.min(100, marker))}%` }} />}</div><span className="whitespace-nowrap">{percentFormat.format(percentage)}%</span></div>
+                        })() : column.key === 'status' ? (() => {
+                          const status = String(value ?? '—')
+                          const normalized = status.toLowerCase()
+                          const tone = normalized.includes('sobre') || normalized.includes('proyección') ? 'bg-[#fff0ef] text-[#b9423b]' : normalized.includes('debajo') || normalized.includes('sin presupuesto') ? 'bg-[#fff7e7] text-[#99640b]' : normalized.includes('ritmo') || normalized.includes('seguimiento') ? 'bg-[#eef9f2] text-[#23764f]' : 'bg-[#f5f5f3] text-[#6b6b68]'
+                          return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${tone}`}>{status}</span>
+                        })() : column.toneKey ? (() => {
+                          const tone = String(row[column.toneKey] ?? 'neutral')
+                          const toneClass = tone === 'good' ? 'font-semibold text-[#27845e]' : tone === 'bad' ? 'font-semibold text-[#b9423b]' : 'text-[#676767]'
+                          return <span className={toneClass}>{formatCell(value, column.format)}</span>
+                        })() : formatCell(value, column.format)}
                       </td>
                     )
                   })}

@@ -14,6 +14,7 @@ export type DashboardRecord = Record<string, unknown>
 export type DashboardBudgetSheet = DashboardRecord[]
 export type DashboardBudget = {
   configured: boolean
+  canUpload?: boolean
   fileName?: string
   publicUrl?: string
   updatedAt?: string | null

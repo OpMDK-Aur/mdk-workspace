@@ -288,7 +288,7 @@ function BudgetByAccount({ platformName, rows }: { platformName: string; rows: R
       <SectionHeading title={`Presupuesto vs consumo · ${platformName}`} detail="Mes en curso; importes tomados del archivo del cliente." />
       <DashboardDataTable title="Totales por cuenta" searchable={false} columns={[
         { key: 'account', label: 'Cuenta' }, { key: 'assigned', label: 'Presupuesto mensual', format: 'money', right: true },
-        { key: 'consumed', label: 'Consumido', format: 'money', right: true }, { key: 'consumption', label: '% consumo', format: 'percent', right: true },
+        { key: 'consumed', label: 'Consumido', format: 'money', right: true }, { key: 'consumption', label: '% consumo', format: 'meter', markerKey: 'pace', right: true },
         { key: 'pace', label: 'Ritmo esperado', format: 'percent', right: true }, { key: 'projected', label: 'Proyección', format: 'money', right: true },
         { key: 'suggestedDaily', label: 'Diario sugerido', format: 'money', right: true }, { key: 'status', label: 'Estado' },
       ]} rows={tableRows} emptyMessage="No hay cuentas publicitarias activas para este cliente." />
@@ -316,7 +316,7 @@ function GeneralCampaignBudget({ rows, accounts, campaigns, monthFilter }: { row
     <DashboardDataTable title="Presupuesto general por campaña" description="Cruce por nombre exacto de cuenta y campaña; el mes del archivo se interpreta en el año actual." searchable columns={[
       { key: 'account', label: 'Cuenta' }, { key: 'campaign', label: 'Campaña' }, { key: 'brand', label: 'Marca' }, { key: 'modality', label: 'Modalidad' },
       { key: 'resultType', label: 'Tipo de resultado' }, { key: 'month', label: 'Mes' }, { key: 'budget', label: 'Presupuesto', format: 'money', right: true },
-      { key: 'actual', label: 'Consumido', format: 'money', right: true }, { key: 'consumption', label: '% consumo', format: 'percent', right: true }, { key: 'status', label: 'Estado' },
+      { key: 'actual', label: 'Consumido', format: 'money', right: true }, { key: 'consumption', label: '% consumo', format: 'meter', right: true }, { key: 'status', label: 'Estado' },
     ]} rows={tableRows} emptyMessage="No hay líneas de presupuesto general que coincidan con las cuentas activas y el mes seleccionado." />
   )
 }
@@ -325,13 +325,14 @@ export type MetaDashboardProps = {
   platform: DashboardPlatform
   data: DashboardRecord
   metrics: DashboardMetric[]
+  period: string
   budget?: DashboardBudget
   monthData: DashboardRecord
   regionData?: { available?: boolean; rows?: DashboardRegionRow[]; message?: string }
   regionLoading: boolean
 }
 
-export function MetaDashboardSection({ platform, data, metrics, budget, monthData, regionData, regionLoading }: MetaDashboardProps) {
+export function MetaDashboardSection({ platform, data, metrics, period, budget, monthData, regionData, regionLoading }: MetaDashboardProps) {
   const accounts = metaAccounts(data)
   const campaigns = accounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) })))
   const adsets = accounts.flatMap((account) => asRows(account.adsets).map((adset) => ({ ...adset, account_id: account.account_id, account_name: accountName(account) })))
@@ -498,7 +499,7 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
             <LineChart accessibilityLayer data={dailyRows} margin={{ left: 8, right: 10, top: 8 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value: string) => value.slice(5)} />
-              <YAxis tickLine={false} axisLine={false} width={54} tickFormatter={(value: number) => numberFormat.format(value)} />
+              <YAxis tickLine={false} axisLine={false} width={54} tickFormatter={(value: number) => numberFormat(value)} />
               <ChartTooltip content={<ChartTooltipContent labelFormatter={(label) => String(label)} />} />
               <ChartLegend content={<ChartLegendContent />} />
               {dailySeries.map((series) => <Line key={series.key} name={series.label} type="monotone" dataKey={series.key} stroke={`var(--color-${series.key})`} strokeWidth={2} dot={false} />)}
@@ -512,7 +513,7 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
         { key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'objective', label: 'Objetivo' }, { key: 'model', label: 'Modelo' },
         { key: 'modality', label: 'Modalidad' }, { key: 'resultType', label: 'Tipo de resultado' }, { key: 'daily', label: 'Diario', format: 'money', right: true },
         { key: 'monthly', label: 'Mensual asignado', format: 'money', right: true }, { key: 'consumed', label: 'Consumido', format: 'money', right: true },
-        { key: 'consumption', label: '% consumo', format: 'percent', right: true }, { key: 'pace', label: 'Ritmo esperado', format: 'percent', right: true },
+        { key: 'consumption', label: '% consumo', format: 'meter', markerKey: 'pace', right: true }, { key: 'pace', label: 'Ritmo esperado', format: 'percent', right: true },
         { key: 'suggestedDaily', label: 'Diario sugerido', format: 'money', right: true }, { key: 'general', label: 'Presupuesto general', format: 'money', right: true },
         { key: 'status', label: 'Estado' }, { key: 'comments', label: 'Comentarios' },
       ]} rows={metaBudgetDetailRows} emptyMessage="El archivo no tiene filas META para estas cuentas." />
@@ -607,7 +608,7 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
               { key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'model', label: 'Modelo' }, { key: 'modality', label: 'Modalidad' },
               { key: 'resultType', label: 'Tipo de resultado' }, { key: 'daily', label: 'Diario', format: 'money', right: true },
               { key: 'monthly', label: 'Mensual asignado', format: 'money', right: true }, { key: 'consumed', label: 'Consumido', format: 'money', right: true },
-              { key: 'consumption', label: '% consumo', format: 'percent', right: true }, { key: 'pace', label: 'Ritmo esperado', format: 'percent', right: true },
+              { key: 'consumption', label: '% consumo', format: 'meter', markerKey: 'pace', right: true }, { key: 'pace', label: 'Ritmo esperado', format: 'percent', right: true },
               { key: 'general', label: 'Presupuesto general', format: 'money', right: true }, { key: 'targetCpl', label: 'Costo por lead objetivo', format: 'money', right: true },
               { key: 'maxLeads', label: 'Objetivo máximo leads', format: 'number', right: true }, { key: 'leadsByBrand', label: 'Objetivo leads por marca', format: 'number', right: true },
               { key: 'status', label: 'Estado' },

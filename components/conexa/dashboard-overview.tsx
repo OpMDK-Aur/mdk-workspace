@@ -61,7 +61,7 @@ function monthEnd(value: string, monthOffset = 0) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
 }
 
-function getComparisonRanges(preset: string, custom: { currentFrom: string; currentTo: string; comparedFrom: string; comparedTo: string }): RangePair | null {
+function getComparisonRanges(preset: string, custom: { currentFrom: string; currentTo: string; comparedFrom: string; comparedTo: string }, baseRange?: Range): RangePair | null {
   const today = todayArgentina()
   if (preset === 'custom') {
     if (!custom.currentFrom || !custom.currentTo || !custom.comparedFrom || !custom.comparedTo) return null
@@ -109,7 +109,10 @@ function compareMetricRows(platforms: DashboardPlatform[], current: PlatformMetr
     return (currentMetrics[platform.key] ?? []).map((metric) => {
       const currentValue = Number(metric.value ?? 0)
       const comparedValue = previousByLabel.get(normalize(metric.label)) ?? 0
-      return { platform: platform.name, metric: metric.label, current: currentValue, compared: comparedValue, variation: comparedValue ? ((currentValue - comparedValue) / comparedValue) * 100 : null }
+      const variation = comparedValue ? ((currentValue - comparedValue) / comparedValue) * 100 : null
+      const costMetric = /inversion|costo|cpl|cpc|cpm/.test(normalize(metric.label))
+      const variationTone = variation === null ? 'neutral' : costMetric ? variation <= 0 ? 'good' : 'bad' : variation >= 0 ? 'good' : 'bad'
+      return { platform: platform.name, metric: metric.label, current: currentValue, compared: comparedValue, variation, variationTone }
     })
   })
 }
@@ -258,14 +261,14 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
                 <h2 className="text-[13px] font-semibold text-[#262626]">Presupuesto por cliente</h2>
                 {budgetData?.configured ? (
                   <p className="mt-1 text-[10px] text-[#777]">{budgetData.fileName} · {Object.values(budgetData.rowCounts ?? {}).reduce((total, count) => total + count, 0)} filas · reemplazado al subir una nueva versión</p>
-                ) : <p className="mt-1 text-[10px] text-[#777]">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
+                ) : budgetData && !budgetData.canUpload ? <p className="mt-1 text-[10px] text-[#777]">No hay un archivo cargado. Iniciá sesión con permisos sobre este cliente para subirlo.</p> : <p className="mt-1 text-[10px] text-[#777]">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
                 <p className="mt-1 text-[10px] text-[#8b6a25]">El archivo se guarda en un bucket público; cualquier persona con el enlace puede descargarlo.</p>
                 {budgetData?.publicUrl && <a href={budgetData.publicUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-medium text-[#5b5fe8] underline underline-offset-2">Abrir archivo público</a>}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <input ref={fileInput} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={uploadBudget} className="sr-only" aria-label="Seleccionar archivo de presupuesto" />
-              <button type="button" onClick={() => fileInput.current?.click()} disabled={!clientId || uploading} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#5b5fe8] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#4b4fd6] disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={() => fileInput.current?.click()} disabled={!clientId || uploading || !budgetData?.canUpload} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#5b5fe8] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#4b4fd6] disabled:cursor-not-allowed disabled:opacity-60">
                 {uploading ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <UploadCloud className="size-3.5" aria-hidden="true" />}
                 {uploading ? 'Subiendo…' : 'Subir / reemplazar'}
               </button>
@@ -276,7 +279,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
 
         {connectedPlatforms.length > 0 && <section aria-label="Resumen consolidado" className="flex flex-col gap-3">
           <div><h2 className="text-[13px] font-semibold text-[#303030]">Resumen por plataforma</h2><p className="mt-1 text-[10px] text-[#858585]">Los resultados, conversiones, eventos clave y leads se mantienen separados porque representan métricas distintas.</p></div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="flex flex-col gap-3">
             {connectedPlatforms.map((platform) => {
               const metrics = platformMetrics[platform.key] ?? []
               const highlightLabels: Record<string, string> = { meta: 'Resultados', google: 'Conversiones', analytics: 'Sesiones', crm: 'Contactos', tag_manager: 'Etiquetas' }
@@ -348,7 +351,7 @@ function ComparisonSection({ clientId, platforms }: { clientId: string | null; p
           <button type="button" onClick={compare} disabled={!clientId || loading} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#d9d9d6] px-4 text-[11px] font-semibold text-[#333] hover:bg-[#fafaf8] disabled:opacity-60">{loading && <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}{loading ? 'Comparando…' : 'Comparar'}</button>
         </div>
         {error && <p role="alert" className="mt-3 text-[11px] text-[#b42318]">{error}</p>}
-        {result && <div className="mt-4 flex flex-col gap-2"><p className="text-[10px] text-[#777]">{result.ranges.label}: {result.ranges.current.from}–{result.ranges.current.to} vs {result.ranges.compared.from}–{result.ranges.compared.to}. Las métricas de resultado se conservan por plataforma.</p><DashboardDataTable title="Comparación por plataforma" columns={[{ key: 'platform', label: 'Plataforma' }, { key: 'metric', label: 'Métrica' }, { key: 'current', label: 'Actual', format: 'number', right: true }, { key: 'compared', label: 'Comparado', format: 'number', right: true }, { key: 'variation', label: 'Variación', format: 'percent', right: true }]} rows={rows} searchable={false} emptyMessage="No hay métricas comparables para estas fechas." /></div>}
+        {result && <div className="mt-4 flex flex-col gap-2"><p className="text-[10px] text-[#777]">{result.ranges.label}: {result.ranges.current.from}–{result.ranges.current.to} vs {result.ranges.compared.from}–{result.ranges.compared.to}. Las métricas de resultado se conservan por plataforma.</p><DashboardDataTable title="Comparación por plataforma" columns={[{ key: 'platform', label: 'Plataforma' }, { key: 'metric', label: 'Métrica' }, { key: 'current', label: 'Actual', format: 'number', right: true }, { key: 'compared', label: 'Comparado', format: 'number', right: true }, { key: 'variation', label: 'Variación', format: 'percent', toneKey: 'variationTone', right: true }]} rows={rows} searchable={false} emptyMessage="No hay métricas comparables para estas fechas." /></div>}
       </div>
     </details>
   )
