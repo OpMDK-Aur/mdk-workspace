@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState, type ComponentType, type ReactNode, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type ChangeEvent } from 'react'
 import useSWR from 'swr'
 import { FileSpreadsheet, LoaderCircle, RefreshCw, UploadCloud } from 'lucide-react'
 import { MetaDashboardSection, GenericPlatformSection } from '@/components/conexa/dashboard-platform-sections'
@@ -98,21 +98,6 @@ async function fetchMetricsForRange(clientId: string, range: Range): Promise<Pla
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload.error ?? 'No se pudo comparar este período.')
   return payload as PlatformMetricResponse
-}
-
-function compareMetricRows(platforms: DashboardPlatform[], current: PlatformMetricResponse, compared: PlatformMetricResponse) {
-  const currentMetrics = current.platformMetrics ?? {}
-  const comparedMetrics = compared.platformMetrics ?? {}
-  return platforms.flatMap((platform) => {
-    if (platform.key === 'tag_manager') return []
-    const previousByLabel = new Map((comparedMetrics[platform.key] ?? []).map((metric) => [normalize(metric.label), metric.value]))
-    return (currentMetrics[platform.key] ?? []).map((metric) => ({
-      platform: platform.name,
-      metric: metric.label,
-      current: Number(metric.value ?? 0),
-      compared: Number(previousByLabel.get(normalize(metric.label)) ?? 0),
-    }))
-  })
 }
 
 function compareMetricRows(platforms: DashboardPlatform[], current: PlatformMetricResponse, compared: PlatformMetricResponse) {

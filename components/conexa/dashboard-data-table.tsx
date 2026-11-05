@@ -106,7 +106,7 @@ export function DashboardDataTable({ title, columns, rows, description, emptyMes
                     const value = row[column.key]
                     return (
                       <td key={`${rowIndex}-${column.key}`} className={`max-w-[280px] px-4 py-2.5 ${column.right ? 'text-right tabular-nums' : ''}`}>
-                        {column.link && typeof value === 'string' && /^https:\/\//.test(value) ? <a href={value} target="_blank" rel="noopener noreferrer" className="font-medium text-[#4f53d9] underline-offset-2 hover:underline">Vista previa</a> : formatCell(value, column.format)}
+                        {column.link ? typeof value === 'string' && /^https:\/\//.test(value) ? <a href={value} target="_blank" rel="noopener noreferrer" className="font-medium text-[#4f53d9] underline-offset-2 hover:underline">Vista previa</a> : <button type="button" disabled className="cursor-not-allowed text-[#999]">Vista previa</button> : formatCell(value, column.format)}
                       </td>
                     )
                   })}

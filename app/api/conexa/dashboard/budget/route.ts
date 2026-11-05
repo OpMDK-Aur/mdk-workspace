@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
   }
 
   const previousExtension = extension === 'csv' ? 'xlsx' : 'csv'
-  await storage.remove([pathFor(clientId, previousExtension)]).catch(() => {})
+  try { await storage.remove([pathFor(clientId, previousExtension)]) } catch {}
   const { data: publicData } = storage.getPublicUrl(currentPath)
   const { data: objects } = await storage.list(folderFor(clientId), { limit: 10, search: 'presupuesto' })
   const stored = objects?.find((object) => object.name === `presupuesto.${extension}`)

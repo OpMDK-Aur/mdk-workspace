@@ -430,7 +430,7 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
   const regionRows = (regionData?.rows ?? []).filter((row) => accountFilter === 'all' || (row.account_names ?? []).some((name) => normalize(name) === normalize(accountFilter))).slice(0, 8)
   const regionConfig = { leads: { label: 'Leads formulario', color: 'var(--chart-1)' } } satisfies ChartConfig
   const monthMetaAccounts = metaAccounts(asRecord(monthData.meta))
-  const monthMetaCampaignRows = makeMetaCampaignRows(monthMetaAccounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) }))))
+  const monthMetaCampaignRows = makeMetaCampaignRows(monthMetaAccounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) }))), monthMetaAccounts)
   const budgetSummary = calculateAccountBudgets(accounts, monthMetaAccounts, budgetRows)
   const accountBudgetRows = activeMetaBudgetRows.filter((row) => accountFilter === 'all' || normalize(field(row, 'Cuenta')) === normalize(accountFilter))
     .filter((row) => brandFilter === 'all' || normalize(field(row, 'Marca')) === normalize(brandFilter))
@@ -441,7 +441,9 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
     account: display(field(row, 'Cuenta')), brand: display(field(row, 'Marca')), model: display(field(row, 'Modelos')),
     cplAverage: amount(row, 'CPL Promedio'), target: amount(row, 'OBJETIVO', 'Objetivo'),
   }))
-  const alertItems = buildBudgetAlerts(budgetSummary, objectiveRows, monthMetaCampaignRows).filter((item) => accountFilter === 'all' || normalize(item.account) === normalize(accountFilter))
+  const alertItems = buildBudgetAlerts(budgetSummary, activeMetaObjectiveRows, monthMetaCampaignRows)
+  const visibleCriticalAlerts = alertItems.critical.filter((item) => accountFilter === 'all' || normalize(item.account) === normalize(accountFilter))
+  const visibleAttentionAlerts = alertItems.attention.filter((item) => accountFilter === 'all' || normalize(item.account) === normalize(accountFilter))
   const metaColumns: DashboardColumn[] = [
     { key: 'account', label: 'Cuenta' }, { key: 'campaign', label: 'Campaña' }, { key: 'objective', label: 'Objetivo' },
     { key: 'status', label: 'Estado' }, { key: 'spend', label: 'Inversión', format: 'money', right: true },
@@ -453,7 +455,7 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
   const hasMetaData = accounts.some((account) => numberValue(account.api_rows_received) > 0 || asRows(account.campaigns).length > 0)
   const visibleAccounts = accountFilter === 'all' ? accounts : accounts.filter((account) => normalize(accountName(account)) === normalize(accountFilter))
   const visibleBudgetSummary = accountFilter === 'all' ? budgetSummary : budgetSummary.filter((row) => normalize(row.account) === normalize(accountFilter))
-  const campaignRows = makeMetaCampaignRows(filteredCampaigns)
+  const campaignRows = makeMetaCampaignRows(filteredCampaigns, accounts)
   const adsetRows = adsets.filter((row) => (accountFilter === 'all' || normalize(row.account_name) === normalize(accountFilter)) && (!campaignFilter || normalize(row.campaign_name).includes(normalize(campaignFilter)))).map((row) => ({
     account: row.account_name, campaign: row.campaign_name, adset: row.name, status: row.status ?? row.effective_status ?? '—',
     spend: numberValue(row.spend), impressions: numberValue(row.impressions), reach: numberValue(row.reach), frequency: numberValue(row.frequency), clicks: numberValue(row.clicks), linkClicks: numberValue(row.link_clicks), results: numberValue(row.results ?? row.leads ?? row.conversions),
@@ -561,7 +563,7 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
         ]} rows={adRows} emptyMessage="Sin anuncios con datos para el período seleccionado." />
       </div>
 
-      <AlertGroups critical={alertItems.filter((item) => item.severity === 'critical')} attention={alertItems.filter((item) => item.severity !== 'critical')} />
+      <AlertGroups critical={visibleCriticalAlerts} attention={visibleAttentionAlerts} />
     </section>
   )
 }
@@ -611,7 +613,7 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
               { key: 'status', label: 'Estado' },
             ]} rows={googleBudgetDetails} emptyMessage="El archivo no tiene filas GOOGLE para estas cuentas." />
             <DashboardDataTable title="Objetivos CPL" columns={[{ key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'model', label: 'Modelo' }, { key: 'cplAverage', label: 'CPL promedio', format: 'money', right: true }, { key: 'target', label: 'Objetivo', format: 'money', right: true }]} rows={googleObjectiveRows} emptyMessage="El archivo no incluye objetivos CPL para estas cuentas." />
-            <AlertGroups critical={googleAlertItems.filter((item) => item.severity === 'critical')} attention={googleAlertItems.filter((item) => item.severity !== 'critical')} />
+            <AlertGroups critical={googleAlertItems.critical} attention={googleAlertItems.attention} />
           </>}
           <div className="mt-4 flex flex-col gap-4">
             {tables.map((table) => <DashboardDataTable key={`${platform.key}-${table.title}`} title={table.title} columns={table.columns} rows={table.rows} emptyMessage={table.emptyMessage} />)}
@@ -659,14 +661,6 @@ function DailyPlatformChart({ platformKey, period, rows }: { platformKey: string
       </ChartContainer>
     </div>
   )
-}
-
-function SectionHeading({ title, detail }: { title: string; detail?: string }) {
-  return <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1"><h3 className="text-[12px] font-semibold text-[#2c2c2c]">{title}</h3>{detail && <span className="text-[10px] text-[#888]">{detail}</span>}</div>
-}
-
-function EmptyPanel({ text }: { text: string }) {
-  return <div className="rounded-xl border border-dashed border-[#dededb] bg-white px-4 py-7 text-center text-[11px] text-[#858585]">{text}</div>
 }
 
 function genericHasData(key: string, data: DashboardRecord, metrics: DashboardMetric[]) {
