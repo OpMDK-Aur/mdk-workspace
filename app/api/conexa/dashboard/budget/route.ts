@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
         ...fileInfo,
         sheets: { general, meta, google, objetivosCpl },
         publicUrl: publicData.publicUrl,
-        updatedAt: stored?.updated_at ?? stored?.created_at ?? null,
+        updatedAt: current.updated_at ?? current.created_at ?? null,
       })
   } catch (cause) {
     console.error('[conexa-dashboard] No se pudo interpretar el presupuesto:', cause)

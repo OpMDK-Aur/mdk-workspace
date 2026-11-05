@@ -84,9 +84,14 @@ function getComparisonRanges(preset: string, custom: { currentFrom: string; curr
   if (preset === '30-days') {
     return { current: { from: addDays(today, -29), to: today }, compared: { from: addDays(today, -59), to: addDays(today, -30) }, label: 'Últimos 30 días vs 30 anteriores' }
   }
-  const [year, month, day] = today.split('-').map(Number)
-  const previousYear = `${year - 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  return { current: { from: today, to: today }, compared: { from: previousYear, to: previousYear }, label: 'Hoy vs mismo día del año anterior' }
+  const current = baseRange?.from && baseRange.to ? baseRange : { from: today, to: today }
+  const previousYear = (value: string) => {
+    const [year, month, day] = value.split('-').map(Number)
+    const candidate = new Date(Date.UTC(year - 1, month - 1, day))
+    if (candidate.getUTCMonth() !== month - 1) candidate.setUTCDate(0)
+    return `${candidate.getUTCFullYear()}-${String(candidate.getUTCMonth() + 1).padStart(2, '0')}-${String(candidate.getUTCDate()).padStart(2, '0')}`
+  }
+  return { current, compared: { from: previousYear(current.from), to: previousYear(current.to) }, label: 'Período actual vs mismo período del año anterior' }
 }
 
 async function fetchMetricsForRange(clientId: string, range: Range): Promise<PlatformMetricResponse> {
@@ -139,6 +144,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
   const range = asRecord(platformData.range)
   const dateFrom = String(range.dateFrom ?? '')
   const dateTo = String(range.dateTo ?? '')
+  const comparisonBaseRange = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : customRange.from && customRange.to ? { from: customRange.from, to: customRange.to } : undefined
 
   const { data: budgetData, error: budgetLoadError, mutate: refreshBudget } = useSWR<DashboardBudget>(
     clientId ? `/api/conexa/dashboard/budget?clientId=${encodeURIComponent(clientId)}` : null,
@@ -261,7 +267,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
                 <h2 className="text-[13px] font-semibold text-[#262626]">Presupuesto por cliente</h2>
                 {budgetData?.configured ? (
                   <p className="mt-1 text-[10px] text-[#777]">{budgetData.fileName} · {Object.values(budgetData.rowCounts ?? {}).reduce((total, count) => total + count, 0)} filas · reemplazado al subir una nueva versión</p>
-                ) : budgetData && !budgetData.canUpload ? <p className="mt-1 text-[10px] text-[#777]">No hay un archivo cargado. Iniciá sesión con permisos sobre este cliente para subirlo.</p> : <p className="mt-1 text-[10px] text-[#777]">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
+                ) : budgetData && !budgetData.canUpload ? <p className="mt-1 text-[10px] text-[#777]">No hay un archivo cargado. Inicia sesi&oacute;n con permisos sobre este cliente para subirlo.</p> : <p className="mt-1 text-[10px] text-[#777]">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
                 <p className="mt-1 text-[10px] text-[#8b6a25]">El archivo se guarda en un bucket público; cualquier persona con el enlace puede descargarlo.</p>
                 {budgetData?.publicUrl && <a href={budgetData.publicUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-medium text-[#5b5fe8] underline underline-offset-2">Abrir archivo público</a>}
               </div>
@@ -298,7 +304,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
           </div>
         </section>}
 
-        <ComparisonSection clientId={clientId} platforms={connectedPlatforms} />
+        <ComparisonSection clientId={clientId} platforms={connectedPlatforms} baseRange={comparisonBaseRange} />
 
         {!connectedPlatforms.length ? (
           <section className="rounded-2xl border border-dashed border-[#dcdcd8] bg-white px-6 py-12 text-center">
@@ -319,7 +325,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
   )
 }
 
-function ComparisonSection({ clientId, platforms }: { clientId: string | null; platforms: DashboardPlatform[] }) {
+function ComparisonSection({ clientId, platforms, baseRange }: { clientId: string | null; platforms: DashboardPlatform[]; baseRange?: Range }) {
   const [preset, setPreset] = useState('month-to-date')
   const [custom, setCustom] = useState({ currentFrom: '', currentTo: '', comparedFrom: '', comparedTo: '' })
   const [result, setResult] = useState<Comparison | null>(null)
@@ -329,7 +335,7 @@ function ComparisonSection({ clientId, platforms }: { clientId: string | null; p
 
   const compare = async () => {
     if (!clientId) return
-    const ranges = getComparisonRanges(preset, custom)
+    const ranges = getComparisonRanges(preset, custom, baseRange)
     if (!ranges) { setError('Completá las cuatro fechas para comparar.'); return }
     setLoading(true)
     setError(null)

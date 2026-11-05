@@ -62,6 +62,8 @@ export async function POST(request: Request) {
   if (!body.clientId || !isIsoDate(body.dateFrom) || !isIsoDate(body.dateTo)) {
     return NextResponse.json({ error: 'Falta el cliente o el período.' }, { status: 400 })
   }
+  const dateFrom = body.dateFrom
+  const dateTo = body.dateTo
 
   const { data: client, error: clientError } = await supabase
     .from('clientes')
@@ -96,18 +98,18 @@ export async function POST(request: Request) {
     const batch = accountEntries.slice(index, index + 3)
     const batchResults = await Promise.all(batch.map(async ([accountId, accountName]) => {
       try {
-        return { rows: await getRegionRows(accountId, accountName, token, body.dateFrom!, body.dateTo!), accountId }
+        return { rows: await getRegionRows(accountId, accountName, token, dateFrom, dateTo), accountId }
       } catch (cause) {
         return { error: cause instanceof Error ? cause.message : 'No se pudo consultar la región.', accountId }
       }
     }))
     for (const result of batchResults) {
-      if ('error' in result) errors.push({ account_id: result.accountId, message: result.error })
+      if ('error' in result) errors.push({ account_id: result.accountId, message: String(result.error ?? 'No se pudo consultar la región.') })
       else results.push(...result.rows)
     }
   }
 
-  const grouped = new Map<string, { region: string; spend: number; impressions: number; clicks: number; results: number; leads: number; accounts: Set<string> }>()
+  const grouped = new Map<string, { region: string; spend: number; impressions: number; clicks: number; results: number; leads: number; accounts: Set<string>; accountNames: Set<string> }>()
   for (const row of results) {
     const current = grouped.get(row.region) ?? { region: row.region, spend: 0, impressions: 0, clicks: 0, results: 0, leads: 0, accounts: new Set<string>(), accountNames: new Set<string>() }
     current.spend += row.spend
@@ -142,5 +144,5 @@ export async function POST(request: Request) {
     row.percent_of_leads = totalLeads ? (row.leads / totalLeads) * 100 : 0
   }
 
-  return NextResponse.json({ available: rows.length > 0, rows, errors, date_range: { start: body.dateFrom, end: body.dateTo } })
+  return NextResponse.json({ available: rows.length > 0, rows, errors, date_range: { start: dateFrom, end: dateTo } })
 }

@@ -50,7 +50,6 @@ export interface MetaCampaignMetrics {
   leads: number
   cpl: number
   lead_type: string
-  reach?: number
   attribution_setting?: string
   status?: string
   campaign_name?: string

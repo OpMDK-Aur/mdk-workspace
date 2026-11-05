@@ -68,14 +68,14 @@ function metricValue(metrics: DashboardMetric[], ...labels: string[]) {
   return metrics.find((metric) => wanted.has(normalize(metric.label)))?.value ?? 0
 }
 
-function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: unknown; money?: boolean; percent?: boolean }> }) {
+function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: unknown; money?: boolean; percent?: boolean; decimal?: boolean }> }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
       {metrics.map((metric) => (
         <div key={metric.label} className="min-w-0 rounded-xl border border-[#e6e6e3] bg-white px-3 py-3">
           <p className="truncate text-[10px] text-[#858585]">{metric.label}</p>
           <p className="mt-1.5 whitespace-nowrap text-[16px] font-semibold tracking-[-.03em] text-[#202020] tabular-nums">
-            {metric.value === 'No disponible' ? metric.value : metric.percent ? `${decimalFormat(metric.value)}%` : metric.money ? moneyFormat(metric.value) : numberFormat(metric.value)}
+            {metric.value === 'No disponible' ? metric.value : metric.percent ? `${decimalFormat(metric.value)}%` : metric.money ? moneyFormat(metric.value) : metric.decimal ? decimalFormat(metric.value) : numberFormat(metric.value)}
           </p>
         </div>
       ))}
@@ -334,9 +334,9 @@ export type MetaDashboardProps = {
 
 export function MetaDashboardSection({ platform, data, metrics, period, budget, monthData, regionData, regionLoading }: MetaDashboardProps) {
   const accounts = metaAccounts(data)
-  const campaigns = accounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) })))
-  const adsets = accounts.flatMap((account) => asRows(account.adsets).map((adset) => ({ ...adset, account_id: account.account_id, account_name: accountName(account) })))
-  const ads = accounts.flatMap((account) => asRows(account.ads).map((ad) => ({ ...ad, account_id: account.account_id, account_name: accountName(account) })))
+  const campaigns: DashboardRecord[] = accounts.flatMap((account) => asRows(account.campaigns).map((campaign): DashboardRecord => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) })))
+  const adsets: DashboardRecord[] = accounts.flatMap((account) => asRows(account.adsets).map((adset): DashboardRecord => ({ ...adset, account_id: account.account_id, account_name: accountName(account) })))
+  const ads: DashboardRecord[] = accounts.flatMap((account) => asRows(account.ads).map((ad): DashboardRecord => ({ ...ad, account_id: account.account_id, account_name: accountName(account) })))
   const budgetRows = asRows(budget?.sheets?.meta)
   const objectiveRows = asRows(budget?.sheets?.objetivosCpl)
   const generalRows = asRows(budget?.sheets?.general)
@@ -398,7 +398,7 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
     { label: 'Clics en enlace', value: totals.linkClicks },
     { label: 'Impresiones', value: totals.impressions },
     { label: 'Alcance', value: totals.reach },
-    { label: 'Frecuencia', value: totals.frequency },
+    { label: 'Frecuencia', value: totals.frequency, decimal: true },
     { label: 'CTR', value: totals.impressions ? totals.clicks / totals.impressions * 100 : 0, percent: true },
     { label: 'CPC', value: totals.clicks ? totals.spend / totals.clicks : 0, money: true },
     { label: 'CPM', value: totals.impressions ? totals.spend / totals.impressions * 1000 : 0, money: true },
@@ -431,7 +431,8 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
   const regionRows = (regionData?.rows ?? []).filter((row) => accountFilter === 'all' || (row.account_names ?? []).some((name) => normalize(name) === normalize(accountFilter))).slice(0, 8)
   const regionConfig = { leads: { label: 'Leads formulario', color: 'var(--chart-1)' } } satisfies ChartConfig
   const monthMetaAccounts = metaAccounts(asRecord(monthData.meta))
-  const monthMetaCampaignRows = makeMetaCampaignRows(monthMetaAccounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) }))), monthMetaAccounts)
+  const monthMetaCampaigns: DashboardRecord[] = monthMetaAccounts.flatMap((account) => asRows(account.campaigns).map((campaign): DashboardRecord => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) })))
+  const monthMetaCampaignRows = makeMetaCampaignRows(monthMetaCampaigns, monthMetaAccounts)
   const budgetSummary = calculateAccountBudgets(accounts, monthMetaAccounts, budgetRows)
   const accountBudgetRows = activeMetaBudgetRows.filter((row) => accountFilter === 'all' || normalize(field(row, 'Cuenta')) === normalize(accountFilter))
     .filter((row) => brandFilter === 'all' || normalize(field(row, 'Marca')) === normalize(brandFilter))
