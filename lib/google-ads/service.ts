@@ -46,6 +46,7 @@ export interface GoogleAccountMetrics {
   api_rows_received: number
   raw_rows?: unknown[]
   date_range: { start: string; end: string }
+  daily?: Array<{ date: string; impressions: number; clicks: number; spend: number; conversions: number }>
   totals: { impressions: number; clicks: number; spend: number; leads: number; ctr: number; cpc: number; cpl: number }
   conversion_actions: GoogleConversionAction[]
   conversion_actions_available: boolean
@@ -257,6 +258,20 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     }
   }
 
+  const dailyMap = new Map<string, { date: string; impressions: number; clicks: number; spend: number; conversions: number }>()
+  for (const row of rows) {
+    const date = String(row.segments?.date ?? '')
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) continue
+    const metrics = row.metrics ?? {}
+    const current = dailyMap.get(date) ?? { date, impressions: 0, clicks: 0, spend: 0, conversions: 0 }
+    current.impressions += Number(metrics.impressions ?? 0)
+    current.clicks += Number(metrics.clicks ?? 0)
+    current.spend += Number(metrics.costMicros ?? metrics.cost_micros ?? 0) / 1_000_000
+    current.conversions += Number(metrics.conversions ?? 0)
+    dailyMap.set(date, current)
+  }
+  const daily = [...dailyMap.values()].sort((left, right) => left.date.localeCompare(right.date))
+
   const campaigns = [...campaignMap.values()].map((campaign) => ({
     ...campaign,
     channel_label: CHANNEL_TYPE_LABELS[campaign.advertising_channel_type] ?? campaign.advertising_channel_type,
@@ -332,7 +347,7 @@ export async function getGoogleAccountMetrics(input: GoogleAccountMetricsInput):
     }
   } catch (cause) { console.warn('[v0] Google Ads ads unavailable:', cause instanceof Error ? cause.message : cause) }
 
-  return { account_id: customerId, account_name: input.accountName ?? null, api_rows_received: rows.length, raw_rows: rows.slice(0, 3), date_range: { start: input.dateFrom, end: input.dateTo }, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns, ad_groups, ads }
+  return { account_id: customerId, account_name: input.accountName ?? null, api_rows_received: rows.length, raw_rows: rows.slice(0, 3), date_range: { start: input.dateFrom, end: input.dateTo }, daily, totals, conversion_actions, conversion_actions_available, conversion_actions_error, change_history: [], change_history_available: false, change_history_error: null, campaigns, ad_groups, ads }
 }
 
 export function defaultGoogleDateRange() {
