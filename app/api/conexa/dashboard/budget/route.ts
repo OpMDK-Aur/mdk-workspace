@@ -66,12 +66,14 @@ export async function GET(request: NextRequest) {
   try {
     const parsed = parseDashboardBudget(Buffer.from(await file.arrayBuffer()), current.name, file.type)
     const { data: publicData } = storage.getPublicUrl(pathFor(clientId, extension))
-    return NextResponse.json({
-      configured: true,
-      ...parsed,
-      publicUrl: publicData.publicUrl,
-      updatedAt: current.updated_at ?? current.created_at ?? null,
-    })
+      const { general, meta, google, objetivosCpl, ...fileInfo } = parsed
+      return NextResponse.json({
+        configured: true,
+        ...fileInfo,
+        sheets: { general, meta, google, objetivosCpl },
+        publicUrl: publicData.publicUrl,
+        updatedAt: stored?.updated_at ?? stored?.created_at ?? null,
+      })
   } catch (cause) {
     console.error('[conexa-dashboard] No se pudo interpretar el presupuesto:', cause)
     return NextResponse.json({ configured: true, error: 'El archivo guardado no tiene un formato de presupuesto válido.' }, { status: 422 })
@@ -125,9 +127,11 @@ export async function POST(request: NextRequest) {
   const { data: objects } = await storage.list(folderFor(clientId), { limit: 10, search: 'presupuesto' })
   const stored = objects?.find((object) => object.name === `presupuesto.${extension}`)
 
+  const { general, meta, google, objetivosCpl, ...fileInfo } = parsed
   return NextResponse.json({
     configured: true,
-    ...parsed,
+    ...fileInfo,
+    sheets: { general, meta, google, objetivosCpl },
     publicUrl: publicData.publicUrl,
     updatedAt: stored?.updated_at ?? new Date().toISOString(),
   })

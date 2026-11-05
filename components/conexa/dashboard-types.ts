@@ -34,6 +34,8 @@ export type DashboardRegionRow = {
   results: number
   leads: number
   account_count: number
+  account_ids?: string[]
+  account_names?: string[]
   cost_per_result: number
   cost_per_lead: number
   percent_of_results: number

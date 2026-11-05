@@ -155,7 +155,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
   const { data: budgetData, error: budgetLoadError, mutate: refreshBudget } = useSWR<DashboardBudget>(
     clientId ? `/api/conexa/dashboard/budget?clientId=${encodeURIComponent(clientId)}` : null,
     fetchBudget,
-    { revalidateOnFocus: false, revalidateOnReconnect: false },
+    { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: true, revalidateOnReconnect: true },
   )
   const { data: monthData, mutate: refreshMonthData } = useSWR<DashboardRecord>(
     clientId && connectedPaidMedia ? ['conexa-dashboard-month', clientId] as const : null,

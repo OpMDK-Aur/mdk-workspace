@@ -109,13 +109,14 @@ export async function POST(request: Request) {
 
   const grouped = new Map<string, { region: string; spend: number; impressions: number; clicks: number; results: number; leads: number; accounts: Set<string> }>()
   for (const row of results) {
-    const current = grouped.get(row.region) ?? { region: row.region, spend: 0, impressions: 0, clicks: 0, results: 0, leads: 0, accounts: new Set<string>() }
+    const current = grouped.get(row.region) ?? { region: row.region, spend: 0, impressions: 0, clicks: 0, results: 0, leads: 0, accounts: new Set<string>(), accountNames: new Set<string>() }
     current.spend += row.spend
     current.impressions += row.impressions
     current.clicks += row.clicks
     current.results += row.results
     current.leads += row.leads
     current.accounts.add(row.account_id)
+    if (row.account_name) current.accountNames.add(row.account_name)
     grouped.set(row.region, current)
   }
 
@@ -127,6 +128,8 @@ export async function POST(request: Request) {
     results: row.results,
     leads: row.leads,
     account_count: row.accounts.size,
+    account_ids: [...row.accounts],
+    account_names: [...row.accountNames],
     cost_per_result: row.results ? row.spend / row.results : 0,
     cost_per_lead: row.leads ? row.spend / row.leads : 0,
     percent_of_results: 0,
