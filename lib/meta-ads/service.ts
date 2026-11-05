@@ -35,7 +35,10 @@ export interface MetaCampaignMetrics {
   name: string
   objective: string
   impressions: number
+  reach?: number
+  frequency?: number
   clicks: number
+  link_clicks?: number
   spend: number
   results: number
   result_type: MetaResultType
@@ -66,7 +69,9 @@ export interface MetaAccountMetrics {
   totals: {
     impressions: number
     reach: number
+    frequency: number
     clicks: number
+    link_clicks: number
     spend: number
     results: number
     ctr: number
@@ -103,7 +108,10 @@ interface MetaInsightRow {
   campaign_name?: string
   objective?: string
   impressions?: string
+  reach?: string
+  frequency?: string
   clicks?: string
+  inline_link_clicks?: string
   spend?: string
   ctr?: string
   cpc?: string
@@ -213,7 +221,7 @@ async function fetchJson(url: string) {
 
 async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, level: 'campaign' | 'adset' | 'ad' = 'campaign') {
   const identity = level === 'campaign' ? 'campaign_id,campaign_name,objective' : level === 'adset' ? 'campaign_id,campaign_name,adset_id,adset_name' : 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name'
-  const fields = `${identity},impressions,reach,clicks,spend,ctr,cpc,actions`
+  const fields = `${identity},impressions,reach,frequency,clicks,inline_link_clicks,spend,ctr,cpc,actions`
   let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
     access_token: accessToken,
     level,
@@ -524,7 +532,7 @@ function normalizeEntityRows(rows: MetaInsightRow[], level: 'campaign' | 'adset'
     const name = level === 'campaign' ? row.campaign_name : level === 'adset' ? (row as MetaInsightRow & { adset_name?: string }).adset_name : (row as MetaInsightRow & { ad_name?: string }).ad_name
     const result = normalizeMetaResult(row.objective || '', row.actions)
     const spend = toNumber(row.spend)
-    return { id: id || '', name: name || 'Sin nombre', objective: row.objective || 'UNKNOWN', impressions: toInt(row.impressions), reach: toInt((row as MetaInsightRow & { reach?: string }).reach), clicks: toInt(row.clicks), spend, results: result.results, result_type: result.resultType, source_action_type: result.sourceActionType, ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: result.results > 0 ? spend / result.results : 0, leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType) }
+    return { id: id || '', name: name || 'Sin nombre', objective: row.objective || 'UNKNOWN', impressions: toInt(row.impressions), reach: toInt(row.reach), frequency: toNumber(row.frequency), clicks: toInt(row.clicks), link_clicks: toInt(row.inline_link_clicks), spend, results: result.results, result_type: result.resultType, source_action_type: result.sourceActionType, ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: result.results > 0 ? spend / result.results : 0, leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType) }
   }).filter((row) => row.id)
 }
 
@@ -551,7 +559,7 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
     const costPerResult = result.results > 0 ? spend / result.results : 0
     return {
       id: row.campaign_id || '', name: row.campaign_name || 'Sin nombre', objective: row.objective || 'UNKNOWN',
-      impressions: toInt(row.impressions), reach: toInt((row as MetaInsightRow & { reach?: string }).reach), clicks: toInt(row.clicks), spend, results: result.results,
+      impressions: toInt(row.impressions), reach: toInt(row.reach), frequency: toNumber(row.frequency), clicks: toInt(row.clicks), link_clicks: toInt(row.inline_link_clicks), spend, results: result.results,
       result_type: result.resultType, source_action_type: result.sourceActionType,
       ctr: toNumber(row.ctr), cpc: toNumber(row.cpc), cost_per_result: costPerResult,
       leads: result.leads, cpl: result.leads > 0 ? spend / result.leads : 0, lead_type: legacyLabel(result.resultType),
@@ -574,11 +582,13 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   })
 
   const totals = campaigns.reduce((acc, campaign) => ({
-    impressions: acc.impressions + campaign.impressions, reach: acc.reach + (campaign.reach ?? 0), clicks: acc.clicks + campaign.clicks,
+    impressions: acc.impressions + campaign.impressions, reach: acc.reach + (campaign.reach ?? 0), frequency: 0,
+    clicks: acc.clicks + campaign.clicks, link_clicks: acc.link_clicks + (campaign.link_clicks ?? 0),
     spend: acc.spend + campaign.spend, results: acc.results + campaign.results,
     ctr: 0, cpc: 0, cost_per_result: 0, leads: acc.leads + campaign.leads, cpl: 0,
-  }), { impressions: 0, reach: 0, clicks: 0, spend: 0, results: 0, ctr: 0, cpc: 0, cost_per_result: 0, leads: 0, cpl: 0 })
+  }), { impressions: 0, reach: 0, frequency: 0, clicks: 0, link_clicks: 0, spend: 0, results: 0, ctr: 0, cpc: 0, cost_per_result: 0, leads: 0, cpl: 0 })
   totals.ctr = totals.impressions ? (totals.clicks / totals.impressions) * 100 : 0
+  totals.frequency = totals.reach ? totals.impressions / totals.reach : 0
   totals.cpc = totals.clicks ? totals.spend / totals.clicks : 0
   totals.cost_per_result = totals.results ? totals.spend / totals.results : 0
   totals.cpl = totals.cost_per_result

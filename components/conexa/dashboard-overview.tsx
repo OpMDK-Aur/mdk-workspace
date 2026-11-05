@@ -157,7 +157,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
     fetchBudget,
     { revalidateOnFocus: false, revalidateOnReconnect: false },
   )
-  const { data: monthData } = useSWR<DashboardRecord>(
+  const { data: monthData, mutate: refreshMonthData } = useSWR<DashboardRecord>(
     clientId && connectedPaidMedia ? ['conexa-dashboard-month', clientId] as const : null,
     async ([, selectedClientId]) => {
       const response = await fetch('/api/conexa/data', {
@@ -171,7 +171,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
     },
     { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: true },
   )
-  const { data: regionData, isLoading: regionLoading } = useSWR<{ available: boolean; rows: DashboardRegionRow[]; message?: string }>(
+  const { data: regionData, isLoading: regionLoading, mutate: refreshRegions } = useSWR<{ available: boolean; rows: DashboardRegionRow[]; message?: string }>(
     clientId && connectedMeta && dateFrom && dateTo ? ['conexa-dashboard-meta-regions', clientId, dateFrom, dateTo] as const : null,
     async ([, selectedClientId, startDate, endDate]) => {
       const response = await fetch('/api/conexa/dashboard/meta-regions', {
@@ -190,6 +190,11 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  const refreshDashboard = useCallback(() => {
+    onRefresh()
+    void Promise.allSettled([refreshBudget(), refreshMonthData(), refreshRegions()])
+  }, [onRefresh, refreshBudget, refreshMonthData, refreshRegions])
 
   const uploadBudget = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0]
@@ -253,7 +258,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
           <div className="flex flex-wrap items-center gap-2">
             {periodSelector}
             <span className="flex items-center gap-1.5 text-[11px] text-[#777]" aria-live="polite"><span className="size-1.5 rounded-full bg-[#1e9e6b]" aria-hidden="true" />{relativeLabel(updatedAt, now)}</span>
-            <button type="button" onClick={onRefresh} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#dededb] bg-white px-3 text-[11px] font-medium text-[#333] transition-colors hover:bg-[#f8f8f6] disabled:cursor-not-allowed disabled:opacity-60" title="Vuelve a consultar las plataformas">
+            <button type="button" onClick={refreshDashboard} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#dededb] bg-white px-3 text-[11px] font-medium text-[#333] transition-colors hover:bg-[#f8f8f6] disabled:cursor-not-allowed disabled:opacity-60" title="Vuelve a consultar las plataformas">
               {loading ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="size-3.5" aria-hidden="true" />}
               Actualizar ahora
             </button>

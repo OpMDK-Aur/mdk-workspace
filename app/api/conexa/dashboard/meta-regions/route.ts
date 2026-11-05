@@ -128,10 +128,16 @@ export async function POST(request: Request) {
     leads: row.leads,
     account_count: row.accounts.size,
     cost_per_result: row.results ? row.spend / row.results : 0,
+    cost_per_lead: row.leads ? row.spend / row.leads : 0,
     percent_of_results: 0,
-  })).sort((left, right) => right.results - left.results)
+    percent_of_leads: 0,
+  })).sort((left, right) => right.leads - left.leads)
   const totalResults = rows.reduce((sum, row) => sum + row.results, 0)
-  for (const row of rows) row.percent_of_results = totalResults ? (row.results / totalResults) * 100 : 0
+  const totalLeads = rows.reduce((sum, row) => sum + row.leads, 0)
+  for (const row of rows) {
+    row.percent_of_results = totalResults ? (row.results / totalResults) * 100 : 0
+    row.percent_of_leads = totalLeads ? (row.leads / totalLeads) * 100 : 0
+  }
 
   return NextResponse.json({ available: rows.length > 0, rows, errors, date_range: { start: body.dateFrom, end: body.dateTo } })
 }

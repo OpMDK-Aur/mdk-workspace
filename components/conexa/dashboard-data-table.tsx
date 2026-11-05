@@ -25,7 +25,17 @@ type DashboardDataTableProps = {
 const numberFormat = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
 const moneyFormat = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
 const percentFormat = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 })
-const toNumber = (value: unknown) => typeof value === 'number' ? value : Number(String(value ?? '').replace(/[^\d,.-]/g, '').replace(/\.(?=.*\.)/g, '').replace(',', '.')) || 0
+const toNumber = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  let text = String(value ?? '').trim().replace(/[^\d,.-]/g, '')
+  if (!text) return 0
+  const comma = text.lastIndexOf(',')
+  const dot = text.lastIndexOf('.')
+  if (comma > dot) text = text.replace(/\./g, '').replace(',', '.')
+  else text = text.replace(/,/g, '')
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? parsed : 0
+}
 
 function formatCell(value: unknown, format?: DashboardColumn['format']) {
   if (value === null || value === undefined || value === '') return '—'

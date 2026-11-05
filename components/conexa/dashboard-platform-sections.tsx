@@ -1,14 +1,24 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { DashboardDataTable, type DashboardColumn } from '@/components/conexa/dashboard-data-table'
 import type { DashboardBudget, DashboardMetric, DashboardPlatform, DashboardRecord, DashboardRegionRow } from '@/components/conexa/dashboard-types'
 
 const asRecord = (value: unknown): DashboardRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as DashboardRecord : {}
 const asRows = (value: unknown): DashboardRecord[] => Array.isArray(value) ? value.filter((row): row is DashboardRecord => Boolean(row && typeof row === 'object' && !Array.isArray(row))) : []
-const numberValue = (value: unknown) => typeof value === 'number' ? value : Number(String(value ?? '').replace(/[^\d,.-]/g, '').replace(/\.(?=.*\.)/g, '').replace(',', '.')) || 0
+const numberValue = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  let text = String(value ?? '').trim().replace(/[^\d,.-]/g, '')
+  if (!text) return 0
+  const comma = text.lastIndexOf(',')
+  const dot = text.lastIndexOf('.')
+  if (comma > dot) text = text.replace(/\./g, '').replace(',', '.')
+  else text = text.replace(/,/g, '')
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? parsed : 0
+}
 const numberFormat = (value: unknown) => numberValue(value).toLocaleString('es-AR', { maximumFractionDigits: 0 })
 const moneyFormat = (value: unknown) => `$ ${numberFormat(value)}`
 const decimalFormat = (value: unknown) => numberValue(value).toLocaleString('es-AR', { maximumFractionDigits: 2 })
@@ -122,7 +132,7 @@ function monthlyBudget(rows: DashboardRecord[]) {
     ].map(normalize).join('|')
     const current = groups.get(groupKey) ?? { general: 0, detail: 0 }
     current.general = Math.max(current.general, amount(row, 'Presupuesto General asignado'))
-    current.detail += amount(row, 'Presupuesto Mensual asignado')
+    current.detail += monthlyBudgetRow(row)
     groups.set(groupKey, current)
   }
   return [...groups.values()].reduce((sum, group) => sum + (group.general || group.detail), 0)
@@ -136,6 +146,14 @@ function monthToken(value: unknown) {
   }
   if (/^\d{1,2}$/.test(key)) return key.padStart(2, '0')
   return months[key] ?? ''
+}
+
+function currentMonthToken() {
+  return monthToken(new Intl.DateTimeFormat('es-AR', { month: 'short', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date()))
+}
+
+function BudgetMonthFilter({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  return <label className="flex min-w-[140px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-[#858585]">Mes</span><select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-lg border border-[#e6e6e3] bg-white px-2.5 text-[11px] text-[#333] outline-none focus:border-[#5b5fe8]"><option value="current">Mes actual</option><option value="all">Todos los meses</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
 }
 
 function argentinaMonth() {
@@ -161,6 +179,7 @@ function makeMetaCampaignRows(campaigns: DashboardRecord[], accounts: DashboardR
     reach: numberValue(campaign.reach),
     clicks: numberValue(campaign.clicks),
     results: numberValue(campaign.results ?? campaign.leads ?? campaign.conversions),
+    linkClicks: numberValue(campaign.link_clicks), frequency: numberValue(campaign.frequency),
     costPerResult: numberValue(campaign.cost_per_result ?? campaign.cpl),
     ctr: numberValue(campaign.ctr),
     cpm: campaign.impressions ? numberValue(campaign.spend) / numberValue(campaign.impressions) * 1000 : 0,
@@ -170,13 +189,6 @@ function makeMetaCampaignRows(campaigns: DashboardRecord[], accounts: DashboardR
 function sum(rows: DashboardRecord[], key: string) {
   return rows.reduce((total, row) => total + numberValue(row[key]), 0)
 }
-
-const chartConfig = {
-  spend: { label: 'Inversión', color: 'var(--chart-1)' },
-  results: { label: 'Resultados', color: 'var(--chart-2)' },
-  conversions: { label: 'Conversiones', color: 'var(--chart-3)' },
-  leads: { label: 'Leads', color: 'var(--chart-4)' },
-} satisfies ChartConfig
 
 function monthProgress() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
@@ -222,15 +234,17 @@ function GeneralCampaignBudget({ rows, accounts, campaigns, monthFilter }: { row
   const accountNames = new Set(accounts.map((account) => normalize(accountName(account))))
   const rowsForMonth = rows.filter((row) => {
     const month = String(field(row, 'Mes') ?? '')
-    const selectedMatches = monthFilter === 'all' || monthToken(month) === monthToken(monthFilter)
+    const selectedMatches = monthFilter === 'all' || monthToken(month) === (monthFilter === 'current' ? currentMonthToken() : monthToken(monthFilter))
     return selectedMatches && accountNames.has(normalize(field(row, 'Cuenta')))
   })
   const tableRows = rowsForMonth.map((row) => {
     const account = String(field(row, 'Cuenta') ?? '')
     const campaign = String(field(row, 'Campaña') ?? '')
-    const actual = campaigns.filter((item) => normalize(item.account_name) === normalize(account) && normalize(item.name ?? item.campaign_name) === normalize(campaign)).reduce((total, item) => total + numberValue(item.spend), 0)
+    const matchedCampaigns = campaigns.filter((item) => normalize(item.account ?? item.account_name) === normalize(account) && normalize(item.campaign ?? item.name ?? item.campaign_name) === normalize(campaign))
+    const actual = matchedCampaigns.reduce((total, item) => total + numberValue(item.spend), 0)
     const budget = amount(row, 'Inversión (ARS)', 'Inversión', 'Presupuesto Mensual asignado')
-    return { account, campaign, month: display(field(row, 'Mes')), brand: display(field(row, 'Marca')), modality: display(field(row, 'Modalidad')), resultType: display(field(row, 'Tipo de resultado')), budget, actual, consumption: budget ? actual / budget * 100 : 0, status: budget ? actual > budget ? 'Sobre presupuesto' : 'En seguimiento' : 'Sin presupuesto' }
+    const status = !budget ? 'Sin presupuesto' : !matchedCampaigns.length ? 'Sin coincidencia de campaña' : actual > budget ? 'Sobre presupuesto' : 'En seguimiento'
+    return { account, campaign, month: display(field(row, 'Mes')), brand: display(field(row, 'Marca')), modality: display(field(row, 'Modalidad')), resultType: display(field(row, 'Tipo de resultado')), budget, actual: matchedCampaigns.length ? actual : null, consumption: budget && matchedCampaigns.length ? actual / budget * 100 : null, status }
   })
   return (
     <DashboardDataTable title="Presupuesto general por campaña" description="Cruce por nombre exacto de cuenta y campaña; el mes del archivo se interpreta en el año actual." searchable columns={[
@@ -259,6 +273,9 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
   const budgetRows = asRows(budget?.sheets?.meta)
   const objectiveRows = asRows(budget?.sheets?.objetivosCpl)
   const generalRows = asRows(budget?.sheets?.general)
+  const activeAccountNames = new Set(accounts.map((account) => normalize(accountName(account))))
+  const activeMetaBudgetRows = budgetRows.filter((row) => activeAccountNames.has(normalize(field(row, 'Cuenta', 'Account'))))
+  const activeMetaObjectiveRows = objectiveRows.filter((row) => activeAccountNames.has(normalize(field(row, 'Cuenta', 'Account'))))
   const [accountFilter, setAccountFilter] = useState('all')
   const [campaignFilter, setCampaignFilter] = useState('')
   const [objectiveFilter, setObjectiveFilter] = useState('all')
@@ -267,10 +284,10 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
   const [brandFilter, setBrandFilter] = useState('all')
   const [modelFilter, setModelFilter] = useState('all')
   const [modalityFilter, setModalityFilter] = useState('all')
-  const [monthFilter, setMonthFilter] = useState('all')
+  const [monthFilter, setMonthFilter] = useState('current')
   const [dailyMetric, setDailyMetric] = useState<'spend' | 'results'>('spend')
 
-  const uniqueBudgetValues = (column: string) => [...new Set(budgetRows.map((row) => display(field(row, column))).filter((value) => value !== '—' && value.trim()))].sort((left, right) => left.localeCompare(right, 'es'))
+  const uniqueBudgetValues = (column: string) => [...new Set(activeMetaBudgetRows.map((row) => display(field(row, column))).filter((value) => value !== '—' && value.trim()))].sort((left, right) => left.localeCompare(right, 'es'))
   const accountsList = [...new Set(accounts.map(accountName))].sort((left, right) => left.localeCompare(right, 'es'))
   const objectives = [...new Set(campaigns.map((campaign) => display(campaign.objective)).filter((value) => value !== '—'))].sort()
   const statuses = [...new Set(campaigns.map((campaign) => display(campaign.status ?? campaign.effective_status)).filter((value) => value !== '—'))].sort()
@@ -297,7 +314,9 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
     spend: sum(filteredCampaigns, 'spend'),
     impressions: sum(filteredCampaigns, 'impressions'),
     reach: sum(filteredCampaigns, 'reach'),
+    frequency: sum(filteredCampaigns, 'reach') ? sum(filteredCampaigns, 'impressions') / sum(filteredCampaigns, 'reach') : 0,
     clicks: sum(filteredCampaigns, 'clicks'),
+    linkClicks: sum(filteredCampaigns, 'link_clicks'),
     results: filteredCampaigns.reduce((total, campaign) => total + numberValue(campaign.results ?? campaign.leads ?? campaign.conversions), 0),
     messaging: filteredCampaigns.filter((campaign) => normalize(campaign.result_type).includes('messaging')).reduce((total, campaign) => total + numberValue(campaign.results), 0),
     formLeads: filteredCampaigns.filter((campaign) => normalize(campaign.result_type).includes('lead')).reduce((total, campaign) => total + numberValue(campaign.results ?? campaign.leads), 0),
@@ -309,47 +328,69 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
     { label: 'Conversaciones WA', value: totals.messaging },
     { label: 'Leads formulario', value: totals.formLeads },
     { label: 'Clics', value: totals.clicks },
+    { label: 'Clics en enlace', value: totals.linkClicks },
     { label: 'Impresiones', value: totals.impressions },
+    { label: 'Alcance', value: totals.reach },
+    { label: 'Frecuencia', value: totals.frequency },
     { label: 'CTR', value: totals.impressions ? totals.clicks / totals.impressions * 100 : 0, percent: true },
     { label: 'CPM', value: totals.impressions ? totals.spend / totals.impressions * 1000 : 0, money: true },
   ]
 
-  const dailyMap = new Map<string, { date: string; spend: number; results: number }>()
-  for (const account of accounts) {
-    if (accountFilter !== 'all' && normalize(accountName(account)) !== normalize(accountFilter)) continue
+  const dailyAccounts = accounts.filter((account) => accountFilter === 'all' || normalize(accountName(account)) === normalize(accountFilter))
+  const dailySeries = dailyAccounts.map((account, index) => ({ key: `account${index}`, label: accountName(account), color: `var(--chart-${index % 5 + 1})` }))
+  const dailyMap = new Map<string, DashboardRecord>()
+  dailyAccounts.forEach((account, index) => {
     for (const point of asRows(account.daily)) {
       const date = String(point.date ?? '')
       if (!date) continue
-      const current = dailyMap.get(date) ?? { date, spend: 0, results: 0 }
-      current.spend += numberValue(point.spend)
-      current.results += numberValue(point.results)
+      const current = dailyMap.get(date) ?? { date }
+      current[dailySeries[index].key] = numberValue(point[dailyMetric])
       dailyMap.set(date, current)
     }
-  }
-  const dailyRows = [...dailyMap.values()].sort((left, right) => left.date.localeCompare(right.date))
+  })
+  const dailyRows = [...dailyMap.values()].sort((left, right) => String(left.date).localeCompare(String(right.date)))
+  const dailyChartConfig = Object.fromEntries(dailySeries.map((series) => [series.key, { label: series.label, color: series.color }])) as ChartConfig
   const regionRows = (regionData?.rows ?? []).slice(0, 8)
-  const regionConfig = { results: { label: 'Resultados', color: 'var(--chart-1)' } } satisfies ChartConfig
+  const regionConfig = { leads: { label: 'Leads formulario', color: 'var(--chart-1)' } } satisfies ChartConfig
   const monthMetaAccounts = metaAccounts(asRecord(monthData.meta))
   const monthMetaCampaignRows = makeMetaCampaignRows(monthMetaAccounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_id: account.account_id, account_name: accountName(account) }))))
   const budgetSummary = calculateAccountBudgets(accounts, monthMetaAccounts, budgetRows)
-  const alertItems = buildBudgetAlerts(budgetSummary, objectiveRows, filteredCampaigns)
+  const accountBudgetRows = activeMetaBudgetRows.filter((row) => accountFilter === 'all' || normalize(field(row, 'Cuenta')) === normalize(accountFilter))
+    .filter((row) => brandFilter === 'all' || normalize(field(row, 'Marca')) === normalize(brandFilter))
+    .filter((row) => modelFilter === 'all' || normalize(field(row, 'Modelos')) === normalize(modelFilter))
+    .filter((row) => modalityFilter === 'all' || normalize(field(row, 'Modalidad')) === normalize(modalityFilter))
+  const metaBudgetDetailRows = accountBudgetRows.map((row) => ({
+    account: display(field(row, 'Cuenta')), brand: display(field(row, 'Marca')), objective: display(field(row, 'Objetivo')),
+    model: display(field(row, 'Modelos')), modality: display(field(row, 'Modalidad')), resultType: display(field(row, 'Tipo de resultado')),
+    daily: amount(row, 'Presupuesto Diario asignado'), monthly: monthlyBudgetRow(row), percent: percentValue(field(row, '%')),
+    general: amount(row, 'Presupuesto General asignado'), comments: display(field(row, 'Comentarios')),
+  }))
+  const objectiveDetailRows = activeMetaObjectiveRows.filter((row) => accountFilter === 'all' || normalize(field(row, 'Cuenta')) === normalize(accountFilter)).map((row) => ({
+    account: display(field(row, 'Cuenta')), brand: display(field(row, 'Marca')), model: display(field(row, 'Modelos')),
+    cplAverage: amount(row, 'CPL Promedio'), target: amount(row, 'OBJETIVO', 'Objetivo'),
+  }))
+  const alertItems = buildBudgetAlerts(budgetSummary, objectiveRows, monthMetaCampaignRows).filter((item) => accountFilter === 'all' || normalize(item.account) === normalize(accountFilter))
   const metaColumns: DashboardColumn[] = [
     { key: 'account', label: 'Cuenta' }, { key: 'campaign', label: 'Campaña' }, { key: 'objective', label: 'Objetivo' },
     { key: 'status', label: 'Estado' }, { key: 'spend', label: 'Inversión', format: 'money', right: true },
-    { key: 'impressions', label: 'Impresiones', format: 'number', right: true }, { key: 'clicks', label: 'Clics', format: 'number', right: true },
-    { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'costPerResult', label: 'Costo x resultado', format: 'money', right: true },
+    { key: 'impressions', label: 'Impresiones', format: 'number', right: true }, { key: 'reach', label: 'Alcance', format: 'number', right: true },
+    { key: 'frequency', label: 'Frecuencia', format: 'number', right: true }, { key: 'clicks', label: 'Clics', format: 'number', right: true },
+    { key: 'linkClicks', label: 'Clics en enlace', format: 'number', right: true }, { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'costPerResult', label: 'Costo x resultado', format: 'money', right: true },
     { key: 'ctr', label: 'CTR', format: 'percent', right: true }, { key: 'cpm', label: 'CPM', format: 'money', right: true },
   ]
+  const hasMetaData = accounts.some((account) => numberValue(account.api_rows_received) > 0 || asRows(account.campaigns).length > 0)
+  const visibleAccounts = accountFilter === 'all' ? accounts : accounts.filter((account) => normalize(accountName(account)) === normalize(accountFilter))
+  const visibleBudgetSummary = accountFilter === 'all' ? budgetSummary : budgetSummary.filter((row) => normalize(row.account) === normalize(accountFilter))
   const campaignRows = makeMetaCampaignRows(filteredCampaigns)
-  const adsetRows = adsets.filter((row) => accountFilter === 'all' || normalize(row.account_name) === normalize(accountFilter)).map((row) => ({
+  const adsetRows = adsets.filter((row) => (accountFilter === 'all' || normalize(row.account_name) === normalize(accountFilter)) && (!campaignFilter || normalize(row.campaign_name).includes(normalize(campaignFilter)))).map((row) => ({
     account: row.account_name, campaign: row.campaign_name, adset: row.name, status: row.status ?? row.effective_status ?? '—',
-    spend: numberValue(row.spend), impressions: numberValue(row.impressions), clicks: numberValue(row.clicks), results: numberValue(row.results ?? row.leads ?? row.conversions),
-    costPerResult: numberValue(row.cost_per_result ?? row.cpl), resultType: channelLabel(row.result_type),
+    spend: numberValue(row.spend), impressions: numberValue(row.impressions), reach: numberValue(row.reach), frequency: numberValue(row.frequency), clicks: numberValue(row.clicks), linkClicks: numberValue(row.link_clicks), results: numberValue(row.results ?? row.leads ?? row.conversions),
+    costPerResult: numberValue(row.cost_per_result ?? row.cpl), ctr: numberValue(row.ctr), cpm: row.impressions ? numberValue(row.spend) / numberValue(row.impressions) * 1000 : 0, resultType: channelLabel(row.result_type),
   }))
-  const adRows = ads.filter((row) => accountFilter === 'all' || normalize(row.account_name) === normalize(accountFilter)).map((row) => ({
+  const adRows = ads.filter((row) => (accountFilter === 'all' || normalize(row.account_name) === normalize(accountFilter)) && (!campaignFilter || normalize(`${row.campaign_name ?? ''} ${row.adset_name ?? ''} ${row.name ?? ''}`).includes(normalize(campaignFilter)))).map((row) => ({
     account: row.account_name, campaign: row.campaign_name, adset: row.adset_name, ad: row.name, status: row.status ?? row.effective_status ?? '—',
-    spend: numberValue(row.spend), impressions: numberValue(row.impressions), clicks: numberValue(row.clicks), results: numberValue(row.results ?? row.leads ?? row.conversions),
-    costPerResult: numberValue(row.cost_per_result ?? row.cpl), previewUrl: row.preview_url ?? row.preview_shareable_link ?? '',
+    spend: numberValue(row.spend), impressions: numberValue(row.impressions), reach: numberValue(row.reach), clicks: numberValue(row.clicks), results: numberValue(row.results ?? row.leads ?? row.conversions),
+    costPerResult: numberValue(row.cost_per_result ?? row.cpl), ctr: numberValue(row.ctr), cpm: row.impressions ? numberValue(row.spend) / numberValue(row.impressions) * 1000 : 0, previewUrl: row.preview_url ?? row.preview_shareable_link ?? '',
   }))
 
   return (
@@ -364,11 +405,11 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
         <FilterField label="Marca" value={brandFilter} options={brands} onChange={setBrandFilter} />
         <FilterField label="Modelo" value={modelFilter} options={models} onChange={setModelFilter} />
         <FilterField label="Modalidad" value={modalityFilter} options={modalities} onChange={setModalityFilter} />
-        {months.length > 0 && <FilterField label="Mes del presupuesto" value={monthFilter} options={months} onChange={setMonthFilter} />}
-        <button type="button" onClick={() => { setAccountFilter('all'); setCampaignFilter(''); setObjectiveFilter('all'); setChannelFilter('all'); setStatusFilter('all'); setBrandFilter('all'); setModelFilter('all'); setModalityFilter('all'); setMonthFilter('all') }} className="h-9 rounded-lg px-3 text-[11px] font-medium text-[#6a6a6a] underline underline-offset-2">Limpiar filtros</button>
+        {months.length > 0 && <BudgetMonthFilter value={monthFilter} options={months} onChange={setMonthFilter} />}
+        <button type="button" onClick={() => { setAccountFilter('all'); setCampaignFilter(''); setObjectiveFilter('all'); setChannelFilter('all'); setStatusFilter('all'); setBrandFilter('all'); setModelFilter('all'); setModalityFilter('all'); setMonthFilter('current') }} className="h-9 rounded-lg px-3 text-[11px] font-medium text-[#6a6a6a] underline underline-offset-2">Limpiar filtros</button>
       </div>
 
-      <MetricGrid metrics={kpis} />
+      {hasMetaData ? <MetricGrid metrics={kpis} /> : <EmptyPanel text="Sin datos disponibles para este cliente y período en Meta Ads." />}
 
       <div className="mt-5 rounded-xl border border-[#e6e6e3] bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -378,20 +419,31 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
           </select>
         </div>
         {dailyRows.length ? (
-          <ChartContainer config={chartConfig} className="h-[240px] w-full">
+          <ChartContainer config={dailyChartConfig} className="h-[240px] w-full">
             <LineChart accessibilityLayer data={dailyRows} margin={{ left: 8, right: 10, top: 8 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value: string) => value.slice(5)} />
               <YAxis tickLine={false} axisLine={false} width={54} tickFormatter={(value: number) => numberFormat.format(value)} />
               <ChartTooltip content={<ChartTooltipContent labelFormatter={(label) => String(label)} />} />
-              <Line type="monotone" dataKey={dailyMetric} stroke={dailyMetric === 'spend' ? 'var(--color-spend)' : 'var(--color-results)'} strokeWidth={2} dot={false} />
+              <ChartLegend content={<ChartLegendContent />} />
+              {dailySeries.map((series) => <Line key={series.key} name={series.label} type="monotone" dataKey={series.key} stroke={`var(--color-${series.key})`} strokeWidth={2} dot={false} />)}
             </LineChart>
           </ChartContainer>
         ) : <EmptyPanel text="No hay evolución diaria disponible en las herramientas de Meta para este período." />}
       </div>
 
-      <BudgetByAccount platformName="Meta Ads" rows={budgetSummary} />
-      <GeneralCampaignBudget rows={generalRows} monthFilter={monthFilter} campaigns={monthMetaCampaignRows} accounts={accounts} />
+      <BudgetByAccount platformName="Meta Ads" rows={visibleBudgetSummary} />
+      <DashboardDataTable title="Asignación Meta por marca/modelo" description="Valores y dimensiones leídos dinámicamente de la hoja META." columns={[
+        { key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'objective', label: 'Objetivo' }, { key: 'model', label: 'Modelo' },
+        { key: 'modality', label: 'Modalidad' }, { key: 'resultType', label: 'Tipo de resultado' }, { key: 'daily', label: 'Diario', format: 'money', right: true },
+        { key: 'monthly', label: 'Mensual asignado', format: 'money', right: true }, { key: 'percent', label: '%', format: 'percent', right: true },
+        { key: 'general', label: 'Presupuesto general', format: 'money', right: true }, { key: 'comments', label: 'Comentarios' },
+      ]} rows={metaBudgetDetailRows} emptyMessage="El archivo no tiene filas META para estas cuentas." />
+      <GeneralCampaignBudget rows={generalRows} monthFilter={monthFilter} campaigns={monthMetaCampaignRows} accounts={visibleAccounts} />
+      <DashboardDataTable title="Objetivos CPL" description="Referencia de costo por lead cargada en la hoja Objetivos CPL." columns={[
+        { key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'model', label: 'Modelo' },
+        { key: 'cplAverage', label: 'CPL promedio', format: 'money', right: true }, { key: 'target', label: 'Objetivo', format: 'money', right: true },
+      ]} rows={objectiveDetailRows} emptyMessage="El archivo no incluye objetivos CPL para estas cuentas." />
 
       <div className="mt-5 rounded-xl border border-[#e6e6e3] bg-white p-4">
         <SectionHeading title="Leads por provincia" detail="Meta solo informa esta dimensión cuando está disponible en la cuenta." />
@@ -403,13 +455,13 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
                 <XAxis type="number" hide />
                 <YAxis type="category" dataKey="region" width={112} tickLine={false} axisLine={false} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="results" fill="var(--color-results)" radius={4} />
+                <Bar dataKey="leads" fill="var(--color-leads)" radius={4} />
               </BarChart>
             </ChartContainer>
             <DashboardDataTable title="Detalle por provincia" columns={[
-              { key: 'region', label: 'Provincia' }, { key: 'results', label: 'Resultados', format: 'number', right: true },
-              { key: 'percent_of_results', label: '% del total', format: 'percent', right: true }, { key: 'spend', label: 'Inversión', format: 'money', right: true },
-              { key: 'cost_per_result', label: 'Costo por resultado', format: 'money', right: true }, { key: 'impressions', label: 'Impresiones', format: 'number', right: true },
+              { key: 'region', label: 'Provincia' }, { key: 'leads', label: 'Leads', format: 'number', right: true },
+              { key: 'percent_of_leads', label: '% de leads', format: 'percent', right: true }, { key: 'spend', label: 'Inversión', format: 'money', right: true },
+              { key: 'cost_per_lead', label: 'Costo por lead', format: 'money', right: true }, { key: 'impressions', label: 'Impresiones', format: 'number', right: true },
               { key: 'clicks', label: 'Clics', format: 'number', right: true },
             ]} rows={regionRows} maxRows={8} />
           </div>
@@ -421,14 +473,16 @@ export function MetaDashboardSection({ platform, data, metrics, budget, monthDat
         <DashboardDataTable title="Conjuntos de anuncios" columns={[
           { key: 'account', label: 'Cuenta' }, { key: 'campaign', label: 'Campaña' }, { key: 'adset', label: 'Conjunto' }, { key: 'status', label: 'Estado' },
           { key: 'spend', label: 'Inversión', format: 'money', right: true }, { key: 'impressions', label: 'Impresiones', format: 'number', right: true },
-          { key: 'clicks', label: 'Clics', format: 'number', right: true }, { key: 'results', label: 'Resultados', format: 'number', right: true },
-          { key: 'costPerResult', label: 'Costo x resultado', format: 'money', right: true }, { key: 'resultType', label: 'Tipo de resultado' },
+          { key: 'reach', label: 'Alcance', format: 'number', right: true }, { key: 'cpm', label: 'CPM', format: 'money', right: true },
+          { key: 'clicks', label: 'Clics', format: 'number', right: true }, { key: 'ctr', label: 'CTR', format: 'percent', right: true },
+          { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'costPerResult', label: 'Costo x resultado', format: 'money', right: true }, { key: 'resultType', label: 'Tipo de resultado' },
         ]} rows={adsetRows} emptyMessage="Sin conjuntos de anuncios con datos para el período seleccionado." />
         <DashboardDataTable title="Anuncios" columns={[
           { key: 'account', label: 'Cuenta' }, { key: 'campaign', label: 'Campaña' }, { key: 'adset', label: 'Conjunto' }, { key: 'ad', label: 'Anuncio' },
           { key: 'spend', label: 'Inversión', format: 'money', right: true }, { key: 'impressions', label: 'Impresiones', format: 'number', right: true },
-          { key: 'clicks', label: 'Clics', format: 'number', right: true }, { key: 'results', label: 'Resultados', format: 'number', right: true },
-          { key: 'previewUrl', label: 'Vista previa', link: true },
+          { key: 'reach', label: 'Alcance', format: 'number', right: true }, { key: 'cpm', label: 'CPM', format: 'money', right: true },
+          { key: 'clicks', label: 'Clics', format: 'number', right: true }, { key: 'ctr', label: 'CTR', format: 'percent', right: true },
+          { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'costPerResult', label: 'Costo x resultado', format: 'money', right: true }, { key: 'previewUrl', label: 'Vista previa', link: true },
         ]} rows={adRows} emptyMessage="Sin anuncios con datos para el período seleccionado." />
       </div>
 
@@ -452,9 +506,20 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
   const daily = genericDaily(platform.key, data)
   const googleAccountList = platform.key === 'google' ? googleAccounts(data) : []
   const monthlyGoogleAccounts = googleAccounts(asRecord(monthData.google))
-  const googleBudgetSummary = calculateAccountBudgets(googleAccountList, monthlyGoogleAccounts, asRows(budget?.sheets?.google))
-  const generalBudgetRows = asRows(budget?.sheets?.general)
+  const googleBudgetRows = asRows(budget?.sheets?.google)
+  const googleBudgetSummary = calculateAccountBudgets(googleAccountList, monthlyGoogleAccounts, googleBudgetRows)
+  const googleAccountNames = new Set(googleAccountList.map((account) => normalize(accountName(account))))
+  const activeGoogleBudgetRows = googleBudgetRows.filter((row) => googleAccountNames.has(normalize(field(row, 'Cuenta', 'Account'))))
+  const googleBudgetDetails = activeGoogleBudgetRows.map((row) => ({
+    account: display(field(row, 'Cuenta')), brand: display(field(row, 'Marca')), model: display(field(row, 'Modelos')),
+    modality: display(field(row, 'Modalidad')), resultType: display(field(row, 'Tipo de resultado')),
+    daily: amount(row, 'Presupuesto Diario asignado'), monthly: monthlyBudgetRow(row), percent: percentValue(field(row, '%')),
+    general: amount(row, 'Presupuesto General asignado'), targetCost: amount(row, 'Costo por Lead'), maxLeads: amount(row, 'Objetivo Máximo de Leads'), leadsByBrand: amount(row, 'Objetivo de Leads x Marca'),
+  }))
+  const googleRawObjectives = asRows(budget?.sheets?.objetivosCpl).filter((row) => googleAccountNames.has(normalize(field(row, 'Cuenta', 'Account'))))
+  const googleObjectiveRows = googleRawObjectives.map((row) => ({ account: display(field(row, 'Cuenta')), brand: display(field(row, 'Marca')), model: display(field(row, 'Modelos')), cplAverage: amount(row, 'CPL Promedio'), target: amount(row, 'OBJETIVO', 'Objetivo') }))
   const monthlyGoogleCampaigns = monthlyGoogleAccounts.flatMap((account) => asRows(account.campaigns).map((campaign) => ({ ...campaign, account_name: accountName(account) })))
+  const googleAlertItems = buildBudgetAlerts(googleBudgetSummary, googleRawObjectives, monthlyGoogleCampaigns)
   return (
     <section id={`dashboard-platform-${platform.key}`} className="scroll-mt-5 rounded-2xl border border-[#e6e6e3] bg-[#fafaf8] p-4 sm:p-5">
       <PlatformSectionHeader platform={platform} detail={platform.key === 'analytics' ? 'Tráfico y eventos del sitio' : platform.key === 'crm' ? 'Resultados comerciales agregados' : platform.key === 'tag_manager' ? 'Contenedores, etiquetas y activadores' : 'Rendimiento de campañas'} />
@@ -466,7 +531,15 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
           {daily.length > 0 && <DailyPlatformChart platformKey={platform.key} period={period} rows={daily} />}
           {platform.key === 'google' && <>
             <BudgetByAccount platformName="Google Ads" rows={googleBudgetSummary} />
-            <GeneralCampaignBudget rows={generalBudgetRows} monthFilter="all" accounts={googleAccountList} campaigns={monthlyGoogleCampaigns} />
+            <DashboardDataTable title="Asignación Google por cuenta/modelo" columns={[
+              { key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'model', label: 'Modelo' }, { key: 'modality', label: 'Modalidad' },
+              { key: 'resultType', label: 'Tipo de resultado' }, { key: 'daily', label: 'Diario', format: 'money', right: true },
+              { key: 'monthly', label: 'Mensual asignado', format: 'money', right: true }, { key: 'percent', label: '%', format: 'percent', right: true },
+              { key: 'general', label: 'Presupuesto general', format: 'money', right: true }, { key: 'targetCost', label: 'Costo por lead', format: 'money', right: true },
+              { key: 'maxLeads', label: 'Objetivo máximo leads', format: 'number', right: true }, { key: 'leadsByBrand', label: 'Objetivo leads por marca', format: 'number', right: true },
+            ]} rows={googleBudgetDetails} emptyMessage="El archivo no tiene filas GOOGLE para estas cuentas." />
+            <DashboardDataTable title="Objetivos CPL" columns={[{ key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'model', label: 'Modelo' }, { key: 'cplAverage', label: 'CPL promedio', format: 'money', right: true }, { key: 'target', label: 'Objetivo', format: 'money', right: true }]} rows={googleObjectiveRows} emptyMessage="El archivo no incluye objetivos CPL para estas cuentas." />
+            <AlertGroups critical={googleAlertItems.filter((item) => item.severity === 'critical')} attention={googleAlertItems.filter((item) => item.severity !== 'critical')} />
           </>}
           <div className="mt-4 flex flex-col gap-4">
             {tables.map((table) => <DashboardDataTable key={`${platform.key}-${table.title}`} title={table.title} columns={table.columns} rows={table.rows} emptyMessage={table.emptyMessage} />)}
@@ -494,18 +567,22 @@ function PlatformSectionHeader({ platform, detail }: { platform: DashboardPlatfo
 }
 
 function DailyPlatformChart({ platformKey, period, rows }: { platformKey: string; period: string; rows: DashboardRecord[] }) {
-  const firstDataKey = platformKey === 'analytics' ? 'sessions' : platformKey === 'google' ? 'spend' : 'activeUsers'
-  const config = { value: { label: firstDataKey === 'sessions' ? 'Sesiones' : firstDataKey === 'spend' ? 'Inversión' : 'Usuarios activos', color: 'var(--chart-1)' } } satisfies ChartConfig
+  const options = platformKey === 'analytics'
+    ? [{ key: 'sessions', label: 'Sesiones' }, { key: 'activeUsers', label: 'Usuarios activos' }, { key: 'keyEvents', label: 'Eventos clave' }]
+    : [{ key: 'spend', label: 'Inversión' }, { key: 'clicks', label: 'Clics' }, { key: 'conversions', label: 'Conversiones' }]
+  const [metric, setMetric] = useState(options[0].key)
+  const option = options.find((item) => item.key === metric) ?? options[0]
+  const config = { [option.key]: { label: option.label, color: 'var(--chart-1)' } } satisfies ChartConfig
   return (
     <div className="mt-4 rounded-xl border border-[#e6e6e3] bg-white p-4">
-      <SectionHeading title="Evolución diaria" detail={period} />
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading title="Evolución diaria" detail={period} /><label className="flex items-center gap-2 text-[10px] text-[#777]">Métrica<select value={metric} onChange={(event) => setMetric(event.target.value)} className="h-8 rounded-lg border border-[#e6e6e3] bg-white px-2 text-[11px]">{options.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></div>
       <ChartContainer config={config} className="h-[220px] w-full">
         <LineChart accessibilityLayer data={rows} margin={{ left: 8, right: 10, top: 8 }}>
           <CartesianGrid vertical={false} strokeDasharray="3 3" />
           <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value: string) => String(value).slice(5)} />
           <YAxis tickLine={false} axisLine={false} width={54} />
           <ChartTooltip content={<ChartTooltipContent labelFormatter={(label) => String(label)} />} />
-          <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey={option.key} name={option.label} stroke={`var(--color-${option.key})`} strokeWidth={2} dot={false} />
         </LineChart>
       </ChartContainer>
     </div>
@@ -538,12 +615,20 @@ function genericHasData(key: string, data: DashboardRecord, metrics: DashboardMe
 function genericDaily(key: string, data: DashboardRecord) {
   if (key === 'analytics') {
     const reports = asRecord(data.reports)
-    return asRows(reports.byDay).map((row) => ({ date: row.date, value: numberValue(row.sessions) }))
+    return asRows(reports.byDay).map((row) => ({ date: row.date, sessions: numberValue(row.sessions), activeUsers: numberValue(row.activeUsers), keyEvents: numberValue(row.keyEvents) }))
   }
   if (key === 'google') {
-    const byDate = new Map<string, number>()
-    for (const account of asRows(data.accounts)) for (const row of asRows(account.daily)) byDate.set(String(row.date ?? ''), (byDate.get(String(row.date ?? '')) ?? 0) + numberValue(row.spend))
-    return [...byDate.entries()].filter(([date]) => Boolean(date)).map(([date, value]) => ({ date, value })).sort((left, right) => String(left.date).localeCompare(String(right.date)))
+    const byDate = new Map<string, { date: string; spend: number; clicks: number; conversions: number }>()
+    for (const account of asRows(data.accounts)) for (const row of asRows(account.daily)) {
+      const date = String(row.date ?? '')
+      if (!date) continue
+      const current = byDate.get(date) ?? { date, spend: 0, clicks: 0, conversions: 0 }
+      current.spend += numberValue(row.spend)
+      current.clicks += numberValue(row.clicks)
+      current.conversions += numberValue(row.conversions)
+      byDate.set(date, current)
+    }
+    return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date))
   }
   return []
 }
@@ -560,6 +645,9 @@ function genericTables(key: string, data: DashboardRecord): Array<{ title: strin
       { title: 'Grupos de anuncios', columns: [{ key: 'account_name', label: 'Cuenta' }, { key: 'campaign_name', label: 'Campaña' }, { key: 'name', label: 'Grupo' }, { key: 'type', label: 'Tipo' }, { key: 'status', label: 'Estado' }, { key: 'spend', label: 'Costo', format: 'money' }, { key: 'impressions', label: 'Impresiones', format: 'number' }, { key: 'clicks', label: 'Clics', format: 'number' }, { key: 'conversions', label: 'Conversiones', format: 'number' }], rows: groups },
       { title: 'Anuncios', columns: [{ key: 'account_name', label: 'Cuenta' }, { key: 'campaign_name', label: 'Campaña' }, { key: 'ad_group_name', label: 'Grupo' }, { key: 'name', label: 'Anuncio' }, { key: 'status', label: 'Estado' }, { key: 'spend', label: 'Costo', format: 'money' }, { key: 'impressions', label: 'Impresiones', format: 'number' }, { key: 'clicks', label: 'Clics', format: 'number' }, { key: 'conversions', label: 'Conversiones', format: 'number' }], rows: ads },
       { title: 'Acciones de conversión', columns: [{ key: 'account_name', label: 'Cuenta' }, { key: 'name', label: 'Acción' }, { key: 'conversions', label: 'Conversiones', format: 'number' }, { key: 'conversion_value', label: 'Valor', format: 'money' }], rows: conversions },
+      { title: 'Palabras clave y términos de búsqueda', columns: [{ key: 'keyword', label: 'Palabra clave' }, { key: 'campaign_name', label: 'Campaña' }, { key: 'clicks', label: 'Clics', format: 'number' }, { key: 'conversions', label: 'Conversiones', format: 'number' }], rows: [], emptyMessage: 'La herramienta actual de Google Ads no devuelve palabras clave ni términos de búsqueda.' },
+      { title: 'Ubicación geográfica', columns: [{ key: 'location', label: 'Ubicación' }, { key: 'impressions', label: 'Impresiones', format: 'number' }, { key: 'clicks', label: 'Clics', format: 'number' }, { key: 'conversions', label: 'Conversiones', format: 'number' }], rows: [], emptyMessage: 'La herramienta actual de Google Ads no devuelve el desglose geográfico.' },
+      { title: 'Dispositivo', columns: [{ key: 'device', label: 'Dispositivo' }, { key: 'impressions', label: 'Impresiones', format: 'number' }, { key: 'clicks', label: 'Clics', format: 'number' }, { key: 'conversions', label: 'Conversiones', format: 'number' }], rows: [], emptyMessage: 'La herramienta actual de Google Ads no devuelve el desglose por dispositivo.' },
     ]
   }
 
@@ -576,8 +664,21 @@ function genericTables(key: string, data: DashboardRecord): Array<{ title: strin
 
   if (key === 'crm') {
     const acquisition = asRecord(data.acquisition)
+    const opportunityReport = asRecord(data.opportunities)
+    const stageMap = new Map<string, { stage: string; pipeline: string; opportunities: number; value: number }>()
+    for (const opportunity of asRows(opportunityReport.opportunities)) {
+      const stage = asRecord(opportunity.stage)
+      const pipeline = display(opportunity.pipeline_name ?? opportunity.pipeline_id)
+      const stageName = display(stage.name ?? opportunity.stage_name ?? opportunity.status)
+      const key = `${pipeline}|${stageName}`
+      const current = stageMap.get(key) ?? { stage: stageName, pipeline, opportunities: 0, value: 0 }
+      current.opportunities += 1
+      current.value += numberValue(opportunity.amount)
+      stageMap.set(key, current)
+    }
     return [
       { title: 'Leads por origen/campaña', columns: [{ key: 'label', label: 'Origen / campaña' }, { key: 'contacts', label: 'Leads', format: 'number' }, { key: 'sales', label: 'Ventas', format: 'number' }], rows: asRows(acquisition.campaignRows) },
+      { title: 'Oportunidades por etapa', columns: [{ key: 'pipeline', label: 'Pipeline' }, { key: 'stage', label: 'Etapa' }, { key: 'opportunities', label: 'Oportunidades', format: 'number' }, { key: 'value', label: 'Valor', format: 'money' }], rows: [...stageMap.values()] },
       { title: 'Por asesor', columns: [{ key: 'label', label: 'Asesor' }, { key: 'contacts', label: 'Leads asignados', format: 'number' }, { key: 'sales', label: 'Ventas', format: 'number' }], rows: asRows(acquisition.vendorRows) },
       { title: 'Por equipo', columns: [{ key: 'label', label: 'Equipo' }, { key: 'contacts', label: 'Leads', format: 'number' }, { key: 'sales', label: 'Ventas', format: 'number' }], rows: asRows(acquisition.teamRows) },
       { title: 'Por etiqueta', columns: [{ key: 'label', label: 'Etiqueta' }, { key: 'contacts', label: 'Leads', format: 'number' }, { key: 'sales', label: 'Ventas', format: 'number' }], rows: asRows(acquisition.tagRows) },
@@ -629,8 +730,9 @@ function buildBudgetAlerts(budgetRows: Array<{account:string;assigned:number;con
   for (const campaign of campaigns) {
     const results = numberValue(campaign.results ?? campaign.leads ?? campaign.conversions)
     if (results < 5) continue
-    const campaignName = normalize(`${campaign.name ?? campaign.campaign_name ?? ''} ${campaign.objective ?? ''}`)
-    const account = String(campaign.account_name ?? 'Cuenta')
+    const campaignLabel = String(campaign.name ?? campaign.campaign_name ?? campaign.campaign ?? 'Campaña')
+    const campaignName = normalize(`${campaignLabel} ${campaign.objective ?? ''}`)
+    const account = String(campaign.account_name ?? campaign.account ?? 'Cuenta')
     const goals = objectiveRows.filter((row) => normalize(field(row, 'Cuenta', 'Account')) === normalize(account))
     const goal = goals.find((row) => {
       const model = normalize(field(row, 'Modelos', 'Modelo'))
@@ -638,14 +740,22 @@ function buildBudgetAlerts(budgetRows: Array<{account:string;assigned:number;con
       return (!model || model === 'general' || campaignName.includes(model)) && (!brand || campaignName.includes(brand))
     })
     if (!goal) continue
-    const cpl = results ? numberValue(campaign.spend) / results : 0
+    const cpl = numberValue(campaign.cost_per_result ?? campaign.costPerResult) || (results ? numberValue(campaign.spend) / results : 0)
     const baseline = amount(goal, 'CPL Promedio')
     const target = amount(goal, 'OBJETIVO', 'Objetivo')
-    if (baseline >= 10 && cpl > baseline) {
-      const severity = cpl > baseline * 1.3
-      const description = `Costo por resultado ${moneyFormat(cpl)} vs promedio ${moneyFormat(baseline)}${target ? ` (objetivo ${moneyFormat(target)})` : ''}.`
-      ;(severity ? critical : attention).push({ title: 'Costo por resultado', account, description })
-    }
+    const aboveBaseline = baseline > 0 && cpl > baseline
+    const aboveTarget = target > 0 && cpl > target
+    if (!aboveBaseline && !aboveTarget) continue
+    const severity = baseline > 0 && cpl > baseline * 1.3
+    const alternative = campaigns
+      .filter((item) => normalize(item.account_name ?? item.account) === normalize(account) && normalize(item.name ?? item.campaign_name ?? item.campaign) !== normalize(campaignLabel) && numberValue(item.results ?? item.leads ?? item.conversions) >= 5)
+      .map((item) => ({ name: String(item.name ?? item.campaign_name ?? item.campaign ?? 'Campaña'), cpl: numberValue(item.cost_per_result ?? item.costPerResult) || numberValue(item.spend) / Math.max(1, numberValue(item.results ?? item.leads ?? item.conversions)) }))
+      .filter((item) => item.cpl > 0 && item.cpl < cpl)
+      .sort((left, right) => left.cpl - right.cpl)[0]
+    const recommendation = alternative ? ` Considerar ${alternative.name} (${moneyFormat(alternative.cpl)}).` : ''
+    const comparison = baseline ? `vs promedio ${moneyFormat(baseline)}` : `sobre objetivo ${moneyFormat(target)}`
+    const description = `${campaignLabel}: CPL ${moneyFormat(cpl)} ${comparison}${target ? ` (objetivo ${moneyFormat(target)})` : ''}.${recommendation}`
+    ;(severity ? critical : attention).push({ title: 'Costo por resultado', account, description })
   }
   return { critical, attention }
 }
