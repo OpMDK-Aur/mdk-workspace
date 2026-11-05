@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConexaSupervisorChat } from './conexa/conexa-chat'
 import { ChatAdAccountSelector, type ChatAdAccountSelection } from './conexa/chat-ad-account-selector'
 import { BarChart3, ChevronDown, CircleHelp, Database, LoaderCircle, Gauge, Globe2, LayoutDashboard, PanelLeftClose, PanelLeftOpen, RotateCcw, Search, Settings2, Sparkles, Tags, Users, WalletCards, X } from 'lucide-react'
@@ -27,8 +27,10 @@ import { ClientContextForm } from '@/components/ai/client-context-form'
 import type { ClientMemory } from '@/lib/ai/client-memory'
 import { SupervisorConfigView } from '@/components/ai/conexa/supervisor-config-view'
 import { formatPeriodRange } from '@/lib/conexa/period-range'
+import { DashboardOverview } from '@/components/conexa/dashboard-overview'
 
 const CONTEXT_VIEW = 'Contexto del cliente'
+const DASHBOARD_VIEW = 'Dashboard'
 const SUPERVISOR_VIEW = 'Agente supervisor'
 const EMPTY_CHAT_AD_SELECTION: ChatAdAccountSelection = { meta: [], google: [] }
 const fetchClientMemory = (url: string) => fetch(url).then((response) => (response.ok ? response.json() : { memory: null })).then((result) => (result.memory ?? null) as ClientMemory | null)
@@ -41,6 +43,8 @@ type Platform = { name: string; key: string; icon: typeof BarChart3; color: stri
 type ConexaData = { accounts: Record<string, unknown>[]; metrics: Record<string, unknown>[]; reports: Record<string, unknown>[]; approvals: Record<string, unknown>[]; profile: Record<string, unknown> | null; memory: Record<string, unknown>[]; platformMetrics: Record<string, { label: string; value: number }[]>; platformData: Record<string, unknown> }
 type GeneratedReport = { id: string; title: string; content: string; html?: string | null; clientName: string; createdAt: string }
 const emptyConexaData: ConexaData = { accounts: [], metrics: [], reports: [], approvals: [], profile: null, memory: [], platformMetrics: {}, platformData: {} }
+const EMPTY_ACCOUNT_SELECTION: Record<string, string[]> = {}
+const EMPTY_CRM_FILTERS: CrmAcquisitionFilters = {}
 const asNumber = (row: Record<string, unknown>, keys: string[]) => keys.reduce<number | null>((value, key) => value ?? (typeof row[key] === 'number' ? row[key] as number : Number(row[key]) || null), null) ?? 0
 const periodStart = (period: string) => { const days = period.includes('7') ? 7 : period.includes('90') ? 90 : 30; const date = new Date(); date.setDate(date.getDate() - days + 1); return date.toISOString().slice(0, 10) }
 const periodEnd = () => new Date().toISOString().slice(0, 10)
@@ -48,12 +52,13 @@ const formatMetric = (value: number, currency = false) => value ? `${currency ? 
 
 const CHAT_ICON_URL = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/comment-alt-edit_12356167-0oouizd6dU7hMTS7sq4GbfQZy89qU8.png'
 
-const baseNav = [
+const baseNav: Array<{ label: string; icon: typeof LayoutDashboard | null; badge?: string }> = [
   { label: 'Inicio', icon: LayoutDashboard },
+  { label: 'Dashboard', icon: Gauge },
   { label: 'Chat / Análisis', icon: null },
   { label: 'Informes', icon: BarChart3 },
   { label: 'Aprobaciones', icon: WalletCards },
-] as const
+]
 
 export const COPILOT_VIEW = 'Copiloto'
 
@@ -71,6 +76,10 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
   const [clientSearch, setClientSearch] = useState('')
   const [periodMenu, setPeriodMenu] = useState(false)
   const [customRange, setCustomRange] = useState({ from: '', to: '' })
+  const [dashboardPeriod, setDashboardPeriod] = useState('Hoy')
+  const [dashboardCustomRange, setDashboardCustomRange] = useState({ from: '', to: '' })
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0)
+  const [dataUpdatedAt, setDataUpdatedAt] = useState<number | null>(null)
   const [platformTab, setPlatformTab] = useState<string | undefined>(undefined)
   const [data, setData] = useState<ConexaData>(emptyConexaData)
   const [isLoading, setIsLoading] = useState(false)
@@ -111,19 +120,22 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
   }, [])
 
   const dataPlatformKey = ({ 'Meta Ads': 'meta', 'Google Ads': 'google', 'Google Analytics': 'analytics', 'Tag Manager': 'tag_manager', CRM: 'crm' } as Record<string, string>)[active]
-  const dataPeriod = dataPlatformKey ? periodByPlatform[dataPlatformKey] ?? period : period
-  const dataCustomRange = dataPlatformKey ? customRangeByPlatform[dataPlatformKey] ?? customRange : customRange
+  const dataPeriod = active === DASHBOARD_VIEW ? dashboardPeriod : dataPlatformKey ? periodByPlatform[dataPlatformKey] ?? period : period
+  const dataCustomRange = active === DASHBOARD_VIEW ? dashboardCustomRange : dataPlatformKey ? customRangeByPlatform[dataPlatformKey] ?? customRange : customRange
+  const dataSelectedAccounts = active === DASHBOARD_VIEW ? EMPTY_ACCOUNT_SELECTION : selectedAccounts
+  const dataCrmFilters = active === DASHBOARD_VIEW ? EMPTY_CRM_FILTERS : crmFilters
 
   useEffect(() => {
     if (!client?.id || !dataPeriod) return
     if (clientLoadPending) setIsLoading(true)
     setMetricsLoading(true)
     let cancelled = false
-    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period: dataPeriod, customRange: dataCustomRange, selectedAccounts, crmFilters }) })
+    fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: client.id, period: dataPeriod, customRange: dataCustomRange, selectedAccounts: dataSelectedAccounts, crmFilters: dataCrmFilters }) })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('No se pudieron consultar las tools de Conexa.')))
       .then((result) => {
         if (cancelled) return
-        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { range: result.range, meta: result.meta, google: result.google, analytics: result.analytics, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
+        setDataUpdatedAt(Date.now())
+        setData({ accounts: [], metrics: Array.isArray(result.metrics) ? result.metrics : [], reports: Array.isArray(result.analytics?.reports) ? result.analytics.reports : [], approvals: [], profile: null, memory: Array.isArray(result.memory?.items) ? result.memory.items : [], platformMetrics: result.platformMetrics && typeof result.platformMetrics === 'object' ? result.platformMetrics : {}, platformData: { range: result.range, meta: result.meta, google: result.google, analytics: result.analytics, tag_manager: result.tagManager, tagManager: result.tagManager, crm: { contacts: result.contacts, opportunities: result.opportunities, sales: result.sales, acquisition: result.crmAcquisition } } })
       })
       .catch(() => { if (!cancelled) setData(emptyConexaData) })
       .finally(() => {
@@ -132,7 +144,7 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
         setMetricsLoading(false)
       })
     return () => { cancelled = true }
-  }, [client?.id, dataPeriod, dataCustomRange, selectedAccounts, crmFilters])
+  }, [client?.id, dataPeriod, dataCustomRange, dataSelectedAccounts, dataCrmFilters, dashboardRefreshKey])
 
   const platforms = useMemo<Platform[]>(() => [
     { name: 'Meta Ads', key: 'meta', icon: BarChart3, color: '#1877F2', iconUrl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png', connected: Boolean(client?.meta_ads_account_id || client?.meta_ads_account_ids?.length), detail: client?.meta_ads_account_id || client?.meta_ads_account_ids?.length ? `Cuenta ${client.meta_ads_account_id ?? client.meta_ads_account_ids?.[0]}` : 'Sin cuenta conectada' },
@@ -144,8 +156,8 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
 
   const connected = platforms.filter((item) => item.connected).length
   const activePlatformKey = platforms.find((item) => item.name === active)?.key
-  const activePeriod = activePlatformKey ? periodByPlatform[activePlatformKey] ?? period : period
-  const activeCustomRange = activePlatformKey ? customRangeByPlatform[activePlatformKey] ?? customRange : customRange
+  const activePeriod = active === DASHBOARD_VIEW ? dashboardPeriod : activePlatformKey ? periodByPlatform[activePlatformKey] ?? period : period
+  const activeCustomRange = active === DASHBOARD_VIEW ? dashboardCustomRange : activePlatformKey ? customRangeByPlatform[activePlatformKey] ?? customRange : customRange
 
   useEffect(() => {
     if (!client?.id) return
@@ -161,6 +173,20 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
   useEffect(() => { setSelectedAccounts({}); setSelectedPages([]) }, [client?.id])
 
   const openConnections = () => window.location.assign('/dashboard/platform')
+  const requestDashboardRefresh = useCallback(() => setDashboardRefreshKey((current) => current + 1), [])
+  useEffect(() => {
+    if (active !== DASHBOARD_VIEW) return
+    const refreshIfStale = () => {
+      if (document.visibilityState === 'visible' && !metricsLoading && dataUpdatedAt !== null && Date.now() - dataUpdatedAt >= 15 * 60 * 1000) requestDashboardRefresh()
+    }
+    refreshIfStale()
+    const interval = window.setInterval(requestDashboardRefresh, 15 * 60 * 1000)
+    document.addEventListener('visibilitychange', refreshIfStale)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshIfStale)
+    }
+  }, [active, dataUpdatedAt, metricsLoading, requestDashboardRefresh])
 
   return <div className="conexa-brand flex h-screen w-full overflow-hidden bg-white text-[#101010]">
     <aside className={cn('flex shrink-0 flex-col border-r border-[#e6e6e3] bg-white transition-[width] duration-200', sidebarOpen ? 'w-[158px]' : 'w-[44px]')}>
@@ -170,29 +196,29 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
       </div>
       <nav className="flex-1 overflow-y-auto px-1.5 py-3">
         <p className={cn('mb-1.5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]', !sidebarOpen && 'sr-only')}>Trabajo</p>
-        {baseNav.map((item) => <button key={item.label} type="button" onClick={() => { setActive(item.label); if (item.label === 'Chat / Análisis') setSidebarOpen(false) }} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px] font-medium', active === item.label ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}>{item.label === 'Chat / Análisis' ? <img src={CHAT_ICON_URL} alt="" className="size-[17px] shrink-0 object-contain" /> : item.icon && <item.icon className="size-[17px] shrink-0" />}{sidebarOpen && <span className="flex-1">{item.label}</span>}{sidebarOpen && item.badge && <span className="rounded-full bg-[#D97706] px-1.5 text-[10px] font-bold text-white">{item.badge}</span>}</button>)}
+        {baseNav.map((item) => <button key={item.label} type="button" aria-label={item.label} title={!sidebarOpen ? item.label : undefined} onClick={() => { setActive(item.label); if (item.label === 'Chat / Análisis' || (item.label === DASHBOARD_VIEW && window.matchMedia('(max-width: 767px)').matches)) setSidebarOpen(false) }} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px] font-medium', active === item.label ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}>{item.label === 'Chat / Análisis' ? <img src={CHAT_ICON_URL} alt="" className="size-[17px] shrink-0 object-contain" /> : item.icon && <item.icon className="size-[17px] shrink-0" />}{sidebarOpen && <span className="flex-1">{item.label}</span>}{sidebarOpen && item.badge && <span className="rounded-full bg-[#D97706] px-1.5 text-[10px] font-bold text-white">{item.badge}</span>}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Plataformas</p>}
-        {platforms.map((item) => <button key={item.key} type="button" onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className="flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />}</button>)}
+        {platforms.map((item) => <button key={item.key} type="button" aria-label={item.name} title={!sidebarOpen ? item.name : undefined} onClick={() => setActive(item.name)} className={cn('mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === item.name ? 'bg-[#eeefff] text-[#5b5fe8]' : 'text-[#5c5c5c] hover:bg-[#f5f5f8]', !sidebarOpen && 'justify-center px-0')}><span className="flex size-[18px] items-center justify-center overflow-hidden rounded-[5px] bg-white">{item.iconUrl ? <img src={item.iconUrl} alt="" className="size-full object-contain" /> : <Globe2 className="size-[15px] text-[#11A683]" />}</span>{sidebarOpen && <span className="flex-1 truncate">{item.name}</span>}{sidebarOpen && <span className={cn('size-1.5 rounded-full', item.connected ? 'bg-[#1e9e6b]' : 'bg-[#d6d6d6]')} />}</button>)}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Cliente</p>}
         {sidebarOpen && <button type="button" onClick={() => setActive(CONTEXT_VIEW)} aria-current={active === CONTEXT_VIEW ? 'page' : undefined} className={cn('mb-0.5 flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[10.5px]', active === CONTEXT_VIEW ? 'bg-[#eeefff] font-medium text-[#5b5fe8]' : 'text-[#222] hover:bg-[#f5f5f8]')}>Contexto del cliente{client && !clientMemoryLoading && !isContextComplete(clientMemory) && <span className="rounded-full bg-[#D97706] px-1.5 text-[9px] font-bold text-white">Pendiente</span>}</button>}
         {sidebarOpen && <p className="mb-1.5 mt-5 px-2.5 text-[9px] font-bold uppercase tracking-[.08em] text-[#9a9a9a]">Configuración</p>}
         {sidebarOpen && <button type="button" onClick={() => setActive(SUPERVISOR_VIEW)} aria-current={active === SUPERVISOR_VIEW ? 'page' : undefined} className={cn('mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px]', active === SUPERVISOR_VIEW ? 'bg-[#eeefff] font-medium text-[#5b5fe8]' : 'text-[#222] hover:bg-[#f5f5f8]')}>Agente supervisor</button>}
         {sidebarOpen && <button type="button" onClick={() => window.location.assign('/dashboard/platform')} className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-[10.5px] text-[#222] hover:bg-[#f5f5f8]">Conexiones</button>}
       </nav>
-      <button type="button" onClick={() => setSidebarOpen((value) => !value)} className="flex items-center gap-2 border-t border-[#f0f0ee] px-[18px] py-3 text-left text-xs text-[#9a9a9a]">{sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}{sidebarOpen && 'Colapsar menú'}</button>
+      <button type="button" aria-label={sidebarOpen ? 'Colapsar menú' : 'Expandir menú'} onClick={() => setSidebarOpen((value) => !value)} className="flex items-center gap-2 border-t border-[#f0f0ee] px-[18px] py-3 text-left text-xs text-[#9a9a9a]">{sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}{sidebarOpen && 'Colapsar menú'}</button>
     </aside>
 
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="[&>div:nth-child(2)]:hidden flex h-[41px] shrink-0 items-center gap-2.5 border-b border-[#dededb] bg-white px-[16px]">
         <div className="relative"><button type="button" onClick={() => setClientMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium">{client?.nombre_del_negocio ?? 'Seleccionar cliente'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{clientMenu && <div className="absolute left-0 top-10 z-30 w-[250px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg"><input autoFocus value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Buscar cliente..." aria-label="Buscar cliente" className="mb-1.5 w-full rounded-md border border-[#e6e6e3] bg-[#fafaf8] px-2.5 py-2 text-[12px] outline-none focus:border-[#5b5fe8]" /><div className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain pr-0.5">{clientsLoading ? <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">Cargando clientes...</p> : clientsError ? <p className="px-2.5 py-3 text-[12px] text-[#b42318]">{clientsError}</p> : (() => { const query = clientSearch.trim().toLowerCase(); const visibleClients = clients.filter((item) => String(item.nombre_del_negocio ?? '').toLowerCase().includes(query)); return visibleClients.length ? visibleClients.map((item) => <button type="button" key={item.id} onClick={() => { setClientLoadPending(true); setClient(item); setClientMenu(false); setClientSearch('') }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item.nombre_del_negocio ?? 'Cliente sin nombre'}</button>) : <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">No se encontraron clientes</p> })()}</div></div>}</div>
         <div className="relative"><button type="button" onClick={() => setPeriodMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium text-[#5c5c5c]">{period || 'Seleccionar período'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{metricsLoading && <LoaderCircle className="ml-1.5 size-3.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" />}{periodMenu && <div className="absolute left-0 top-10 z-20 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">{['Hoy', 'Ayer', 'Últimos 7 días', 'Últimos 30 días', 'Este mes', 'Mes anterior'].map((item) => <button type="button" key={item} onClick={() => { setPeriod(item); setPeriodMenu(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item}</button>)}<button type="button" onClick={() => setPeriod('Personalizado')} className={cn('block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]', period === 'Personalizado' && 'bg-[#f5f5f3]')}>Personalizado</button>{period === 'Personalizado' && <div className="mt-1 border-t border-[#eee] px-2.5 py-2.5"><p className="mb-2 text-[11px] font-semibold text-[#555]">Elegí un rango</p><label className="mb-2 block text-[10px] text-[#888]">Desde<input type="date" value={customRange.from} onChange={(event) => setCustomRange((range) => ({ ...range, from: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><label className="block text-[10px] text-[#888]">Hasta<input type="date" value={customRange.to} onChange={(event) => setCustomRange((range) => ({ ...range, to: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><button type="button" disabled={!customRange.from || !customRange.to} onClick={() => setPeriodMenu(false)} className="mt-3 w-full rounded-md bg-[#5b5fe8] px-2 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Aplicar rango</button></div>}</div>}</div>
-        <span className="ml-1.5 flex items-center gap-1.5 text-xs text-[#9a9a9a]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" /> Actualizado hace 8 min</span><div className="flex-1" /><CircleHelp className="size-4 text-[#9a9a9a]" /><div className="flex size-6 items-center justify-center rounded-full bg-[#141414] text-[10px] font-semibold text-white">AP</div>
+        {active !== DASHBOARD_VIEW && <span className="ml-1.5 flex items-center gap-1.5 text-xs text-[#9a9a9a]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" /> Actualizado hace 8 min</span>}<div className="flex-1" /><CircleHelp className="size-4 text-[#9a9a9a]" /><div className="flex size-6 items-center justify-center rounded-full bg-[#141414] text-[10px] font-semibold text-white">AP</div>
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-hidden bg-white">
         {isLoading && <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px]"><div className="flex w-[min(92%,360px)] flex-col items-center rounded-2xl border border-[#e6e6e3] bg-white px-8 py-7 text-center shadow-lg" role="status" aria-live="polite"><div className="mb-4 flex size-11 items-center justify-center rounded-full bg-[#eeefff]"><LoaderCircle className="size-5 animate-spin text-[#5b5fe8]" /></div><p className="text-sm font-semibold text-[#202020]">Procesando métricas</p><p className="mt-1 text-xs leading-5 text-[#888]">Estamos consultando y preparando los datos de tus plataformas.</p><div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-[#eeefff]"><div className="h-full w-2/5 animate-pulse rounded-full bg-[#5b5fe8]" /></div></div></div>}
         {activePlatformKey && <div className="absolute right-4 top-14 z-30 flex items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#999]">Período</span><PeriodSelector period={activePeriod} customRange={activeCustomRange} onChange={(nextPeriod, range) => { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) }} />{metricsLoading && <LoaderCircle className="size-3.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" />}</div>}
-        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} selectedPages={selectedPages} onPagesChange={setSelectedPages} selectedAccounts={selectedAccounts} onAccountsChange={(platformKey, accounts) => setSelectedAccounts((current) => ({ ...current, [platformKey]: accounts }))} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} selectedChatAccounts={client ? chatAccountsByClient[client.id] ?? EMPTY_CHAT_AD_SELECTION : EMPTY_CHAT_AD_SELECTION} onChatAccountsChange={(selection) => { if (client?.id) setChatAccountsByClient((current) => ({ ...current, [client.id]: selection })) }} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => { setActive(destination); if (destination === CONTEXT_VIEW) setSidebarOpen(true) }} contextStatus={!client ? 'no-client' : clientMemoryLoading ? 'loading' : isContextComplete(clientMemory) ? 'complete' : 'missing'} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === COPILOT_VIEW ? <CopilotView client={client} /> : active === SUPERVISOR_VIEW ? <SupervisorConfigView /> : active === CONTEXT_VIEW ? <ClientContextView client={client} memory={clientMemory ?? null} loading={clientMemoryLoading} onSaved={(updated) => { mutateClientMemory(updated, { revalidate: false }); setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView loading={metricsLoading} data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} selectedPages={selectedPages} onPagesChange={setSelectedPages} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
+        {!period ? <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-dashed border-[#dededb] px-8 py-10 text-center"><p className="text-sm font-semibold text-[#202020]">Seleccioná un período para ver las métricas</p><p className="mt-2 text-xs leading-5 text-[#888]">Elegí una opción en el selector superior para consultar los datos de tus plataformas.</p></div></div> : active === DASHBOARD_VIEW ? <DashboardOverview clientId={client?.id ?? null} clientName={client?.nombre_del_negocio ?? null} period={activePeriod} customRange={activeCustomRange} periodSelector={<PeriodSelector period={dashboardPeriod} customRange={dashboardCustomRange} onChange={(nextPeriod, range) => { setDashboardPeriod(nextPeriod); if (range) setDashboardCustomRange(range) }} />} platforms={platforms} platformMetrics={data.platformMetrics} platformData={data.platformData} loading={metricsLoading} updatedAt={dataUpdatedAt} onRefresh={requestDashboardRefresh} /> : active === 'Inicio' ? <Home client={client} period={period} platforms={platforms} connected={connected} data={data} onAsk={() => { setActive('Chat / Análisis'); setSidebarOpen(false) }} selectedPages={selectedPages} onPagesChange={setSelectedPages} selectedAccounts={selectedAccounts} onAccountsChange={(platformKey, accounts) => setSelectedAccounts((current) => ({ ...current, [platformKey]: accounts }))} /> : active === 'Chat / Análisis' ? <ConexaChat client={client} selectedChatAccounts={client ? chatAccountsByClient[client.id] ?? EMPTY_CHAT_AD_SELECTION : EMPTY_CHAT_AD_SELECTION} onChatAccountsChange={(selection) => { if (client?.id) setChatAccountsByClient((current) => ({ ...current, [client.id]: selection })) }} period={period} clients={clients} crmAcquisition={(data.platformData.crm as { acquisition?: CrmAcquisitionReport } | undefined)?.acquisition} onSelectClient={(nextClient) => setClient(nextClient)} onNavigate={(destination) => { setActive(destination); if (destination === CONTEXT_VIEW) setSidebarOpen(true) }} contextStatus={!client ? 'no-client' : clientMemoryLoading ? 'loading' : isContextComplete(clientMemory) ? 'complete' : 'missing'} onReportCreated={(report, replaceId) => setGeneratedReports((current) => replaceId ? current.map((item) => (item.id === replaceId ? report : item)) : [report, ...current])} /> : active === COPILOT_VIEW ? <CopilotView client={client} /> : active === SUPERVISOR_VIEW ? <SupervisorConfigView /> : active === CONTEXT_VIEW ? <ClientContextView client={client} memory={clientMemory ?? null} loading={clientMemoryLoading} onSaved={(updated) => { mutateClientMemory(updated, { revalidate: false }); setActive('Chat / Análisis'); setSidebarOpen(false) }} /> : active === 'Informes' ? <ReportsView client={client} reports={[...generatedReports, ...data.reports]} /> : active === 'Aprobaciones' ? <ApprovalsView client={client} approvals={data.approvals} /> : <PlatformView loading={metricsLoading} data={data} platform={platforms.find((item) => item.name === active) ?? platforms[0]} initialTab={platformTab} onManage={openConnections} onNavigate={(destination) => { setActive(destination); setSidebarOpen(false) }} client={client} selectedAccounts={selectedAccounts} onAccountsChange={(accounts) => setSelectedAccounts((current) => ({ ...current, [platforms.find((item) => item.name === active)?.key ?? 'meta']: accounts }))} selectedPages={selectedPages} onPagesChange={setSelectedPages} crmFilters={crmFilters} onCrmFiltersChange={setCrmFilters} period={activePeriod} customRange={activeCustomRange} onPeriodChange={(nextPeriod, range) => { if (activePlatformKey) { setPeriodByPlatform((current) => ({ ...current, [activePlatformKey]: nextPeriod })); if (range) setCustomRangeByPlatform((current) => ({ ...current, [activePlatformKey]: range })) } }} />}
       </main>
     </section>
   </div>
