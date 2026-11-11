@@ -6,7 +6,7 @@ import { validateDashboardConfig } from '@/lib/conexa/dashboard-presets'
 const fail = (message: string, status = 400) => NextResponse.json({ error: message }, { status })
 
 export async function GET(request: Request) {
-  const { supabase, error } = await requireDashboardUser()
+  const { supabase, error } = await requireDashboardUser(request)
   if (error) return error
   const clientId = new URL(request.url).searchParams.get('clientId')
   if (!isUuid(clientId)) return fail('Cliente inválido.')
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { supabase, user, error } = await requireDashboardUser()
+  const { supabase, user, error } = await requireDashboardUser(request)
   if (error) return error
   const body = await request.json().catch(() => null)
   if (!body || !isUuid(body.clientId)) return fail('Cliente inválido.')
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { supabase, error } = await requireDashboardUser()
+  const { supabase, error } = await requireDashboardUser(request)
   if (error) return error
   const body = await request.json().catch(() => null)
   if (!body || !isUuid(body.id) || !isUuid(body.clientId)) return fail('Informe o cliente inválido.')

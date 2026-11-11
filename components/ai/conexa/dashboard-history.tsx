@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { Download, FileText, Search, Trash2, X } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { buildClaudeDesignPrompt, buildDashboardSnapshotHtml } from '@/lib/conexa/dashboard-snapshot-html'
 
 type Report = { id: string; client_id: string; dashboard_id: string | null; name: string; config: Record<string, unknown>; data_snapshot: Parameters<typeof buildDashboardSnapshotHtml>[0]['data_snapshot']; period_start: string | null; period_end: string | null; created_at: string }
-const fetchReports = async (url: string) => { const response = await fetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar el histórico.'); return (payload.reports ?? []) as Report[] }
+const fetchReports = async (url: string) => { const response = await dashboardApiFetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar el histórico.'); return (payload.reports ?? []) as Report[] }
 const saveDownload = (name: string, content: string, type: string) => { const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000) }
 
 export function DashboardHistory({ clientId }: { clientId: string | null }) {
@@ -28,7 +29,7 @@ export function DashboardHistory({ clientId }: { clientId: string | null }) {
     if (!window.confirm(`¿Eliminar el informe “${report.name}”? Esta acción no se puede deshacer.`)) return
     setRemoving(report.id)
     try {
-      const response = await fetch('/api/conexa/dashboard/reports', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: report.id, clientId: report.client_id }) })
+      const response = await dashboardApiFetch('/api/conexa/dashboard/reports', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: report.id, clientId: report.client_id }) })
       if (!response.ok) throw new Error('No se pudo eliminar el informe.')
       await mutate((current) => (current ?? []).filter((item) => item.id !== report.id), { revalidate: false })
       if (selected?.id === report.id) setSelected(null)

@@ -5,7 +5,7 @@ import { isUuid } from '@/lib/tasks/subtasks-api'
 const fail = (message: string, status = 400) => NextResponse.json({ error: message }, { status })
 
 export async function GET(request: Request) {
-  const { supabase, error } = await requireDashboardUser()
+  const { supabase, error } = await requireDashboardUser(request)
   if (error) return error
   const params = new URL(request.url).searchParams
   const clientId = params.get('clientId')

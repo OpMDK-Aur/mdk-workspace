@@ -7,6 +7,7 @@ import { DashboardConfigSchema, type DashboardConfig } from '@/lib/conexa/dashbo
 import { DashboardBlockRenderer, getDashboardBlockRows } from './dashboard-block-renderer'
 import { DashboardHistory } from './dashboard-history'
 import { cn } from '@/lib/utils'
+import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 
 type Platform = { name: string; key: string; color: string; iconUrl: string | null; connected: boolean; detail: string }
 type MetricMap = Record<string, Array<{ label: string; value: number }>>
@@ -14,7 +15,7 @@ type DashboardRecord = { id: string; client_id: string; name: string; config: Da
 type ChatResponse = { kind: 'answer' | 'clarification' | 'proposal'; text: string; summary: string | null; config: DashboardConfig | null }
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; response?: ChatResponse }
 type Props = { clientId: string | null; clientName: string | null; userId: string | null; period: string; platforms: Platform[]; metrics: MetricMap; platformData: Record<string, unknown>; loading: boolean; updatedAt: number | null; onRefresh: () => void; onConnections: () => void; defaultDashboard: (hiddenPlatforms: string[]) => ReactNode }
-const jsonFetcher = async (url: string) => { const response = await fetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar la información.'); return payload }
+const jsonFetcher = async (url: string) => { const response = await dashboardApiFetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar la información.'); return payload }
 const dateLabel = (date: Date) => new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
 const periods = (data: Record<string, unknown>) => { const range = data.range && typeof data.range === 'object' ? data.range as Record<string, unknown> : {}; return { dateFrom: String(range.dateFrom ?? ''), dateTo: String(range.dateTo ?? '') } }
 const describeUpdate = (updatedAt: number | null, now: number) => { if (!updatedAt) return 'Esperando datos'; const minutes = Math.max(0, Math.floor((now - updatedAt) / 60_000)); return minutes < 1 ? 'Actualizado hace menos de 1 min' : `Actualizado hace ${minutes} min` }
@@ -154,13 +155,13 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
     setChatError(null)
     setChatBusy(true)
     try {
-      const response = await fetch('/api/conexa/dashboard/assistant', {
+      const response = await dashboardApiFetch('/api/conexa/dashboard/assistant', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ clientId, dashboardId: selectedDashboardId, clientName: clientName ?? '', message, history: messages.slice(-12).map((item) => ({ role: item.role, content: item.content })), period, platforms: platforms.map(({ key, name, connected }) => ({ key, name, connected })), platformMetrics: metrics, platformData, currentConfig: activeConfig ?? defaultDashboardConfig(period) }),
       })
       const payload = await response.json().catch(() => ({})) as ChatResponse & { error?: string }
-      if (!response.ok) throw new Error(payload.error ?? 'No se pudo enviar el mensaje.')
+      if (!response.ok) throw new Error(response.status === 401 ? 'Tu sesión de MDK no está activa. Iniciá sesión y volvé a intentar.' : payload.error ?? 'No se pudo enviar el mensaje.')
       if (payload.kind === 'proposal' && payload.config) {
         const validation = DashboardConfigSchema.safeParse(payload.config)
         if (!validation.success) throw new Error('La propuesta no pasó la validación del tablero.')
@@ -185,7 +186,7 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
     const configToSave = saveMode === 'existing' && targetBoard && proposalBaseConfig && proposalConfig
       ? applyPlatformVisibilityDelta(proposalBaseConfig, proposalConfig, targetBoard.config)
       : draftConfig
-    const response = await fetch('/api/conexa/dashboard/boards', {
+    const response = await dashboardApiFetch('/api/conexa/dashboard/boards', {
       method: saveMode === 'new' ? 'POST' : 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(saveMode === 'new' ? { clientId, name: newBoardName.trim(), config: configToSave } : { id: targetBoardId, clientId, config: configToSave }),
@@ -217,7 +218,7 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
     const tables = config.blocks.filter((block) => block.type === 'table' && !config.hiddenBlockIds.includes(block.id) && !hidden.has(block.platform)).map((block) => ({ title: block.title, platform: block.platform, columns: block.columns, rows: getDashboardBlockRows(block, platformData) }))
     const snapshot = { clientName, period: config.period ?? period, range: defaultRange, platformMetrics: visibleMetrics, previousPlatformMetrics: visiblePreviousMetrics, platformData: visiblePlatformData, tables, savedAt: new Date().toISOString() }
     try {
-      const response = await fetch('/api/conexa/dashboard/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, dashboardId: draftConfig ? null : selectedDashboardId, name: reportName.trim(), config, snapshot, periodStart: defaultRange.dateFrom || null, periodEnd: defaultRange.dateTo || null }) })
+      const response = await dashboardApiFetch('/api/conexa/dashboard/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, dashboardId: draftConfig ? null : selectedDashboardId, name: reportName.trim(), config, snapshot, periodStart: defaultRange.dateFrom || null, periodEnd: defaultRange.dateTo || null }) })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'No se pudo guardar el informe.')
       setReportOpen(false)
@@ -260,7 +261,7 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
       {chatBusy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#F97316]" />Conexa está pensando…</div>}
       <div ref={messagesEndRef} />
     </div>
-    <form onSubmit={sendMessage} className="border-t border-[#eeeeec] p-3"><label htmlFor="conexa-dashboard-chat" className="sr-only">Mensaje para Conexa</label><div className="flex items-center gap-2 rounded-lg border border-[#e5e5e3] bg-white p-1.5 focus-within:border-[#F97316]"><input ref={inputRef} id="conexa-dashboard-chat" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={!clientId || chatBusy} placeholder="Preguntá o pedí un cambio..." className="min-w-0 flex-1 bg-transparent px-1.5 text-[11px] outline-none placeholder:text-[#aaa]" /><button type="submit" disabled={!input.trim() || chatBusy || !clientId} aria-label="Enviar mensaje" className="rounded-md bg-[#F97316] p-2 text-white disabled:opacity-40"><Send className="size-3.5" /></button></div>{chatError && <p role="alert" className="mt-2 text-[10px] text-[#b42318]">{chatError}</p>}<p className="mt-2 text-[9px] leading-4 text-[#999]">Conexa solo edita la configuración de tableros. No ejecuta cambios en tus plataformas.</p></form>
+    <form onSubmit={sendMessage} className="border-t border-[#eeeeec] p-3"><label htmlFor="conexa-dashboard-chat" className="sr-only">Mensaje para Conexa</label><div className="flex items-center gap-2 rounded-lg border border-[#e5e5e3] bg-white p-1.5 focus-within:border-[#F97316]"><input ref={inputRef} id="conexa-dashboard-chat" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={!clientId || chatBusy} placeholder="Preguntá o pedí un cambio..." className="min-w-0 flex-1 bg-transparent px-1.5 text-[11px] outline-none placeholder:text-[#aaa]" /><button type="submit" disabled={!input.trim() || chatBusy || !clientId} aria-label="Enviar mensaje" className="rounded-md bg-[#F97316] p-2 text-white disabled:opacity-40"><Send className="size-3.5" /></button></div>{chatError && <p role="alert" className="mt-2 text-[10px] text-[#b42318]">{chatError}{chatError.includes('sesión de MDK') && <> <a href="/auth/login" className="font-semibold underline">Iniciar sesión</a></>}</p>}<p className="mt-2 text-[9px] leading-4 text-[#999]">Conexa solo edita la configuración de tableros. No ejecuta cambios en tus plataformas.</p></form>
   </section>
 
   const boardPanel = <section className="flex min-h-0 min-w-0 flex-col bg-[#fafaf9]" aria-label="Tablero de métricas">

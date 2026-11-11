@@ -31,7 +31,7 @@ La configuración completa siempre lleva version=1, period, useDefaultLayout (bo
 Para todo cambio devolvé kind=proposal, un resumen y la configuración completa. Es solo una vista previa: el usuario elegirá crear un tablero nuevo o aplicar a uno guardado y luego confirmar el guardado. El tablero por defecto nunca se sobrescribe. Para consultas sin cambios devolvé kind=answer y config=null. No incluyas JSON dentro del texto; el objeto se entrega en config.`
 
 export async function POST(request: Request) {
-  const auth = await requireDashboardUser()
+  const auth = await requireDashboardUser(request)
   if (auth.error || !auth.user) return auth.error ?? NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   const raw = await request.json().catch(() => null)
   const parsedInput = inputSchema.safeParse(raw)
