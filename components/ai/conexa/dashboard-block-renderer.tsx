@@ -12,9 +12,10 @@ type Props = { block: DashboardBlock; platforms: PlatformInfo[]; metrics: Record
 
 const asRecord = (value: unknown): RecordRow => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordRow : {}
 const asRows = (value: unknown): RecordRow[] => Array.isArray(value) ? value.filter((item): item is RecordRow => Boolean(item && typeof item === 'object' && !Array.isArray(item))) : []
-const labels: Record<string, string> = { name: 'Nombre', campaign_name: 'Campaña', status: 'Estado', spend: 'Inversión', impressions: 'Impresiones', clicks: 'Clics', results: 'Resultados', conversions: 'Conversiones', ctr: 'CTR', cpc: 'CPC', cpl: 'CPL', date: 'Fecha', sessions: 'Sesiones', activeUsers: 'Usuarios', eventCount: 'Eventos', keyEvents: 'Conversiones', contacts: 'Contactos', opportunities: 'Oportunidades', sales: 'Ventas' }
+const labels: Record<string, string> = { name: 'Nombre', campaign_name: 'Campaña', status: 'Estado', spend: 'Inversión', impressions: 'Impresiones', clicks: 'Clics', results: 'Resultados', conversions: 'Conversiones', ctr: 'CTR', cpc: 'CPC', cpl: 'CPL', date: 'Fecha', sessions: 'Sesiones', activeUsers: 'Usuarios', eventCount: 'Eventos', keyEvents: 'Conversiones', leads: 'Leads', contacts: 'Contactos', opportunities: 'Oportunidades', sales: 'Ventas' }
 
 function recordsFor(block: DashboardBlock, platformData: Record<string, unknown>): RecordRow[] {
+  if (block.platform === 'file') return asRows(block.dataRows)
   const root = asRecord(platformData[block.platform])
   if (block.platform === 'crm') {
     const crm = asRecord(platformData.crm)
@@ -49,7 +50,15 @@ function dailyRows(block: DashboardBlock, platformData: Record<string, unknown>)
     'sesiones': ['sessions'], 'usuarios': ['activeUsers', 'users'], 'eventos': ['eventCount'],
   }
   const keys = aliases[metricKey] ?? [block.metric ?? '']
-  return rows.map((row) => ({ date: String(row.date ?? row.date_start ?? ''), value: keys.reduce((sum, key) => sum || Number(row[key]) || 0, 0) })).filter((row) => row.date)
+  return rows.map((row) => {
+    const date = String(row.date ?? row.date_start ?? '')
+    if (/^(cpl|costo por conversi[oó]n|costo por resultado)$/.test(metricKey)) {
+      const spend = Number(row.spend ?? row.cost ?? row.investment) || 0
+      const denominator = metricKey === 'cpl' ? Number(row.leads) || 0 : /costo por conversi[oó]n/.test(metricKey) ? Number(row.conversions ?? row.results) || 0 : Number(row.results ?? row.leads ?? row.conversions) || 0
+      return { date, value: denominator > 0 ? spend / denominator : 0 }
+    }
+    return { date, value: keys.reduce((sum, key) => sum || Number(row[key]) || 0, 0) }
+  }).filter((row) => row.date)
 }
 
 function formatValue(value: number, metric: string | null) {
@@ -61,7 +70,7 @@ export function DashboardBlockRenderer({ block, platforms, metrics, previousMetr
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState('')
   const [ascending, setAscending] = useState(true)
-  const platform = platforms.find((item) => item.key === block.platform)
+  const platform = platforms.find((item) => item.key === block.platform) ?? (block.platform === 'file' ? { name: block.dataSourceName ?? 'Archivo', key: 'file', color: '#F97316', iconUrl: null, connected: Boolean(block.dataRows), detail: 'Datos guardados en este tablero' } : undefined)
   const platformMetrics = metrics[block.platform] ?? []
   const metric = platformMetrics.find((item) => item.label === block.metric)
   const previousMetric = (previousMetrics[block.platform] ?? []).find((item) => item.label === block.metric)
