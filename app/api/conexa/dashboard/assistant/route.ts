@@ -1,7 +1,7 @@
 import { generateText, Output } from 'ai'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { DASHBOARD_DIMENSION_CATALOG, DASHBOARD_METRIC_CATALOG, DASHBOARD_PLATFORM_COLUMN_CATALOG, DashboardAssistantSchema, validateDashboardConfig } from '@/lib/conexa/dashboard-presets'
+import { DASHBOARD_DIMENSION_CATALOG, DASHBOARD_METRIC_CATALOG, DASHBOARD_PLATFORMS, DASHBOARD_PLATFORM_COLUMN_CATALOG, DashboardAssistantSchema, validateDashboardConfig } from '@/lib/conexa/dashboard-presets'
 import { canAccessClient, canAccessDashboard, requireDashboardUser } from '@/lib/conexa/dashboard-api'
 import { isUuid } from '@/lib/tasks/subtasks-api'
 
@@ -15,17 +15,20 @@ const inputSchema = z.object({
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) })).max(12),
   period: z.string().max(100),
   platformMetrics: z.record(z.string(), z.array(z.object({ label: z.string().max(100), value: z.number().finite() }))).default({}),
+  platforms: z.array(z.object({ key: z.enum(DASHBOARD_PLATFORMS), name: z.string().max(100), connected: z.boolean() })).max(5).default([]),
   platformData: z.unknown().optional(),
   currentConfig: z.unknown().nullable().optional(),
 })
 
-const SYSTEM_PROMPT = `Sos Conexa, asistente del Dashboard de MDK. Tu único alcance de escritura es proponer una configuración de tableros de métricas; no podés ejecutar acciones ni cambiar campañas, anuncios, presupuestos, conexiones, CRM, clientes, usuarios ni otros módulos.
+const SYSTEM_PROMPT = `Sos Conexa, asistente del Dashboard de MDK. Tu único permiso de escritura es cambiar la configuración visual de los tableros de métricas mediante propuestas JSON. No ejecutes acciones en Meta, Google, GA4, Tag Manager ni CRM; no cambies campañas, anuncios, presupuestos, conexiones, datos del CRM, clientes, usuarios ni otros módulos.
 
-Respondé siempre en español rioplatense, claro y breve. Si el usuario pide una acción fuera de alcance, rechazala con claridad y no propongas un cambio. Para responder preguntas de datos, usá solo el contexto recibido; si el valor no está presente, decí que no está disponible y no lo inventes. No infieras métricas ni dimensiones que no estén disponibles.
+Respondé en español rioplatense, claro y breve. Para consultas de lectura, usá solo los datos del contexto y no inventes valores. Si un pedido es externo al Dashboard, rechazalo y explicá que solo podés cambiar qué información aparece en el tablero.
 
-Si el usuario pide modificar un tablero, primero verificá que estén claros la métrica, plataforma, período y tipo de bloque. Si falta alguno de esos datos, kind=clarification, hacé una pregunta puntual y config=null. Cuando esté claro, devolvé kind=proposal, resumen breve y config completa. La configuración debe tener version 1, el período solicitado o el período activo, y entre 1 y 16 bloques. Cada bloque requiere id único, type (kpi, line, bar, funnel o table), title, platform, metric (una etiqueta exacta del catálogo recibido o null), dimension (clave conocida o null) y columns (claves disponibles del catálogo). No inventes etiquetas de métricas; el campo metric debe coincidir exactamente con una etiqueta recibida para esa plataforma.
+Los pedidos de mostrar, ocultar, sacar o volver a incluir una plataforma son cambios válidos del tablero, NO son pedidos para desconectar esa plataforma. Identificá la clave exacta usando el catálogo de plataformas y proponé el cambio sin pedir aclaraciones cuando el referente sea claro (por ejemplo, Google Ads = google). Para ocultar agregá la clave a hiddenPlatforms; para volver a mostrarla quitá esa clave. Si configuraciónActual.useDefaultLayout es true, conservá useDefaultLayout=true y los bloques vacíos: así se mantiene el tablero actual y solo se oculta la fuente solicitada. No reemplaces el diseño actual por una tarjeta vacía ni inventes bloques en ese caso. Para un tablero de bloques, preservá sus bloques y cambiá solo lo solicitado. Para ocultar un bloque, agregá su id a hiddenBlockIds; para mostrarlo, quitá ese id.
 
-En una propuesta solo previsualizás el cambio. La interfaz pedirá confirmación para crear un tablero nuevo o actualizar uno guardado. El tablero predeterminado no se puede sobrescribir. Para consultas y conversaciones que no implican cambios, kind=answer y config=null. No incluyas JSON dentro del texto: el objeto se entrega en config.`
+La configuración completa siempre lleva version=1, period, useDefaultLayout (boolean), hiddenPlatforms (claves del catálogo), hiddenBlockIds (ids existentes) y blocks (0 a 16). Los bloques requieren id único, type, title, platform, metric exacta del catálogo o null, dimension y columns válidos. No inventes métricas, dimensiones, columnas o ids. Antes de proponer otros cambios, preguntá por cualquier dato realmente ambiguo: plataforma, métrica, período, dimensión o tipo de bloque.
+
+Para todo cambio devolvé kind=proposal, un resumen y la configuración completa. Es solo una vista previa: el usuario elegirá crear un tablero nuevo o aplicar a uno guardado y luego confirmar el guardado. El tablero por defecto nunca se sobrescribe. Para consultas sin cambios devolvé kind=answer y config=null. No incluyas JSON dentro del texto; el objeto se entrega en config.`
 
 export async function POST(request: Request) {
   const auth = await requireDashboardUser()
@@ -41,6 +44,7 @@ export async function POST(request: Request) {
   const context = JSON.stringify({
     cliente: input.clientName,
     período: input.period,
+    plataformas: input.platforms,
     métricasDisponibles: input.platformMetrics,
     catálogoPorPlataforma: { métricas: DASHBOARD_METRIC_CATALOG, dimensiones: DASHBOARD_DIMENSION_CATALOG, columnas: DASHBOARD_PLATFORM_COLUMN_CATALOG },
     datosActuales: input.platformData,

@@ -46,6 +46,9 @@ export const DashboardBlockSchema = z.object({
 export const DashboardConfigSchema = z.object({
   version: z.literal(1),
   period: z.string().min(1).max(80),
+  useDefaultLayout: z.boolean(),
+  hiddenPlatforms: z.array(z.enum(DASHBOARD_PLATFORMS)).max(DASHBOARD_PLATFORMS.length),
+  hiddenBlockIds: z.array(z.string().min(1).max(80)).max(16),
   blocks: z.array(DashboardBlockSchema).max(16),
 })
 
@@ -60,9 +63,28 @@ export type DashboardConfig = z.infer<typeof DashboardConfigSchema>
 export type DashboardBlock = z.infer<typeof DashboardBlockSchema>
 export type DashboardPlatformKey = (typeof DASHBOARD_PLATFORMS)[number]
 
+export function normalizeDashboardConfig(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const config = value as Record<string, unknown>
+  return {
+    ...config,
+    useDefaultLayout: config.useDefaultLayout === true,
+    hiddenPlatforms: Array.isArray(config.hiddenPlatforms) ? config.hiddenPlatforms : [],
+    hiddenBlockIds: Array.isArray(config.hiddenBlockIds) ? config.hiddenBlockIds : [],
+  }
+}
+
 export function validateDashboardConfig(value: unknown, metricsByPlatform?: Record<string, Array<{ label: string }>>) {
-  const result = DashboardConfigSchema.safeParse(value)
+  const result = DashboardConfigSchema.safeParse(normalizeDashboardConfig(value))
   if (!result.success) return result
+  if (result.data.useDefaultLayout && result.data.blocks.length > 0) {
+    return { success: false as const, error: new z.ZodError([{ code: 'custom', path: ['blocks'], message: 'El tablero por defecto conserva su layout y no admite una lista de bloques personalizada.' }]) }
+  }
+  const blockIds = new Set(result.data.blocks.map((block) => block.id))
+  const invalidHiddenBlock = result.data.hiddenBlockIds.find((id) => !blockIds.has(id))
+  if (invalidHiddenBlock) {
+    return { success: false as const, error: new z.ZodError([{ code: 'custom', path: ['hiddenBlockIds'], message: `El bloque ${invalidHiddenBlock} no existe en este tablero.` }]) }
+  }
   const invalid = result.data.blocks.find((block) => {
     if (!block.metric) return false
     const isInCatalog = (DASHBOARD_METRIC_CATALOG[block.platform] ?? []).includes(block.metric)

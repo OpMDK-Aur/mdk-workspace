@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { canAccessClient, requireDashboardUser } from '@/lib/conexa/dashboard-api'
 import { isUuid } from '@/lib/tasks/subtasks-api'
-import { validateDashboardConfig } from '@/lib/conexa/dashboard-presets'
+import { normalizeDashboardConfig, validateDashboardConfig } from '@/lib/conexa/dashboard-presets'
 
 const fail = (message: string, status = 400) => NextResponse.json({ error: message }, { status })
 
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   if (!await canAccessClient(supabase, clientId)) return fail('No tenés acceso a este cliente.', 404)
   const { data, error: queryError } = await supabase.from('dashboards').select('id, client_id, name, config, is_default, created_by, updated_by, created_at, updated_at').eq('client_id', clientId).eq('is_default', false).order('updated_at', { ascending: false })
   if (queryError) return fail('No se pudieron cargar los tableros guardados.', 503)
-  return NextResponse.json({ dashboards: data ?? [] })
+  return NextResponse.json({ dashboards: (data ?? []).map((dashboard) => ({ ...dashboard, config: normalizeDashboardConfig(dashboard.config) })) })
 }
 
 export async function POST(request: Request) {
