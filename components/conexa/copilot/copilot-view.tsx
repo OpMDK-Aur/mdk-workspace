@@ -1,105 +1,366 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { toast } from 'sonner'
+import { ArrowDownToLine, BarChart3, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Maximize2, MessageCircle, Minimize2, Search, Send, Tag, Users, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { PLATFORM_LABEL, type CopilotPlatform, type Recommendation } from '@/lib/conexa/copilot/types'
-import { DashboardTab } from './dashboard-tab'
-import { HistoryTab } from './history-tab'
-import { InboxView } from './inbox-view'
-import { PlanView } from './plan-view'
-import { ScheduledTab } from './scheduled-tab'
 import { useCopilot } from './use-copilot'
+import { PLATFORM_LABEL, RECOMMENDATION_TYPE_LABEL, type Recommendation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
 
-type Layout = 'inbox' | 'plan'
-const LAYOUT_KEY = 'conexa-copilot-layout'
-const layoutListeners = new Set<() => void>()
+type Client = {
+  id: string
+  nombre_del_negocio?: string
+  meta_ads_account_id?: string | null
+  meta_ads_account_ids?: string[] | null
+  google_ads_customer_id?: string | null
+  google_ads_customer_ids?: string[] | null
+  analytics_property_id?: string | null
+  tag_manager_container_id?: string | null
+  crm_type?: string | null
+  cuentas_publicitarias?: Array<{ plataforma?: string | null; id_cuenta?: string | null; activo?: boolean | null }> | null
+}
+type Panel = 'chat' | 'recommendations' | 'history'
+const PANEL_LABEL: Record<Panel, string> = { chat: 'Chat de contexto', recommendations: 'Recomendaciones', history: 'Histórico' }
+const STATUS_LABEL = { draft: 'Borrador', published: 'Publicada', discarded: 'Descartada' } as const
+const TYPE_OPTIONS: RecommendationType[] = ['presupuesto', 'creatividades', 'segmentacion', 'estructura', 'tracking', 'crm', 'otro']
+const PLATFORM_OPTIONS: RecommendationPlatform[] = ['meta', 'google_ads', 'ga4', 'tag_manager', 'crm']
+const PLATFORM_LOGOS: Partial<Record<RecommendationPlatform, string>> = {
+  meta: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Facebook_Logo_%282019%29-8hLkShXu9caNijxaYTMKGdv1bWipbV.png',
+  google_ads: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google_ads_logo_icon_171064-I8kGtiPKqG0TZoeHB7Lb1GwQziRNBX.webp',
+  ga4: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google-analytics-icon-VuL4g3NfPdL5bzHIQRZacQjTq6Vcfk.webp',
+  tag_manager: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/google-tag-manager-l5o0anuls2kqtf2xmhtl-ItmMvsOnhnmedg5kb6tJwJOQzpJ1uy.webp',
+}
+const PRIORITY_OPTIONS: RecommendationPriority[] = ['alta', 'media', 'baja']
+const FILTER_ALL = 'all'
 
-/** Preferencia de vista por usuario: es solo UI, por eso vive en el navegador. */
-function useLayoutPreference() {
-  const layout = useSyncExternalStore(
-    (listener) => { layoutListeners.add(listener); return () => layoutListeners.delete(listener) },
-    () => (localStorage.getItem(LAYOUT_KEY) === 'plan' ? 'plan' : 'inbox') as Layout,
-    () => 'inbox' as Layout,
-  )
-  const setLayout = (value: Layout) => { localStorage.setItem(LAYOUT_KEY, value); layoutListeners.forEach((listener) => listener()) }
-  return [layout, setLayout] as const
+export function CopilotView({ client }: { client: Client | null }) {
+  if (!client) return <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Elegí un cliente para ver sus recomendaciones.</div>
+  return <RecommendationsWorkspace key={client.id} client={client} />
 }
 
-const FILTERS: { key: CopilotPlatform | 'all'; label: string }[] = [{ key: 'all', label: 'Todas' }, ...(Object.keys(PLATFORM_LABEL) as CopilotPlatform[]).map((key) => ({ key, label: PLATFORM_LABEL[key] }))]
+function RecommendationsWorkspace({ client }: { client: Client }) {
+  const copilot = useCopilot(client.id)
+  const [collapsed, setCollapsed] = useState<Record<Panel, boolean>>({ chat: false, recommendations: false, history: false })
+  const [mobilePanel, setMobilePanel] = useState<Panel>('recommendations')
+  const [fullPanel, setFullPanel] = useState<Panel | null>(null)
+  const [filters, setFilters] = useState({ platform: FILTER_ALL, type: FILTER_ALL, priority: FILTER_ALL, status: FILTER_ALL })
+  const [search, setSearch] = useState('')
+  const [historySearch, setHistorySearch] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [messageInput, setMessageInput] = useState('')
+  const [editingRecommendationId, setEditingRecommendationId] = useState<string | undefined>()
+  const [selected, setSelected] = useState<Recommendation | null>(null)
+  const [editTarget, setEditTarget] = useState<Recommendation | null>(null)
+  const [publishTarget, setPublishTarget] = useState<Recommendation | null>(null)
+  const [discardTarget, setDiscardTarget] = useState<Recommendation | null>(null)
+  const [discardReason, setDiscardReason] = useState('')
+  const [manualContextOpen, setManualContextOpen] = useState(false)
+  const [manualContext, setManualContext] = useState('')
+  const [hydratedPanels, setHydratedPanels] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-export function CopilotView({ client }: { client: { id: string } | null }) {
-  if (!client) return <div className="flex h-full items-center justify-center p-6 text-[13px] text-[#737373]">Elegí un cliente para ver las acciones del Copiloto.</div>
-  return <CopilotContent key={client.id} clientId={client.id} />
-}
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`conexa-recommendation-panels:${client.id}`)
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<Record<Panel, boolean>>
+        setCollapsed({ chat: Boolean(parsed.chat), recommendations: Boolean(parsed.recommendations), history: Boolean(parsed.history) })
+      }
+    } catch { /* Layout preferences are optional. */ }
+    setHydratedPanels(true)
+  }, [client.id])
 
-function CopilotContent({ clientId }: { clientId: string }) {
-  const copilot = useCopilot(clientId)
-  const [layout, setLayout] = useLayoutPreference()
-  const [tab, setTab] = useState('suggested')
-  const [filter, setFilter] = useState<CopilotPlatform | 'all'>('all')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!hydratedPanels) return
+    try { localStorage.setItem(`conexa-recommendation-panels:${client.id}`, JSON.stringify(collapsed)) } catch { /* Browser storage may be disabled. */ }
+  }, [collapsed, hydratedPanels, client.id])
 
-  const { recommendations, plays, context } = copilot
-  const pending = useMemo(() => recommendations.filter((item) => item.status === 'pending' && (filter === 'all' || item.platform === filter)), [recommendations, filter])
-  const scheduled = recommendations.filter((item) => item.status === 'scheduled')
-  const playOf = (rec: Recommendation) => plays.find((play) => play.id === rec.playId)
-  const selected = recommendations.find((item) => item.id === selectedId) ?? pending[0]
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setFullPanel(null) }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
-  return (
-    <div className="mx-auto h-full max-w-[1180px] overflow-y-auto px-6 py-5">
-      <header className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="max-w-[680px]">
-          <h1 className="text-[20px] font-bold text-[#202020]"><span aria-hidden className="text-[#5b5fe8]">{'✦ '}</span>Copiloto</h1>
-          <p className="mt-1 text-pretty text-[13px] leading-relaxed text-[#737373]">Conexa cruza el contexto del negocio, los objetivos del cliente, el historial de decisiones y la performance del período para proponerte acciones. Vos aprobás, Conexa ejecuta y mide el resultado.</p>
-        </div>
-        <div role="radiogroup" aria-label="Vista" className="flex shrink-0 gap-1 rounded-lg bg-[#f5f5f4] p-1">
-          {([['inbox', 'A · Bandeja'], ['plan', 'B · Plan del día']] as const).map(([value, label]) => (
-            <button key={value} type="button" role="radio" aria-checked={layout === value} onClick={() => setLayout(value)} className={cn('rounded-md px-3 py-1.5 text-[12.5px] font-medium', layout === value ? 'bg-white text-[#202020] shadow-sm' : 'text-[#737373]')}>{label}</button>
-          ))}
-        </div>
-      </header>
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: 'end' }) }, [copilot.messages.length, busy])
 
-      <ul className="mb-4 flex flex-wrap gap-2" aria-label="Contexto">
-        <ContextChip label="Objetivo" value={context?.objective ?? 'Ventas sobre volumen de leads'} />
-        <ContextChip label="Historial" value={`${context?.decisionsCount ?? copilot.decisions.length} decisiones registradas`} />
-        <ContextChip label="Datos" value={(context?.sources ?? ['Meta', 'Google Ads', 'GA4', 'CRM', 'GTM']).join(' · ')} />
-      </ul>
+  const drafts = useMemo(() => copilot.recommendations.filter((item) => item.status === 'draft'), [copilot.recommendations])
+  const history = useMemo(() => copilot.recommendations.filter((item) => item.status !== 'draft').sort((a, b) => new Date(b.status === 'published' ? b.published_at ?? b.updated_at : b.discarded_at ?? b.updated_at).getTime() - new Date(a.status === 'published' ? a.published_at ?? a.updated_at : a.discarded_at ?? a.updated_at).getTime()), [copilot.recommendations])
+  const filteredDrafts = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('es')
+    return drafts.filter((item) => (filters.platform === FILTER_ALL || item.platforms.includes(filters.platform as RecommendationPlatform))
+      && (filters.type === FILTER_ALL || item.type === filters.type)
+      && (filters.priority === FILTER_ALL || item.priority === filters.priority)
+      && (!query || `${item.title} ${item.description} ${item.rationale}`.toLocaleLowerCase('es').includes(query)))
+  }, [drafts, filters, search])
+  const filteredHistory = useMemo(() => {
+    const query = historySearch.trim().toLocaleLowerCase('es')
+    return history.filter((item) => (filters.status === FILTER_ALL || item.status === filters.status)
+      && (!query || `${item.title} ${item.description} ${item.rationale}`.toLocaleLowerCase('es').includes(query)))
+  }, [history, filters.status, historySearch])
+  const connectedPlatforms = useMemo(() => {
+    const connected: RecommendationPlatform[] = []
+    if (client.meta_ads_account_id || client.meta_ads_account_ids?.length || client.cuentas_publicitarias?.some((account) => account.activo !== false && account.plataforma === 'meta')) connected.push('meta')
+    if (client.google_ads_customer_id || client.google_ads_customer_ids?.length || client.cuentas_publicitarias?.some((account) => account.activo !== false && account.plataforma === 'google')) connected.push('google_ads')
+    if (client.analytics_property_id) connected.push('ga4')
+    if (client.tag_manager_container_id) connected.push('tag_manager')
+    if (client.crm_type) connected.push('crm')
+    return connected
+  }, [client])
 
-      {copilot.error ? <p role="alert" className="rounded-lg bg-[#fef2f2] px-4 py-3 text-[13px] text-[#b91c1c]">{copilot.error.message}</p> : (
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="suggested">Sugeridas ({recommendations.filter((item) => item.status === 'pending').length})</TabsTrigger>
-            <TabsTrigger value="scheduled">Programadas ({scheduled.length})</TabsTrigger>
-            <TabsTrigger value="history">Historial y aprendizajes</TabsTrigger>
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          </TabsList>
+  const showPanel = (panel: Panel) => { setFullPanel(panel); setMobilePanel(panel) }
+  const focusChat = (recommendation?: Recommendation) => {
+    setEditingRecommendationId(recommendation?.id)
+    if (recommendation) setMessageInput(`Quiero editar esta recomendación. Conservá su fundamento y modificá solo lo que te indico: ${recommendation.title}\n\n`)
+    if (window.matchMedia('(max-width: 1023px)').matches) setMobilePanel('chat')
+    window.setTimeout(() => document.getElementById('recommendation-chat-input')?.focus(), 30)
+  }
 
-          <TabsContent value="suggested" className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por plataforma">
-              {FILTERS.map((item) => (
-                <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)} className={cn('rounded-full border px-3 py-1 text-[12.5px]', filter === item.key ? 'border-[#202020] bg-[#202020] text-white' : 'border-[#dededb] bg-white text-[#404040] hover:border-[#a3a3a3]')}>{item.label}</button>
-              ))}
-            </div>
-            {copilot.isLoading ? <p className="py-10 text-center text-[13px] text-[#737373]">Cargando acciones…</p> : layout === 'inbox' ? (
-              <InboxView items={pending} selected={selected} onSelect={setSelectedId} playOf={playOf} copilot={copilot} onGoHistory={() => setTab('history')} onGoScheduled={() => setTab('scheduled')} />
-            ) : (
-              <PlanView items={pending} all={recommendations} playOf={playOf} copilot={copilot} onGoHistory={() => setTab('history')} onGoScheduled={() => setTab('scheduled')} />
-            )}
-          </TabsContent>
-          <TabsContent value="scheduled"><ScheduledTab items={scheduled} copilot={copilot} /></TabsContent>
-          <TabsContent value="history"><HistoryTab copilot={copilot} /></TabsContent>
-          <TabsContent value="dashboard"><DashboardTab clientId={clientId} /></TabsContent>
-        </Tabs>
-      )}
+  async function sendMessage(event: FormEvent) {
+    event.preventDefault()
+    const message = messageInput.trim()
+    if (!message || busy) return
+    setMessageInput('')
+    setBusy(true)
+    try {
+      const result = await copilot.send(message, editingRecommendationId)
+      if (result.recommendations.length) { setMobilePanel('recommendations'); toast.success(`${result.recommendations.length} borrador(es) agregados`) }
+      if (result.editedRecommendation) { setMobilePanel('recommendations'); toast.success('La recomendación quedó actualizada como borrador') }
+      if (result.contextSaved) toast.success('El contexto nuevo quedó guardado para próximas conversaciones')
+      if (result.editedRecommendation) setEditingRecommendationId(undefined)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo enviar el mensaje')
+      setMessageInput(message)
+    } finally { setBusy(false) }
+  }
+
+  async function saveManualContext(event: FormEvent) {
+    event.preventDefault()
+    if (manualContext.trim().length < 3) return
+    try {
+      await copilot.addContext(manualContext.trim())
+      setManualContext('')
+      setManualContextOpen(false)
+      toast.success('Contexto guardado para este cliente')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contexto') }
+  }
+
+  async function publish() {
+    if (!publishTarget) return
+    try {
+      await copilot.publish(publishTarget.id)
+      setPublishTarget(null)
+      toast.success('Publicada en Aprobaciones. No se aplicó ningún cambio en plataformas.')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo publicar la recomendación') }
+  }
+
+  async function discard() {
+    if (!discardTarget) return
+    try {
+      await copilot.discard(discardTarget.id, discardReason.trim() || undefined)
+      setDiscardTarget(null)
+      setDiscardReason('')
+      toast.success('Recomendación descartada y agregada al histórico')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo descartar la recomendación') }
+  }
+
+  const panels: Record<Panel, ReactNode> = {
+    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} contextCount={copilot.contexts.length} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
+    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={setPublishTarget} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
+    history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
+  }
+
+  const fullContent = fullPanel ? <PanelShell panel={fullPanel} full onCollapse={() => setCollapsed((current) => ({ ...current, [fullPanel]: true }))} onExpand={() => setFullPanel(null)}>{panels[fullPanel]}</PanelShell> : null
+  const panelOrder: Panel[] = ['chat', 'recommendations', 'history']
+  const columns = panelOrder.map((panel) => collapsed[panel] ? '42px' : panel === 'recommendations' ? 'minmax(430px, 2fr)' : 'minmax(250px, 1fr)').join(' ')
+
+  return <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white text-[#252525]">
+    <div role="tablist" aria-label="Paneles de Recomendaciones" className="flex shrink-0 border-b border-[#e7e7e5] bg-white lg:hidden">
+      {panelOrder.map((panel) => <button key={panel} type="button" role="tab" aria-selected={mobilePanel === panel} onClick={() => setMobilePanel(panel)} className={cn('flex-1 border-b-2 px-2 py-2.5 text-xs font-medium', mobilePanel === panel ? 'border-[#f97316] text-[#c55208]' : 'border-transparent text-[#777]')}>{panel === 'recommendations' ? `Activas ${drafts.length}` : PANEL_LABEL[panel]}</button>)}
     </div>
-  )
+    <div className={cn('min-h-0 flex-1 lg:grid', fullPanel ? 'hidden' : 'flex')} style={{ gridTemplateColumns: columns }}>
+      {panelOrder.map((panel) => <div key={panel} className={cn('min-h-0 min-w-0 overflow-hidden border-r border-[#e7e7e5] last:border-r-0 lg:flex', mobilePanel === panel ? 'flex' : 'hidden')}>
+        {collapsed[panel] ? <>
+          <button type="button" onClick={() => setCollapsed((current) => ({ ...current, [panel]: false }))} aria-label={`Expandir panel ${PANEL_LABEL[panel]}`} title={`Expandir ${PANEL_LABEL[panel]}`} className="hidden h-full w-[42px] shrink-0 flex-col items-center gap-3 bg-[#fafaf9] py-4 text-[#555] lg:flex"><PanelIcon panel={panel} /><span className="text-[10px] font-semibold [writing-mode:vertical-rl] rotate-180">{PANEL_LABEL[panel]}</span></button>
+          <div className="flex min-h-0 min-w-0 flex-1 lg:hidden"><PanelShell panel={panel} onCollapse={() => setCollapsed((current) => ({ ...current, [panel]: true }))} onExpand={() => showPanel(panel)}>{panels[panel]}</PanelShell></div>
+        </> : <PanelShell panel={panel} onCollapse={() => setCollapsed((current) => ({ ...current, [panel]: true }))} onExpand={() => showPanel(panel)}>{panels[panel]}</PanelShell>}
+      </div>)}
+    </div>
+    {fullPanel && <div className="absolute inset-0 z-40 flex min-h-0 flex-col bg-white">{fullContent}</div>}
+
+    <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        {selected && <RecommendationDetail item={selected} readonly={selected.status !== 'draft'} onRestore={selected.status === 'discarded' ? async () => { await copilot.restore(selected.id); setSelected(null); toast.success('Recomendación restaurada como borrador') } : undefined} />}
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(editTarget)} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        {editTarget && <EditRecommendationDialog item={editTarget} onCancel={() => setEditTarget(null)} onSave={async (patch) => { try { await copilot.edit(editTarget.id, patch); setEditTarget(null); toast.success('Borrador actualizado') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo editar') } }} />}
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(publishTarget)} onOpenChange={(open) => { if (!open) setPublishTarget(null) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Publicar recomendación en Aprobaciones</DialogTitle><DialogDescription>Se guardará como publicada y aparecerá en la sección Aprobaciones. Esto no ejecuta ni envía cambios a ninguna plataforma.</DialogDescription></DialogHeader>
+        {publishTarget && <div className="rounded-lg border border-[#e7e7e5] bg-[#fafaf9] p-3"><p className="text-sm font-semibold">{publishTarget.title}</p><p className="mt-1 text-xs text-[#666]">{publishTarget.description}</p></div>}
+        <DialogFooter><Button variant="outline" onClick={() => setPublishTarget(null)}>Cancelar</Button><Button onClick={publish} className="bg-[#f97316] text-white hover:bg-[#e7650c]">Confirmar publicación</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(discardTarget)} onOpenChange={(open) => { if (!open) setDiscardTarget(null) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Descartar recomendación</DialogTitle><DialogDescription>Se moverá al histórico. El motivo es opcional.</DialogDescription></DialogHeader>
+        <label className="flex flex-col gap-1.5 text-xs font-medium" htmlFor="discard-reason">Motivo de descarte<Textarea id="discard-reason" value={discardReason} maxLength={1000} onChange={(event) => setDiscardReason(event.target.value)} placeholder="¿Por qué no aplica?" /></label>
+        <DialogFooter><Button variant="outline" onClick={() => setDiscardTarget(null)}>Cancelar</Button><Button variant="destructive" onClick={discard}>Descartar</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={manualContextOpen} onOpenChange={setManualContextOpen}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Agregar contexto del cliente</DialogTitle><DialogDescription>Este dato se suma al contexto de Recomendaciones, sin modificar el formulario existente del cliente.</DialogDescription></DialogHeader>
+        <form onSubmit={saveManualContext} className="flex flex-col gap-3"><label htmlFor="manual-recommendation-context" className="text-xs font-medium">Contexto para tener en cuenta</label><Textarea id="manual-recommendation-context" value={manualContext} maxLength={2000} onChange={(event) => setManualContext(event.target.value)} placeholder="Objetivos, estacionalidad, promociones o restricciones…" /><DialogFooter><Button type="button" variant="outline" onClick={() => setManualContextOpen(false)}>Cancelar</Button><Button type="submit" disabled={manualContext.trim().length < 3}>Guardar contexto</Button></DialogFooter></form>
+      </DialogContent>
+    </Dialog>
+  </div>
 }
 
-function ContextChip({ label, value }: { label: string; value: string }) {
-  return (
-    <li className="flex items-center gap-1.5 rounded-full border border-[#e8e8e5] bg-white px-3 py-1 text-[12px]">
-      <span className="font-semibold text-[#525252]">{label}:</span><span className="text-[#737373]">{value}</span>
-    </li>
-  )
+function PanelIcon({ panel }: { panel: Panel }) {
+  if (panel === 'chat') return <MessageCircle className="size-4 text-[#f97316]" />
+  if (panel === 'recommendations') return <Lightbulb className="size-4 text-[#f97316]" />
+  return <ArrowDownToLine className="size-4 text-[#f97316]" />
+}
+
+function PanelShell({ panel, full = false, onCollapse, onExpand, children }: { panel: Panel; full?: boolean; onCollapse: () => void; onExpand: () => void; children: ReactNode }) {
+  const title = PANEL_LABEL[panel]
+  return <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-white" aria-label={title}>
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[#eeeeec] bg-white px-3">
+      <PanelIcon panel={panel} />
+      <h2 className="min-w-0 flex-1 truncate text-xs font-semibold">{title}</h2>
+      {panel === 'recommendations' && <span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">Activas</span>}
+      {!full && <button type="button" onClick={onCollapse} aria-label={`Colapsar ${title}`} title="Colapsar panel" className="hidden rounded-md p-1.5 text-[#777] hover:bg-[#f5f5f4] lg:inline-flex"><Minimize2 className="size-4" /></button>}
+      <button type="button" onClick={onExpand} aria-label={full ? 'Volver a la posición original' : `Expandir ${title} a pantalla completa`} title={full ? 'Volver al panel' : 'Pantalla completa'} className="rounded-md p-1.5 text-[#777] hover:bg-[#f5f5f4]">{full ? <X className="size-4" /> : <Maximize2 className="size-4" />}</button>
+    </header>
+    {children}
+  </section>
+}
+
+function ChatPanel({ clientName, connectedPlatforms, messages, contextCount, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
+  clientName: string
+  connectedPlatforms: RecommendationPlatform[]
+  messages: ReturnType<typeof useCopilot>['messages']
+  contextCount: number
+  busy: boolean
+  input: string
+  editing: boolean
+  onInput: (value: string) => void
+  onSubmit: (event: FormEvent) => void
+  onAddManual: () => void
+  onClearEditing: () => void
+  endRef: React.RefObject<HTMLDivElement | null>
+}) {
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#eeeeec] px-3 py-2"><p className="truncate text-[11px] text-[#777]">{clientName} · {contextCount} notas guardadas</p><Button type="button" variant="outline" size="sm" onClick={onAddManual} className="h-7 shrink-0 px-2 text-[10px]">+ Contexto</Button></div>
+    {!connectedPlatforms.length && <p role="status" className="border-b border-[#f0e5d9] bg-[#fff8f1] px-3 py-2 text-[10px] leading-relaxed text-[#8a541e]">Este cliente no tiene plataformas conectadas. El chat recomendará únicamente a partir del contexto, las tareas y los comentarios.</p>}
+    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Tiene una promoción este mes', 'El cliente quiere priorizar calidad sobre volumen'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
+      <div className="flex flex-col gap-3">{messages.map((message) => <article key={message.id} className={cn('max-w-[96%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-[#fff2e9] text-[#4a2b18]' : 'self-start border border-[#eeeeec] bg-[#fafaf9] text-[#444]')}><p className="mb-1 text-[9px] font-semibold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'Vos' : 'Conexa'}</p><p className="whitespace-pre-wrap">{message.content}</p></article>)}</div>
+      {busy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está analizando contexto y datos…</div>}
+      <div ref={endRef} />
+    </div>
+    <form onSubmit={onSubmit} className="border-t border-[#eeeeec] p-3">
+      {editing && <div className="mb-2 flex items-center justify-between rounded-md bg-[#fff5ee] px-2.5 py-1.5 text-[10px] text-[#9a4d13]"><span>Editando un borrador</span><button type="button" onClick={onClearEditing} className="underline">Cancelar edición</button></div>}
+      <label htmlFor="recommendation-chat-input" className="sr-only">Mensaje para Conexa</label>
+      <div className="flex items-end gap-2 rounded-lg border border-[#e5e5e3] bg-white p-1.5 focus-within:border-[#f97316]"><Textarea id="recommendation-chat-input" value={input} rows={2} maxLength={4000} onChange={(event) => onInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={busy} placeholder="Sumá contexto o pedí recomendaciones…" className="min-h-10 resize-none border-0 text-[11px] shadow-none focus-visible:ring-0" /><Button type="submit" size="icon" aria-label="Enviar mensaje" disabled={!input.trim() || busy} className="size-8 shrink-0 bg-[#f97316] text-white hover:bg-[#e7650c]"><Send className="size-3.5" /></Button></div>
+      <p className="mt-2 text-[9px] leading-4 text-[#999]">Conexa no publica ni ejecuta cambios. Los mensajes solo se usan como contexto de Recomendaciones.</p>
+    </form>
+  </div>
+}
+
+function RecommendationsPanel({ items, total, filters, search, loading, error, onSearch, onFilters, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: {
+  items: Recommendation[]; total: number; filters: { platform: string; type: string; priority: string; status: string }; search: string; loading: boolean; error?: string
+  onSearch: (value: string) => void
+  onFilters: (value: { platform: string; type: string; priority: string; status: string }) => void
+  onSelect: (item: Recommendation) => void
+  onEdit: (item: Recommendation) => void
+  onEditWithChat: (item: Recommendation) => void
+  onPublish: (item: Recommendation) => void
+  onDiscard: (item: Recommendation) => void
+}) {
+  return <div className="flex min-h-0 flex-1 flex-col bg-[#fafaf9]">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2.5">
+      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">{total} pendientes</span></div>
+      <div className="flex flex-wrap gap-1.5">
+        <select aria-label="Filtrar por plataforma" value={filters.platform} onChange={(event) => onFilters({ ...filters, platform: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todas las plataformas</option>{PLATFORM_OPTIONS.map((platform) => <option key={platform} value={platform}>{PLATFORM_LABEL[platform]}</option>)}</select>
+        <select aria-label="Filtrar por tipo" value={filters.type} onChange={(event) => onFilters({ ...filters, type: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todos los tipos</option>{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select>
+        <select aria-label="Filtrar por prioridad" value={filters.priority} onChange={(event) => onFilters({ ...filters, priority: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Toda prioridad</option>{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select>
+        <div className="flex min-w-[140px] flex-1 items-center gap-1 rounded-md border border-[#e5e5e3] bg-white px-2"><Search className="size-3.5 text-[#888]" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar recomendaciones" placeholder="Buscar…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div>
+      </div>
+    </div>
+    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      {error && <p role="alert" className="mb-3 rounded-md bg-[#fff3ed] px-3 py-2 text-[11px] text-[#9a3412]">{error}</p>}
+      {loading ? <div className="flex flex-col gap-3" aria-label="Generando recomendaciones"><Skeleton className="h-36 w-full" /><Skeleton className="h-36 w-full" /></div> : items.length ? <ul className="flex flex-col gap-3">{items.map((item) => <RecommendationCard key={item.id} item={item} onSelect={() => onSelect(item)} onEdit={() => onEdit(item)} onEditWithChat={() => onEditWithChat(item)} onPublish={() => onPublish(item)} onDiscard={() => onDiscard(item)} />)}</ul> : <div className="mt-8 rounded-xl border border-dashed border-[#dededb] bg-white p-8 text-center"><Lightbulb className="mx-auto size-5 text-[#f97316]" /><p className="mt-3 text-sm font-semibold">No hay recomendaciones pendientes.</p><p className="mt-1 text-xs text-[#777]">Contale al chat sobre el cliente para generar nuevas.</p></div>}
+    </div>
+  </div>
+}
+
+function RecommendationCard({ item, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: { item: Recommendation; onSelect: () => void; onEdit: () => void; onEditWithChat: () => void; onPublish: () => void; onDiscard: () => void }) {
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
+  return <li className="rounded-xl border border-[#e5e5e1] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)]">
+    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold leading-snug"><button type="button" onClick={onSelect} className="text-left hover:text-[#c55208]">{item.title}</button></h3><div className="mt-2 flex flex-wrap items-center gap-1.5">{item.platforms.length ? item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="rounded-full bg-[#f2f2f0] px-2 py-1 text-[9px] text-[#555]">Basada en contexto</span>}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[9px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div></div><span className="shrink-0 rounded-full bg-[#fff4e9] px-2 py-1 text-[9px] font-semibold text-[#a8440c]">Borrador</span></div>
+    <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-[#555]">{item.description}</p>
+    <button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-[#a8440c]">Fundamento <ChevronDown className={cn('size-3 transition-transform', evidenceOpen && 'rotate-180')} /></button>
+    {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-[#fafaf9] p-3"><p className="text-[11px] leading-relaxed text-[#555]">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[10px] leading-relaxed text-[#666]"><span className="font-semibold">{evidence.label}: </span>{evidence.excerpt}</li>)}</ul></div>}
+    <div className="mt-3"><p className="text-[10px] font-semibold text-[#555]">Acciones sugeridas</p><ol className="mt-1 list-decimal pl-4 text-[10px] leading-relaxed text-[#666]">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></div>
+    <p className="mt-2 text-[10px] text-[#555]"><span className="font-semibold">Impacto esperado:</span> {item.expected_impact}</p>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eeeeeb] pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-[#777]">Descartar</Button></div><Button size="sm" onClick={onPublish} className="h-8 bg-[#f97316] px-3 text-[10px] text-white hover:bg-[#e7650c]">Publicar</Button></div>
+  </li>
+}
+
+function HistoryPanel({ items, loading, error, filters, search, onSearch, onStatus, onSelect, onRestore }: { items: Recommendation[]; loading: boolean; error?: string; filters: { status: string }; search: string; onSearch: (value: string) => void; onStatus: (value: string) => void; onSelect: (item: Recommendation) => void; onRestore: (item: Recommendation) => void }) {
+  return <div className="flex min-h-0 flex-1 flex-col bg-white">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] px-3 py-2.5"><div className="flex items-center gap-2 text-xs font-semibold"><Clock3 className="size-3.5 text-[#f97316]" />Recomendaciones cerradas</div><select aria-label="Filtrar histórico por estado" value={filters.status} onChange={(event) => onStatus(event.target.value)} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Publicadas y descartadas</option><option value="published">Publicadas</option><option value="discarded">Descartadas</option></select><div className="flex items-center gap-1 rounded-md border border-[#e5e5e3] px-2"><Search className="size-3.5 text-[#888]" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar en histórico" placeholder="Buscar en histórico…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div></div>
+    <div className="min-h-0 flex-1 overflow-y-auto">{error ? <p role="alert" className="m-3 rounded-md bg-[#fff3ed] p-3 text-[10px] text-[#9a3412]">{error}</p> : loading ? <p className="p-4 text-xs text-[#777]">Cargando histórico…</p> : items.length ? <ul className="divide-y divide-[#eeeeeb]">{items.map((item) => <li key={item.id} className="px-3 py-3"><button type="button" onClick={() => onSelect(item)} className="block w-full text-left"><span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', item.status === 'published' ? 'bg-[#e7f5ec] text-[#1b6b38]' : 'bg-[#f1f1ef] text-[#666]')}>{STATUS_LABEL[item.status]}</span><span className="mt-2 block text-xs font-semibold leading-relaxed">{item.title}</span><span className="mt-1 block text-[10px] text-[#777]">{item.platforms.map((platform) => PLATFORM_LABEL[platform]).join(' · ') || 'Basada en contexto'}</span><span className="mt-1 block text-[9px] text-[#999]">{new Date(item.status === 'published' ? item.published_at ?? item.updated_at : item.discarded_at ?? item.updated_at).toLocaleString('es-AR')} · {item.status === 'published' ? item.published_by_name ?? 'Usuario MDK' : item.discarded_by_name ?? 'Usuario MDK'}</span></button>{item.status === 'discarded' && <Button type="button" variant="outline" size="sm" onClick={() => onRestore(item)} className="mt-2 h-7 px-2 text-[10px]">Restaurar como borrador</Button>}</li>)}</ul> : <div className="px-5 py-12 text-center"><Clock3 className="mx-auto size-5 text-[#b0b0aa]" /><p className="mt-2 text-xs font-medium">Todavía no hay recomendaciones publicadas o descartadas.</p></div>}</div>
+  </div>
+}
+
+function RecommendationDetail({ item, readonly, onRestore }: { item: Recommendation; readonly: boolean; onRestore?: () => void }) {
+  return <>
+    <DialogHeader><DialogTitle>{item.title}</DialogTitle><DialogDescription>{readonly ? `${STATUS_LABEL[item.status]} · vista de solo lectura` : 'Detalle de la recomendación'}</DialogDescription></DialogHeader>
+    <div className="flex flex-col gap-3 text-sm"><div className="flex flex-wrap gap-1.5">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div><p className="whitespace-pre-wrap text-xs leading-relaxed">{item.description}</p><section><h3 className="mb-1 text-xs font-semibold">Fundamento</h3><p className="text-xs leading-relaxed text-[#666]">{item.rationale}</p><ul className="mt-2 flex flex-col gap-2">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[11px] leading-relaxed"><b>{evidence.label}: </b>{evidence.excerpt}</li>)}</ul></section><section><h3 className="mb-1 text-xs font-semibold">Acciones sugeridas</h3><ol className="list-decimal pl-5 text-xs leading-relaxed">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></section><p className="text-xs"><b>Impacto esperado:</b> {item.expected_impact}</p>{item.discard_reason && <p className="rounded-md bg-[#f5f5f4] p-3 text-xs"><b>Motivo del descarte:</b> {item.discard_reason}</p>}</div>
+    {onRestore && <DialogFooter><Button onClick={onRestore}>Restaurar como borrador</Button></DialogFooter>}
+  </>
+}
+
+function EditRecommendationDialog({ item, onCancel, onSave }: { item: Recommendation; onCancel: () => void; onSave: (patch: Recommendation) => Promise<void> }) {
+  const [draft, setDraft] = useState(() => ({ ...item, suggested_actions: [...item.suggested_actions] }))
+  const [actionText, setActionText] = useState(item.suggested_actions.join('\n'))
+  const [saving, setSaving] = useState(false)
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try { await onSave({ ...draft, suggested_actions: actionText.split('\n').map((action) => action.trim()).filter(Boolean) }) } finally { setSaving(false) }
+  }
+  return <form onSubmit={submit} className="flex flex-col gap-3">
+    <DialogHeader><DialogTitle>Editar borrador</DialogTitle><DialogDescription>Los cambios solo modifican esta recomendación; no afectan al cliente ni a las plataformas.</DialogDescription></DialogHeader>
+    <label className="flex flex-col gap-1 text-xs font-medium">Título<Input value={draft.title} maxLength={140} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+    <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as RecommendationType })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs">{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select></label><label className="flex flex-col gap-1 text-xs font-medium">Prioridad<select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as RecommendationPriority })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs">{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></label></div>
+    <fieldset className="flex flex-col gap-1.5"><legend className="text-xs font-medium">Plataformas involucradas</legend><div className="flex flex-wrap gap-2">{PLATFORM_OPTIONS.map((platform) => <label key={platform} className="flex items-center gap-1.5 rounded-md border border-[#e7e7e5] px-2 py-1.5 text-[10px]"><input type="checkbox" checked={draft.platforms.includes(platform)} onChange={(event) => setDraft({ ...draft, platforms: event.target.checked ? [...draft.platforms, platform] : draft.platforms.filter((item) => item !== platform) })} />{PLATFORM_LABEL[platform]}</label>)}</div></fieldset>
+    <label className="flex flex-col gap-1 text-xs font-medium">Descripción<Textarea value={draft.description} maxLength={900} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
+    <label className="flex flex-col gap-1 text-xs font-medium">Fundamento<Textarea value={draft.rationale} maxLength={1000} onChange={(event) => setDraft({ ...draft, rationale: event.target.value })} /></label>
+    <label className="flex flex-col gap-1 text-xs font-medium">Acciones sugeridas (una por línea)<Textarea value={actionText} onChange={(event) => setActionText(event.target.value)} /></label>
+    <label className="flex flex-col gap-1 text-xs font-medium">Impacto esperado<Input value={draft.expected_impact} maxLength={400} onChange={(event) => setDraft({ ...draft, expected_impact: event.target.value })} /></label>
+    <DialogFooter><Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cambios'}</Button></DialogFooter>
+  </form>
+}
+
+function PlatformBadge({ platform }: { platform: RecommendationPlatform }) {
+  const Icon = platform === 'meta' ? Users : platform === 'google_ads' ? Search : platform === 'ga4' ? BarChart3 : platform === 'tag_manager' ? Tag : Database
+  const logo = PLATFORM_LOGOS[platform]
+  return <span className="inline-flex items-center gap-1 rounded-full border border-[#e8e8e5] bg-white px-2 py-1 text-[9px] font-medium">{logo ? <img src={logo} alt="" className="size-3 object-contain" /> : <Icon className="size-3 text-[#f97316]" aria-hidden="true" />}{PLATFORM_LABEL[platform]}</span>
+}
+
+function PriorityBadge({ priority }: { priority: RecommendationPriority }) {
+  const colors = priority === 'alta' ? 'bg-[#fff0ec] text-[#b42318]' : priority === 'media' ? 'bg-[#fff5e9] text-[#9a5b10]' : 'bg-[#eff5f0] text-[#486653]'
+  return <span className={cn('rounded-full px-2 py-1 text-[9px] font-semibold', colors)}>{priority}</span>
 }
