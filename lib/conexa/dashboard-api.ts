@@ -9,22 +9,28 @@ export async function requireDashboardUser(request?: Request) {
   let supabase: SupabaseClient
   let user: User | null
 
-  if (authorization) {
-    const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]
-    if (!token) return { supabase: null, user: null, error: unauthorized() }
-    supabase = createSupabaseClient(
+  const token = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]
+  if (token) {
+    const bearerClient = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       { accessToken: async () => token },
     )
-    const { data, error } = await supabase.auth.getUser(token)
-    if (error || !data.user) return { supabase, user: null, error: unauthorized() }
-    user = data.user
+    const { data, error } = await bearerClient.auth.getUser(token)
+    if (!error && data.user) {
+      supabase = bearerClient
+      user = data.user
+    } else {
+      const cookieAuth = await requireUser()
+      if (cookieAuth.error || !cookieAuth.user) return { ...cookieAuth, error: cookieAuth.error ?? unauthorized() }
+      supabase = cookieAuth.supabase
+      user = cookieAuth.user
+    }
   } else {
-    const auth = await requireUser()
-    if (auth.error || !auth.user) return { ...auth, error: auth.error ?? unauthorized() }
-    supabase = auth.supabase
-    user = auth.user
+    const cookieAuth = await requireUser()
+    if (cookieAuth.error || !cookieAuth.user) return { ...cookieAuth, error: cookieAuth.error ?? unauthorized() }
+    supabase = cookieAuth.supabase
+    user = cookieAuth.user
   }
 
   const { data: member, error } = await supabase.from('colaboradores').select('id').eq('id', user.id).maybeSingle()
