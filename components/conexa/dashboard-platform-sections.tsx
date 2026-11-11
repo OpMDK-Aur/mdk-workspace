@@ -542,7 +542,7 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
               { key: 'percent_of_leads', label: '% de leads', format: 'percent', right: true }, { key: 'spend', label: 'Inversión', format: 'money', right: true },
               { key: 'cost_per_lead', label: 'Costo por lead', format: 'money', right: true }, { key: 'impressions', label: 'Impresiones', format: 'number', right: true },
               { key: 'clicks', label: 'Clics', format: 'number', right: true },
-            ]} rows={regionRows} maxRows={8} />
+            ]} rows={regionRows} />
           </div>
         ) : <EmptyPanel text={regionData?.message ?? 'No hay desglose por provincia disponible para este cliente y período.'} />}
       </div>
