@@ -11,6 +11,7 @@ const inputSchema = z.object({
   clientId: z.string().uuid(),
   dashboardId: z.string().uuid().nullable(),
   clientName: z.string().max(180),
+  dashboardName: z.string().max(180),
   message: z.string().trim().min(1).max(4000),
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) })).max(12),
   period: z.string().max(100),
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
 
   const context = JSON.stringify({
     cliente: input.clientName,
+    tableroActual: input.dashboardName,
+    dashboardId: input.dashboardId,
     período: input.period,
     plataformas: input.platforms,
     métricasDisponibles: input.platformMetrics,
@@ -73,8 +76,9 @@ export async function POST(request: Request) {
       responseOutput = { kind: 'clarification', text: 'Necesito precisar el cambio antes de modificar la vista previa.', summary: null, config: null }
     }
 
-    const userInsert = { client_id: input.clientId, dashboard_id: input.dashboardId, user_id: auth.user.id, role: 'user', content: input.message }
-    const assistantInsert = { client_id: input.clientId, dashboard_id: input.dashboardId, user_id: auth.user.id, role: 'assistant', content: JSON.stringify(responseOutput) }
+    const userCreatedAt = new Date()
+    const userInsert = { client_id: input.clientId, dashboard_id: input.dashboardId, user_id: auth.user.id, role: 'user', content: input.message, created_at: userCreatedAt.toISOString() }
+    const assistantInsert = { client_id: input.clientId, dashboard_id: input.dashboardId, user_id: auth.user.id, role: 'assistant', content: JSON.stringify(responseOutput), created_at: new Date(userCreatedAt.getTime() + 1).toISOString() }
     const { error: saveError } = await auth.supabase.from('dashboard_chat_messages').insert([userInsert, assistantInsert])
     if (saveError) return NextResponse.json({ error: 'No se pudo guardar la conversación. Verificá que las tablas del Dashboard estén instaladas.' }, { status: 503 })
     return NextResponse.json(responseOutput)
