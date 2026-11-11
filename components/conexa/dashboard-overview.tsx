@@ -20,6 +20,7 @@ type DashboardOverviewProps = {
   loading: boolean
   updatedAt: number | null
   onRefresh: () => void
+  embedded?: boolean
 }
 type Range = { from: string; to: string }
 type RangePair = { current: Range; compared: Range; label: string }
@@ -128,7 +129,7 @@ function relativeLabel(timestamp: number | null, now: number) {
   return minutes === 0 ? 'Actualizado hace menos de 1 min' : `Actualizado hace ${minutes} min`
 }
 
-export function DashboardOverview({ clientId, clientName, period, customRange, periodSelector, platforms, platformMetrics, platformData, loading, updatedAt, onRefresh }: DashboardOverviewProps) {
+export function DashboardOverview({ clientId, clientName, period, customRange, periodSelector, platforms, platformMetrics, platformData, loading, updatedAt, onRefresh, embedded = false }: DashboardOverviewProps) {
   const [now, setNow] = useState(() => Date.now())
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -149,7 +150,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
   const { data: budgetData, error: budgetLoadError, mutate: refreshBudget } = useSWR<DashboardBudget>(
     clientId ? `/api/conexa/dashboard/budget?clientId=${encodeURIComponent(clientId)}` : null,
     fetchBudget,
-    { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: true, revalidateOnReconnect: true },
+    { refreshInterval: 60 * 60 * 1000, revalidateOnFocus: true, revalidateOnReconnect: true },
   )
   const { data: monthData, mutate: refreshMonthData } = useSWR<DashboardRecord>(
     clientId && connectedPaidMedia ? ['conexa-dashboard-month', clientId] as const : null,
@@ -163,7 +164,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
       if (!response.ok) throw new Error(payload.error ?? 'No se pudo consultar el mes en curso.')
       return payload as DashboardRecord
     },
-    { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: true },
+    { refreshInterval: 60 * 60 * 1000, revalidateOnFocus: true },
   )
   const { data: regionData, isLoading: regionLoading, mutate: refreshRegions } = useSWR<{ available: boolean; rows: DashboardRegionRow[]; message?: string }>(
     clientId && connectedMeta && dateFrom && dateTo ? ['conexa-dashboard-meta-regions', clientId, dateFrom, dateTo] as const : null,
@@ -177,7 +178,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
       if (!response.ok) throw new Error(payload.error ?? 'No se pudo consultar el desglose regional.')
       return payload as { available: boolean; rows: DashboardRegionRow[]; message?: string }
     },
-    { refreshInterval: 15 * 60 * 1000, revalidateOnFocus: true },
+    { refreshInterval: 60 * 60 * 1000, revalidateOnFocus: true },
   )
 
   useEffect(() => {
@@ -243,7 +244,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 py-6 sm:px-6">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        {!embedded && <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="mb-1 text-[11px] text-[#929292]">{period} · Control de plataformas</p>
             <h1 className="text-balance text-[22px] font-bold tracking-[-.03em] text-[#202020]">Dashboard · {clientName ?? 'Seleccioná un cliente'}</h1>
@@ -257,24 +258,24 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
               Actualizar ahora
             </button>
           </div>
-        </header>
+        </header>}
 
         <section className="rounded-2xl border border-[#e6e6e3] bg-[#fafaf8] p-4 sm:p-5" aria-label="Archivo de presupuesto">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#e8e8e5] bg-white"><FileSpreadsheet className="size-4 text-[#5b5fe8]" aria-hidden="true" /></span>
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#e8e8e5] bg-white"><FileSpreadsheet className="size-4 text-[#F97316]" aria-hidden="true" /></span>
               <div>
                 <h2 className="text-[13px] font-semibold text-[#262626]">Presupuesto por cliente</h2>
                 {budgetData?.configured ? (
                   <p className="mt-1 text-[10px] text-[#777]">{budgetData.fileName} · {Object.values(budgetData.rowCounts ?? {}).reduce((total, count) => total + count, 0)} filas · reemplazado al subir una nueva versión</p>
                 ) : budgetData && !budgetData.canUpload ? <p className="mt-1 text-[10px] text-[#777]">No hay un archivo cargado. Inicia sesi&oacute;n con permisos sobre este cliente para subirlo.</p> : <p className="mt-1 text-[10px] text-[#777]">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
                 <p className="mt-1 text-[10px] text-[#8b6a25]">El archivo se guarda en un bucket público; cualquier persona con el enlace puede descargarlo.</p>
-                {budgetData?.publicUrl && <a href={budgetData.publicUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-medium text-[#5b5fe8] underline underline-offset-2">Abrir archivo público</a>}
+                {budgetData?.publicUrl && <a href={budgetData.publicUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-medium text-[#F97316] underline underline-offset-2">Abrir archivo público</a>}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <input ref={fileInput} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={uploadBudget} className="sr-only" aria-label="Seleccionar archivo de presupuesto" />
-              <button type="button" onClick={() => fileInput.current?.click()} disabled={!clientId || uploading || !budgetData?.canUpload} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#5b5fe8] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#4b4fd6] disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={() => fileInput.current?.click()} disabled={!clientId || uploading || !budgetData?.canUpload} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#F97316] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#e7650c] disabled:cursor-not-allowed disabled:opacity-60">
                 {uploading ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <UploadCloud className="size-3.5" aria-hidden="true" />}
                 {uploading ? 'Subiendo…' : 'Subir / reemplazar'}
               </button>
@@ -310,7 +311,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
           <section className="rounded-2xl border border-dashed border-[#dcdcd8] bg-white px-6 py-12 text-center">
             <h2 className="text-[14px] font-semibold text-[#292929]">No hay plataformas conectadas</h2>
             <p className="mx-auto mt-2 max-w-[420px] text-[12px] leading-5 text-[#777]">Conectá una plataforma para ver sus métricas en este Dashboard.</p>
-            <a href="/dashboard/platform" className="mt-4 inline-flex rounded-lg bg-[#5b5fe8] px-4 py-2 text-[11px] font-semibold text-white hover:bg-[#4b4fd6]">Ir a Conexiones</a>
+            <a href="/dashboard/platform" className="mt-4 inline-flex rounded-lg bg-[#F97316] px-4 py-2 text-[11px] font-semibold text-white hover:bg-[#e7650c]">Ir a Conexiones</a>
           </section>
         ) : (
           <>

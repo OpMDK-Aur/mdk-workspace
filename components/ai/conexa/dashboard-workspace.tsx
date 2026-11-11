@@ -1,0 +1,257 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import useSWR from 'swr'
+import { ArrowDownToLine, Check, ChevronDown, FilePlus2, LayoutDashboard, LoaderCircle, Maximize2, Minimize2, Pencil, RefreshCw, Send, X } from 'lucide-react'
+import { DashboardConfigSchema, type DashboardConfig } from '@/lib/conexa/dashboard-presets'
+import { DashboardBlockRenderer, getDashboardBlockRows } from './dashboard-block-renderer'
+import { DashboardHistory } from './dashboard-history'
+import { cn } from '@/lib/utils'
+
+type Platform = { name: string; key: string; color: string; iconUrl: string | null; connected: boolean; detail: string }
+type MetricMap = Record<string, Array<{ label: string; value: number }>>
+type DashboardRecord = { id: string; client_id: string; name: string; config: DashboardConfig; created_at: string; updated_at: string; is_default: boolean }
+type ChatResponse = { kind: 'answer' | 'clarification' | 'proposal'; text: string; summary: string | null; config: DashboardConfig | null }
+type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; response?: ChatResponse }
+type Props = { clientId: string | null; clientName: string | null; userId: string | null; period: string; platforms: Platform[]; metrics: MetricMap; platformData: Record<string, unknown>; loading: boolean; updatedAt: number | null; onRefresh: () => void; onConnections: () => void; defaultDashboard: ReactNode }
+const jsonFetcher = async (url: string) => { const response = await fetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar la información.'); return payload }
+const dateLabel = (date: Date) => new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+const periods = (data: Record<string, unknown>) => { const range = data.range && typeof data.range === 'object' ? data.range as Record<string, unknown> : {}; return { dateFrom: String(range.dateFrom ?? ''), dateTo: String(range.dateTo ?? '') } }
+const describeUpdate = (updatedAt: number | null, now: number) => { if (!updatedAt) return 'Esperando datos'; const minutes = Math.max(0, Math.floor((now - updatedAt) / 60_000)); return minutes < 1 ? 'Actualizado hace menos de 1 min' : `Actualizado hace ${minutes} min` }
+
+function chatMessage(row: Record<string, unknown>): ChatMessage | null {
+  if ((row.role !== 'assistant' && row.role !== 'user') || typeof row.content !== 'string') return null
+  if (row.role === 'assistant') {
+    try {
+      const parsed = JSON.parse(row.content) as ChatResponse
+      if (parsed && typeof parsed.text === 'string') return { id: String(row.id), role: 'assistant', content: parsed.text, response: parsed }
+    } catch { /* Older plain-text messages remain readable. */ }
+  }
+  return { id: String(row.id), role: row.role, content: row.content }
+}
+
+export function DashboardWorkspace({ clientId, clientName, userId, period, platforms, metrics, platformData, loading, updatedAt, onRefresh, onConnections, defaultDashboard }: Props) {
+  const [selectedBoardId, setSelectedBoardId] = useState('default')
+  const [draftConfig, setDraftConfig] = useState<DashboardConfig | null>(null)
+  const [draftSummary, setDraftSummary] = useState<string | null>(null)
+  const [saveMode, setSaveMode] = useState<'new' | 'existing' | null>(null)
+  const [targetBoardId, setTargetBoardId] = useState('')
+  const [newBoardName, setNewBoardName] = useState('')
+  const [boardMenuOpen, setBoardMenuOpen] = useState(false)
+  const [mobilePanel, setMobilePanel] = useState<'chat' | 'board' | 'history'>('board')
+  const [collapsed, setCollapsed] = useState({ chat: false, board: false, history: false })
+  const [hydratedPanels, setHydratedPanels] = useState(false)
+  const [fullPanel, setFullPanel] = useState<'chat' | 'board' | 'history' | null>(null)
+  const [input, setInput] = useState('')
+  const [chatBusy, setChatBusy] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportName, setReportName] = useState('')
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  const [refreshFeedback, setRefreshFeedback] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const selectedDashboardId = selectedBoardId === 'default' ? null : selectedBoardId
+  const boardUrl = clientId ? `/api/conexa/dashboard/boards?clientId=${encodeURIComponent(clientId)}` : null
+  const messagesUrl = clientId ? `/api/conexa/dashboard/messages?clientId=${encodeURIComponent(clientId)}${selectedDashboardId ? `&dashboardId=${encodeURIComponent(selectedDashboardId)}` : ''}` : null
+  const { data: boardResult, error: boardError, mutate: mutateBoards } = useSWR<{ dashboards: DashboardRecord[] }>(boardUrl, jsonFetcher, { revalidateOnFocus: false })
+  const { data: messageResult, error: messagesError, mutate: mutateMessages } = useSWR<{ messages: Record<string, unknown>[] }>(messagesUrl, jsonFetcher, { revalidateOnFocus: false })
+  const boards = boardResult?.dashboards ?? []
+  const messages = useMemo(() => (messageResult?.messages ?? []).map(chatMessage).filter((item): item is ChatMessage => Boolean(item)), [messageResult])
+  const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? null
+  const activeConfig = draftConfig ?? selectedBoard?.config ?? null
+  const displayName = draftConfig ? 'Vista previa sin guardar' : selectedBoard?.name ?? 'Tablero por defecto'
+  const defaultRange = useMemo(() => periods(platformData), [platformData])
+  const needsComparison = Boolean(activeConfig?.blocks.some((block) => block.type === 'kpi' && block.metric))
+  const comparisonKey = clientId && needsComparison && defaultRange.dateFrom && defaultRange.dateTo ? ['conexa-dashboard-previous', clientId, defaultRange.dateFrom, defaultRange.dateTo] as const : null
+  const { data: previousMetrics } = useSWR<MetricMap>(comparisonKey, async ([, selectedClientId, currentFrom, currentTo]) => {
+    const currentStart = new Date(`${currentFrom}T00:00:00Z`)
+    const currentEnd = new Date(`${currentTo}T00:00:00Z`)
+    const dayCount = Math.max(1, Math.round((currentEnd.getTime() - currentStart.getTime()) / 86_400_000) + 1)
+    const previousEnd = new Date(currentStart.getTime() - 86_400_000)
+    const previousStart = new Date(previousEnd.getTime() - (dayCount - 1) * 86_400_000)
+    const formatDate = (date: Date) => date.toISOString().slice(0, 10)
+    const response = await fetch('/api/conexa/data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: selectedClientId, period: 'Personalizado', customRange: { from: formatDate(previousStart), to: formatDate(previousEnd) }, selectedAccounts: {}, crmFilters: {} }) })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error ?? 'No se pudo consultar el período anterior.')
+    return (payload.platformMetrics ?? {}) as MetricMap
+  }, { refreshInterval: 60 * 60 * 1000, revalidateOnFocus: false })
+
+  useEffect(() => {
+    setSelectedBoardId('default')
+    setDraftConfig(null)
+    setDraftSummary(null)
+    setSaveMode(null)
+    setTargetBoardId('')
+  }, [clientId])
+
+  useEffect(() => {
+    const key = `conexa-dashboard-panels:${userId ?? 'guest'}`
+    try {
+      const saved = localStorage.getItem(key)
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<typeof collapsed>
+        setCollapsed({ chat: Boolean(parsed.chat), board: Boolean(parsed.board), history: Boolean(parsed.history) })
+      }
+    } catch { /* Ignore invalid local layout preferences. */ }
+    setHydratedPanels(true)
+  }, [userId])
+
+  useEffect(() => {
+    if (!hydratedPanels) return
+    try { localStorage.setItem(`conexa-dashboard-panels:${userId ?? 'guest'}`, JSON.stringify(collapsed)) } catch { /* Browser storage can be disabled by policy. */ }
+  }, [collapsed, hydratedPanels, userId])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { setFullPanel(null); setReportOpen(false) } }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: 'end' }) }, [messages.length, chatBusy])
+
+  const showPanel = useCallback((panel: 'chat' | 'board' | 'history') => {
+    setFullPanel(panel)
+    setMobilePanel(panel)
+  }, [])
+
+  const focusChat = () => {
+    if (window.matchMedia('(max-width: 1023px)').matches) setMobilePanel('chat')
+    setInput(`Quiero modificar el tablero “${selectedBoard?.name ?? 'Tablero por defecto'}”. `)
+    window.setTimeout(() => inputRef.current?.focus(), 30)
+  }
+
+  const sendMessage = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const message = input.trim()
+    if (!clientId || !message || chatBusy) return
+    setInput('')
+    setChatError(null)
+    setChatBusy(true)
+    try {
+      const response = await fetch('/api/conexa/dashboard/assistant', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ clientId, dashboardId: selectedDashboardId, clientName: clientName ?? '', message, history: messages.slice(-12).map((item) => ({ role: item.role, content: item.content })), period, platformMetrics: metrics, platformData, currentConfig: activeConfig }),
+      })
+      const payload = await response.json().catch(() => ({})) as ChatResponse & { error?: string }
+      if (!response.ok) throw new Error(payload.error ?? 'No se pudo enviar el mensaje.')
+      if (payload.kind === 'proposal' && payload.config) {
+        const validation = DashboardConfigSchema.safeParse(payload.config)
+        if (!validation.success) throw new Error('La propuesta no pasó la validación del tablero.')
+        setDraftConfig(validation.data)
+        setDraftSummary(payload.summary)
+        setSaveMode(null)
+        setTargetBoardId('')
+      }
+      await mutateMessages()
+    } catch (cause) {
+      setChatError(cause instanceof Error ? cause.message : 'Conexa no pudo responder.')
+    } finally { setChatBusy(false) }
+  }
+
+  const saveBoard = async () => {
+    if (!clientId || !draftConfig || !saveMode) return
+    if (saveMode === 'new' && !newBoardName.trim()) return
+    if (saveMode === 'existing' && !targetBoardId) return
+    const response = await fetch('/api/conexa/dashboard/boards', {
+      method: saveMode === 'new' ? 'POST' : 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(saveMode === 'new' ? { clientId, name: newBoardName.trim(), config: draftConfig } : { id: targetBoardId, clientId, config: draftConfig }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) { setChatError(payload.error ?? 'No se pudo guardar el tablero.'); return }
+    await mutateBoards()
+    setSelectedBoardId(payload.dashboard.id)
+    setDraftConfig(null)
+    setDraftSummary(null)
+    setSaveMode(null)
+    setNewBoardName('')
+    setTargetBoardId('')
+  }
+
+  const saveReport = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!clientId || !reportName.trim()) return
+    setReportBusy(true)
+    setReportError(null)
+    const config = activeConfig ?? { version: 1, period, blocks: [] }
+    const tables = (config.blocks ?? []).filter((block) => block.type === 'table').map((block) => ({ title: block.title, platform: block.platform, columns: block.columns, rows: getDashboardBlockRows(block, platformData) }))
+    const snapshot = { clientName, period: config.period ?? period, range: defaultRange, platformMetrics: metrics, previousPlatformMetrics: previousMetrics ?? {}, platformData, tables, savedAt: new Date().toISOString() }
+    try {
+      const response = await fetch('/api/conexa/dashboard/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, dashboardId: draftConfig ? null : selectedDashboardId, name: reportName.trim(), config, snapshot, periodStart: defaultRange.dateFrom || null, periodEnd: defaultRange.dateTo || null }) })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'No se pudo guardar el informe.')
+      setReportOpen(false)
+      setReportName('')
+      window.dispatchEvent(new CustomEvent('conexa-dashboard-report-saved'))
+    } catch (cause) { setReportError(cause instanceof Error ? cause.message : 'No se pudo guardar el informe.') }
+    finally { setReportBusy(false) }
+  }
+
+  const openReportDialog = () => {
+    setReportError(null)
+    setReportName(`${displayName.replace('Vista previa sin guardar', selectedBoard?.name ?? 'Tablero por defecto')} – ${dateLabel(new Date())}`)
+    setReportOpen(true)
+  }
+
+  const requestRefresh = () => {
+    onRefresh()
+    setRefreshFeedback(true)
+    window.setTimeout(() => setRefreshFeedback(false), 1800)
+  }
+
+  const columns = useMemo(() => {
+    const desktop = [collapsed.chat ? '42px' : 'minmax(240px, 1fr)', collapsed.board ? '42px' : 'minmax(430px, 2fr)', collapsed.history ? '42px' : 'minmax(240px, 1fr)']
+    return desktop.join(' ')
+  }, [collapsed])
+
+  const panelHeader = (panel: 'chat' | 'board' | 'history', title: string, icon: ReactNode, collapseLabel: string, children?: ReactNode) => {
+    const isCollapsed = collapsed[panel]
+    const isFull = fullPanel === panel
+    if (isCollapsed && !isFull) return <button type="button" onClick={() => setCollapsed((current) => ({ ...current, [panel]: false }))} aria-label={`Expandir panel ${title}`} className="hidden h-full w-[42px] shrink-0 flex-col items-center justify-start gap-3 border-r border-[#e7e7e5] bg-[#fafaf9] py-4 text-[#555] lg:flex"><span className="text-[#F97316]">{icon}</span><span className="text-[10px] font-semibold [writing-mode:vertical-rl] rotate-180">{title}</span></button>
+    return <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[#eeeeec] bg-white px-3"><span className="text-[#F97316]">{icon}</span><h2 className="min-w-0 flex-1 truncate text-xs font-semibold text-[#2a2a2a]">{title}</h2>{children}<button type="button" onClick={() => setCollapsed((current) => ({ ...current, [panel]: true }))} aria-label={collapseLabel} title={collapseLabel} className="hidden rounded-md p-1.5 text-[#777] hover:bg-[#f5f5f4] lg:inline-flex"><Minimize2 className="size-4" /></button><button type="button" onClick={() => showPanel(panel)} aria-label={`Expandir ${title} a pantalla completa`} title="Pantalla completa" className="rounded-md p-1.5 text-[#777] hover:bg-[#f5f5f4]"><Maximize2 className="size-4" /></button>{isFull && <button type="button" onClick={() => setFullPanel(null)} aria-label="Cerrar pantalla completa" className="rounded-md p-1.5 text-[#555] hover:bg-[#f5f5f4]"><X className="size-4" /></button>}</header>
+  }
+
+  const chatPanel = <section className="flex min-h-0 min-w-0 flex-col bg-white" aria-label="Chat Conexa">
+    {panelHeader('chat', 'Chat Conexa', <span className="text-sm font-bold">✦</span>, 'Colapsar Chat Conexa')}
+    {messagesError && <p className="border-b border-[#f0e5d9] bg-[#fff8f1] px-3 py-2 text-[10px] text-[#8a541e]">El historial estará disponible al instalar las tablas del Dashboard.</p>}
+    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      {messages.length === 0 && <div className="mt-5 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold text-[#333]">¿Qué querés analizar?</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Puedo responder sobre los datos disponibles o proponer cambios en este tablero. Antes de guardar, vas a revisar el cambio.</p><div className="mt-3 flex flex-col gap-1.5">{['¿Qué métricas tengo disponibles?', 'Mostrame las campañas con más inversión'].map((suggestion) => <button type="button" key={suggestion} onClick={() => setInput(suggestion)} className="rounded-md border border-[#e7e7e5] bg-white px-2.5 py-2 text-left text-[10px] text-[#555] hover:border-[#F97316]/50">{suggestion}</button>)}</div></div>}
+      <div className="flex flex-col gap-3">{messages.map((message) => <div key={message.id} className={cn('max-w-[95%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-[#fff2e9] text-[#4a2b18]' : 'self-start border border-[#eeeeec] bg-[#fafaf9] text-[#444]')}><p className="whitespace-pre-wrap">{message.content}</p>{message.response?.kind === 'proposal' && <div className="mt-3 border-t border-[#e8e8e6] pt-3"><p className="font-semibold text-[#333]">{message.response.summary ?? 'Vista previa lista'}</p><p className="mt-1 text-[10px] text-[#777]">La propuesta se muestra en el tablero central. ¿Cómo querés guardarla?</p><div className="mt-2 flex flex-col gap-1.5"><button type="button" onClick={() => { setDraftConfig(message.response?.config ?? null); setDraftSummary(message.response?.summary ?? null); setSaveMode('new'); setNewBoardName('') }} className="rounded-md border border-[#e6e6e5] bg-white px-2 py-1.5 text-left text-[10px] font-medium hover:border-[#F97316]">Crear tablero nuevo</button><button type="button" onClick={() => { setDraftConfig(message.response?.config ?? null); setDraftSummary(message.response?.summary ?? null); setSaveMode('existing') }} className="rounded-md border border-[#e6e6e5] bg-white px-2 py-1.5 text-left text-[10px] font-medium hover:border-[#F97316]">Aplicar a un tablero existente</button></div>{saveMode === 'new' && draftConfig && <div className="mt-2 flex flex-col gap-2"><label className="text-[10px] font-medium text-[#555]">Nombre del tablero<input value={newBoardName} onChange={(event) => setNewBoardName(event.target.value)} maxLength={120} placeholder="Ej. Performance mensual" className="mt-1 h-8 w-full rounded-md border border-[#e6e6e5] px-2 text-xs outline-none focus:border-[#F97316]" /></label><button type="button" onClick={() => void saveBoard()} disabled={!newBoardName.trim()} className="rounded-md bg-[#F97316] px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50">Guardar tablero nuevo</button></div>}{saveMode === 'existing' && draftConfig && <div className="mt-2 flex flex-col gap-2"><label className="text-[10px] font-medium text-[#555]">Elegir tablero guardado<select value={targetBoardId} onChange={(event) => setTargetBoardId(event.target.value)} className="mt-1 h-8 w-full rounded-md border border-[#e6e6e5] bg-white px-2 text-xs"><option value="">Seleccionar...</option>{boards.filter((board) => !board.is_default).map((board) => <option key={board.id} value={board.id}>{board.name}</option>)}</select></label><button type="button" onClick={() => void saveBoard()} disabled={!targetBoardId} className="rounded-md bg-[#F97316] px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50">Actualizar tablero seleccionado</button><button type="button" onClick={() => setSaveMode(null)} className="text-[10px] text-[#777] underline">Cancelar</button></div>}</div>}</div>)}</div>
+      {chatBusy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#F97316]" />Conexa está pensando…</div>}
+      <div ref={messagesEndRef} />
+    </div>
+    <form onSubmit={sendMessage} className="border-t border-[#eeeeec] p-3"><label htmlFor="conexa-dashboard-chat" className="sr-only">Mensaje para Conexa</label><div className="flex items-center gap-2 rounded-lg border border-[#e5e5e3] bg-white p-1.5 focus-within:border-[#F97316]"><input ref={inputRef} id="conexa-dashboard-chat" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={!clientId || chatBusy} placeholder="Preguntá o pedí un cambio..." className="min-w-0 flex-1 bg-transparent px-1.5 text-[11px] outline-none placeholder:text-[#aaa]" /><button type="submit" disabled={!input.trim() || chatBusy || !clientId} aria-label="Enviar mensaje" className="rounded-md bg-[#F97316] p-2 text-white disabled:opacity-40"><Send className="size-3.5" /></button></div>{chatError && <p role="alert" className="mt-2 text-[10px] text-[#b42318]">{chatError}</p>}<p className="mt-2 text-[9px] leading-4 text-[#999]">Conexa solo edita la configuración de tableros. No ejecuta cambios en tus plataformas.</p></form>
+  </section>
+
+  const boardPanel = <section className="flex min-h-0 min-w-0 flex-col bg-[#fafaf9]" aria-label="Tablero de métricas">
+    {panelHeader('board', 'Tablero de métricas', <LayoutDashboard className="size-4" />, 'Colapsar Tablero', <div className="relative"><button type="button" onClick={() => setBoardMenuOpen((open) => !open)} disabled={!clientId} aria-haspopup="listbox" aria-expanded={boardMenuOpen} className="inline-flex max-w-44 items-center gap-1 rounded-md border border-[#e7e7e5] bg-white px-2 py-1.5 text-[10px] font-medium text-[#444] disabled:opacity-50"><span className="truncate">{displayName}</span><ChevronDown className="size-3 shrink-0" /></button>{boardMenuOpen && <div role="listbox" aria-label="Tableros guardados" className="absolute right-0 top-9 z-30 w-56 rounded-lg border border-[#e7e7e5] bg-white p-1.5 shadow-lg"><button type="button" role="option" aria-selected={selectedBoardId === 'default'} onClick={() => { setSelectedBoardId('default'); setDraftConfig(null); setDraftSummary(null); setBoardMenuOpen(false) }} className="w-full rounded-md px-2.5 py-2 text-left text-[11px] hover:bg-[#f6f6f5]">Tablero por defecto</button>{boards.map((board) => <button type="button" role="option" aria-selected={selectedBoardId === board.id} key={board.id} onClick={() => { setSelectedBoardId(board.id); setDraftConfig(null); setDraftSummary(null); setBoardMenuOpen(false) }} className="w-full rounded-md px-2.5 py-2 text-left text-[11px] hover:bg-[#f6f6f5]">{board.name}</button>)}</div>}</div>)}
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2"><span className="min-w-0 flex-1 truncate text-[10px] text-[#888]">{draftSummary ?? `${clientName ?? 'Cliente'} · ${period}`}</span><span aria-live="polite" className="hidden text-[9px] text-[#888] xl:inline">{describeUpdate(updatedAt, now)}</span><button type="button" onClick={focusChat} aria-label="Editar tablero conversando con Conexa" title="Editar con Conexa" className="rounded-md p-1.5 text-[#666] hover:bg-[#f4f4f3]"><Pencil className="size-3.5" /></button><button type="button" onClick={requestRefresh} disabled={loading} aria-label="Actualizar datos del tablero" title="Actualizar datos" className="rounded-md p-1.5 text-[#666] hover:bg-[#f4f4f3] disabled:opacity-50">{loading ? <LoaderCircle className="size-3.5 animate-spin" /> : refreshFeedback ? <Check className="size-3.5 text-[#F97316]" /> : <RefreshCw className="size-3.5" />}</button><button type="button" onClick={openReportDialog} aria-label="Guardar informe" title="Guardar informe" className="inline-flex items-center gap-1 rounded-md bg-[#F97316] px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-[#e7650c]"><FilePlus2 className="size-3" />Guardar informe</button></div>
+    {boardError && <p role="status" className="bg-[#fff8f1] px-3 py-2 text-[10px] text-[#8a541e]">El listado de tableros se habilitará al instalar las tablas del Dashboard.</p>}
+    <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">{activeConfig ? <div className="flex flex-col gap-3"><div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-[#222]">{displayName}</h3><p className="mt-1 text-[10px] text-[#888]">{activeConfig.period} · {clientName ?? 'Cliente'}</p></div>{draftConfig && <button type="button" onClick={() => { setDraftConfig(null); setDraftSummary(null); setSaveMode(null) }} className="text-[10px] text-[#777] underline">Descartar vista previa</button>}</div><div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{activeConfig.blocks.map((block) => <DashboardBlockRenderer key={block.id} block={block} platforms={platforms} metrics={metrics} previousMetrics={previousMetrics ?? {}} platformData={platformData} loading={loading} onConnections={onConnections} />)}</div>{activeConfig.blocks.length === 0 && <div className="rounded-lg border border-dashed border-[#e2e2e0] bg-white p-6 text-center text-xs text-[#777]">Este tablero no tiene bloques configurados.</div>}</div> : defaultDashboard}</div>
+  </section>
+
+  const historyPanel = <section className="flex min-h-0 min-w-0 flex-col bg-white" aria-label="Histórico de informes">{panelHeader('history', 'Histórico', <ArrowDownToLine className="size-4" />, 'Colapsar Histórico')}<DashboardHistory clientId={clientId} /></section>
+  const panelContent = { chat: chatPanel, board: boardPanel, history: historyPanel }
+  const fullContent = fullPanel ? panelContent[fullPanel] : null
+
+  return <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white">
+    <div role="tablist" aria-label="Paneles del Dashboard" className="flex shrink-0 border-b border-[#e7e7e5] bg-white lg:hidden">{([['chat', 'Chat'], ['board', 'Tablero'], ['history', 'Histórico']] as const).map(([panel, label]) => <button key={panel} type="button" role="tab" aria-selected={mobilePanel === panel} onClick={() => setMobilePanel(panel)} className={cn('flex-1 border-b-2 px-2 py-2.5 text-xs font-medium', mobilePanel === panel ? 'border-[#F97316] text-[#c55208]' : 'border-transparent text-[#777]')}>{label}</button>)}</div>
+    <div className={cn('min-h-0 flex-1 lg:grid', fullPanel ? 'hidden' : 'flex')} style={{ gridTemplateColumns: columns }}>
+      <div className={cn('min-h-0 min-w-0 overflow-hidden border-r border-[#e7e7e5] lg:flex', mobilePanel === 'chat' ? 'flex' : 'hidden', collapsed.chat && 'lg:hidden')}>{chatPanel}</div>
+      <div className={cn('min-h-0 min-w-0 overflow-hidden border-r border-[#e7e7e5] lg:flex', mobilePanel === 'board' ? 'flex' : 'hidden', collapsed.board && 'lg:hidden')}>{boardPanel}</div>
+      <div className={cn('min-h-0 min-w-0 overflow-hidden lg:flex', mobilePanel === 'history' ? 'flex' : 'hidden', collapsed.history && 'lg:hidden')}>{historyPanel}</div>
+      {(['chat', 'board', 'history'] as const).map((panel) => collapsed[panel] && <div key={panel} className="hidden min-h-0 overflow-hidden lg:block">{panelHeader(panel, panel === 'chat' ? 'Chat Conexa' : panel === 'board' ? 'Tablero' : 'Histórico', panel === 'chat' ? <span className="text-sm font-bold">✦</span> : panel === 'board' ? <LayoutDashboard className="size-4" /> : <ArrowDownToLine className="size-4" />, 'Expandir panel')}</div>)}
+    </div>
+    {fullPanel && <div className="absolute inset-0 z-40 flex min-h-0 flex-col bg-white">{fullContent}</div>}
+    {reportOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="dashboard-save-report-title"><form onSubmit={saveReport} className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><header className="mb-4 flex items-start justify-between gap-3"><div><h2 id="dashboard-save-report-title" className="text-base font-semibold text-[#222]">Guardar informe</h2><p className="mt-1 text-xs leading-5 text-[#777]">Se guardará una copia fija del tablero, sus datos, período y cliente.</p></div><button type="button" onClick={() => setReportOpen(false)} aria-label="Cerrar" className="rounded-md p-1.5 hover:bg-[#f4f4f3]"><X className="size-4" /></button></header><label htmlFor="dashboard-report-name" className="text-xs font-medium text-[#555]">Nombre del informe</label><input id="dashboard-report-name" autoFocus required maxLength={180} value={reportName} onChange={(event) => setReportName(event.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-[#e5e5e3] px-3 text-sm outline-none focus:border-[#F97316]" />{reportError && <p role="alert" className="mt-2 text-xs text-[#b42318]">{reportError}</p>}<footer className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReportOpen(false)} className="rounded-md border border-[#e5e5e3] px-3 py-2 text-xs font-medium text-[#555]">Cancelar</button><button type="submit" disabled={reportBusy || !reportName.trim()} className="inline-flex items-center gap-2 rounded-md bg-[#F97316] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{reportBusy && <LoaderCircle className="size-3.5 animate-spin" />}{reportBusy ? 'Guardando…' : 'Guardar snapshot'}</button></footer></form></div>}
+  </div>
+}
