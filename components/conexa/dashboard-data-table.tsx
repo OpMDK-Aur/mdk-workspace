@@ -21,7 +21,6 @@ type DashboardDataTableProps = {
   description?: string
   emptyMessage?: string
   searchable?: boolean
-  maxRows?: number
 }
 
 const numberFormat = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
@@ -47,7 +46,11 @@ function formatCell(value: unknown, format?: DashboardColumn['format']) {
   return String(value)
 }
 
-export function DashboardDataTable({ title, columns, rows, description, emptyMessage = 'Sin datos para el período seleccionado.', searchable = true, maxRows }: DashboardDataTableProps) {
+const MAX_VISIBLE_LIST_ITEMS = 4
+const TABLE_HEADER_HEIGHT = 40
+const TABLE_ROW_HEIGHT = 48
+
+export function DashboardDataTable({ title, columns, rows, description, emptyMessage = 'Sin datos para el período seleccionado.', searchable = true }: DashboardDataTableProps) {
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [descending, setDescending] = useState(true)
@@ -66,8 +69,8 @@ export function DashboardDataTable({ title, columns, rows, description, emptyMes
         return descending ? -compare : compare
       })
     }
-    return typeof maxRows === 'number' ? result.slice(0, maxRows) : result
-  }, [columns, descending, maxRows, query, rows, sortKey])
+    return result
+  }, [columns, descending, query, rows, sortKey])
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setDescending((value) => !value)
@@ -89,11 +92,12 @@ export function DashboardDataTable({ title, columns, rows, description, emptyMes
         )}
       </header>
       {visibleRows.length ? (
-        <div className="overflow-x-auto">
+        <>
+        <div role="region" aria-label={`Filas de ${title}; desplazá para ver el resto`} tabIndex={0} style={{ maxHeight: TABLE_HEADER_HEIGHT + MAX_VISIBLE_LIST_ITEMS * TABLE_ROW_HEIGHT }} className="overflow-auto">
           <table className="w-full min-w-[720px] text-left text-[11px]">
-            <thead className="bg-[#fafaf8] text-[#777]">
-              <tr>{columns.map((column) => (
-                <th key={column.key} scope="col" aria-sort={sortKey === column.key ? descending ? 'descending' : 'ascending' : 'none'} className={`px-4 py-2.5 font-medium ${column.right ? 'text-right' : ''}`}>
+            <thead className="sticky top-0 z-10 bg-[#fafaf8] text-[#777]">
+              <tr className="h-10">{columns.map((column) => (
+                <th key={column.key} scope="col" aria-sort={sortKey === column.key ? descending ? 'descending' : 'ascending' : 'none'} className={`whitespace-nowrap px-4 py-2.5 font-medium ${column.right ? 'text-right' : ''}`}>
                   <button type="button" onClick={() => toggleSort(column.key)} className={`inline-flex items-center gap-1 hover:text-[#5b5fe8] ${column.right ? 'ml-auto' : ''}`}>
                     {column.label}
                     {sortKey === column.key ? descending ? <ArrowDown className="size-3" aria-hidden="true" /> : <ArrowUp className="size-3" aria-hidden="true" /> : <ArrowUpDown className="size-3 opacity-40" aria-hidden="true" />}
@@ -103,11 +107,11 @@ export function DashboardDataTable({ title, columns, rows, description, emptyMes
             </thead>
             <tbody>
               {visibleRows.map((row, rowIndex) => (
-                <tr key={`${title}-${rowIndex}`} className="border-t border-[#f0f0ed] text-[#424242]">
+                <tr key={`${title}-${rowIndex}`} className="h-12 border-t border-[#f0f0ed] text-[#424242]">
                   {columns.map((column) => {
                     const value = row[column.key]
                     return (
-                      <td key={`${rowIndex}-${column.key}`} className={`max-w-[280px] px-4 py-2.5 ${column.right ? 'text-right tabular-nums' : ''}`}>
+                      <td key={`${rowIndex}-${column.key}`} className={`max-w-[280px] truncate whitespace-nowrap px-4 py-3 ${column.right ? 'text-right tabular-nums' : ''}`}>
                         {column.link ? typeof value === 'string' && /^https:\/\//.test(value) ? <a href={value} target="_blank" rel="noopener noreferrer" className="font-medium text-[#4f53d9] underline-offset-2 hover:underline">Vista previa</a> : <button type="button" disabled className="cursor-not-allowed text-[#999]">Vista previa</button> : column.format === 'meter' ? value === null || value === undefined ? '—' : (() => {
                           const percentage = toNumber(value)
                           const marker = column.markerKey ? toNumber(row[column.markerKey]) : null
@@ -133,6 +137,8 @@ export function DashboardDataTable({ title, columns, rows, description, emptyMes
             </tbody>
           </table>
         </div>
+        {visibleRows.length > MAX_VISIBLE_LIST_ITEMS && <p className="px-4 py-1.5 text-[10px] text-[#878787]">Mostrando {MAX_VISIBLE_LIST_ITEMS} de {visibleRows.length}; desplazá para ver el resto</p>}
+        </>
       ) : (
         <p className="px-4 py-5 text-[11px] text-[#858585]">{rows.length && query ? 'No hay coincidencias con la búsqueda.' : emptyMessage}</p>
       )}

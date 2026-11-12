@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   const parsed = validateDashboardConfig(body.config)
   if (!name || name.length > 120) return fail('El nombre debe tener entre 1 y 120 caracteres.')
   if (!parsed.success) return fail('La configuración del tablero no es válida.')
+  if (JSON.stringify(parsed.data).length > 3_000_000) return fail('El tablero supera el límite de 3 MB para datos importados.', 413)
   const { data, error: insertError } = await supabase.from('dashboards').insert({ client_id: body.clientId, name, config: parsed.data, is_default: false, created_by: user.id, updated_by: user.id }).select('id, client_id, name, config, is_default, created_by, updated_by, created_at, updated_at').single()
   if (insertError) return fail(insertError.code === '23505' ? 'Ya existe un tablero con ese nombre para este cliente.' : 'No se pudo guardar el tablero.', insertError.code === '23505' ? 409 : 503)
   return NextResponse.json({ dashboard: data }, { status: 201 })
@@ -46,6 +47,7 @@ export async function PATCH(request: Request) {
   if (body.config !== undefined) {
     const parsed = validateDashboardConfig(body.config)
     if (!parsed.success) return fail('La configuración del tablero no es válida.')
+  if (JSON.stringify(parsed.data).length > 3_000_000) return fail('El tablero supera el límite de 3 MB para datos importados.', 413)
     update.config = parsed.data
   }
   const { data, error: updateError } = await supabase.from('dashboards').update(update).eq('id', body.id).eq('client_id', body.clientId).eq('is_default', false).select('id, client_id, name, config, is_default, created_by, updated_by, created_at, updated_at').maybeSingle()

@@ -15,6 +15,7 @@ import { parseChartSpec, type ChartSpec } from '@/lib/ai/chart-spec'
 import { isReportSections, type ReportSection } from '@/lib/ai/report-charts'
 import { asksForValidation, buildClaudeReportPrompt, isMonthlyReportRequest, REPORT_CONFIRMATION_PATTERN } from '@/lib/ai/monthly-report'
 import { cn } from '@/lib/utils'
+import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { MessageContent } from '@/components/chat/message-content'
 import { CopyButton } from '@/components/chat/copy-button'
 import type { ActivityEvent } from '@/lib/ai/types'
@@ -196,7 +197,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
 
     let cancelled = false
     setIsLoadingHistory(true)
-    fetch('/api/ai/conversations', {
+    dashboardApiFetch('/api/ai/conversations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ clientId, ...(openConversationId ? { openConversationId } : {}) }),
@@ -243,7 +244,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
     setIsResetting(true)
     setOpenConversationId(null)
     try {
-      await fetch('/api/ai/conversations', {
+      await dashboardApiFetch('/api/ai/conversations', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ conversationId }),
