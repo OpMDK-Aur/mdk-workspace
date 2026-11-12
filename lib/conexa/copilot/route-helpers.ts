@@ -10,7 +10,7 @@ export async function requireUser() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) }
   const { data: collaborator } = await supabase.from('colaboradores').select('id, activo').eq('id', user.id).maybeSingle()
-  if (!collaborator || collaborator.activo === false) return { error: NextResponse.json({ error: 'Solo usuarios activos de MDK pueden usar Recomendaciones.' }, { status: 403 }) }
+  if (!collaborator || collaborator.activo !== true) return { error: NextResponse.json({ error: 'Solo usuarios activos de MDK pueden usar Recomendaciones.' }, { status: 403 }) }
   const meta = user.user_metadata ?? {}
   const name = String(meta.full_name || meta.name || user.email?.split('@')[0] || 'Usuario')
   return { user, name, supabase }
