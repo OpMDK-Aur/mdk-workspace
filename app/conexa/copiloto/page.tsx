@@ -2,8 +2,8 @@ import { Suspense } from 'react'
 import { COPILOT_VIEW, ConexaWorkspace } from '@/components/ai/conexa-workspace'
 
 export const metadata = {
-  title: 'Copiloto | Conexa | MDK Workspace',
-  description: 'Conexa propone acciones concretas, vos las aprobás y Conexa las ejecuta y mide el resultado.',
+  title: 'Recomendaciones | Conexa | MDK Workspace',
+  description: 'Chat contextual de Conexa, propuestas revisables y registro de acciones publicadas en las plataformas del cliente.',
 }
 
 export default function CopilotoPage() {

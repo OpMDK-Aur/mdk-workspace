@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return fail('La configuración del informe no es válida.')
   if (!body.snapshot || typeof body.snapshot !== 'object' || Array.isArray(body.snapshot)) return fail('Faltan los datos del snapshot.')
   const serializedSnapshot = JSON.stringify(body.snapshot)
-  if (serializedSnapshot.length > 500_000) return fail('El snapshot supera el tamaño máximo permitido.')
+  if (serializedSnapshot.length > 5_000_000) return fail('El snapshot supera el tamaño máximo permitido de 5 MB.', 413)
   const periodStart = typeof body.periodStart === 'string' ? body.periodStart : null
   const periodEnd = typeof body.periodEnd === 'string' ? body.periodEnd : null
   const { data, error: insertError } = await supabase.from('dashboard_reports').insert({ client_id: body.clientId, dashboard_id: body.dashboardId ?? null, created_by: user.id, name, config: parsed.data, data_snapshot: body.snapshot, period_start: periodStart, period_end: periodEnd }).select('id, client_id, dashboard_id, created_by, name, config, data_snapshot, period_start, period_end, created_at').single()

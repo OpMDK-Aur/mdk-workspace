@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireDashboardUser } from '@/lib/conexa/dashboard-api'
 import { activateConversation, archiveConversation, getOrCreateConversation, listConversations, listConversationMessages, unarchiveConversation } from '@/lib/ai/conversations'
 
 export async function GET(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase, user, error } = await requireDashboardUser(request)
+  if (error) return error
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const includeArchived = searchParams.get('includeArchived') === '1'
@@ -21,9 +21,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase, user, error } = await requireDashboardUser(request)
+  if (error) return error
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const body = await request.json().catch(() => ({}))
   if (typeof body.clientId !== 'string' || !body.clientId) {
@@ -49,9 +49,9 @@ export async function POST(request: Request) {
 
 /** Restaura una conversación archivada para que vuelva a aparecer en "Chats activos". */
 export async function PATCH(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase, user, error } = await requireDashboardUser(request)
+  if (error) return error
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const body = await request.json().catch(() => ({}))
   if (typeof body.conversationId !== 'string' || !body.conversationId) {
@@ -77,9 +77,9 @@ export async function PATCH(request: Request) {
 
 /** Resetea el chat: archiva la conversación activa para que el próximo turno arranque una nueva, vacía. */
 export async function DELETE(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase, user, error } = await requireDashboardUser(request)
+  if (error) return error
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const body = await request.json().catch(() => ({}))
   if (typeof body.conversationId !== 'string' || !body.conversationId) {
