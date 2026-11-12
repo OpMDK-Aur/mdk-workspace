@@ -284,7 +284,7 @@ function calculateAccountBudgets(accounts: DashboardRecord[], monthAccounts: Das
 function BudgetByAccount({ platformName, rows }: { platformName: string; rows: ReturnType<typeof calculateAccountBudgets> }) {
   const tableRows = rows
   return (
-    <div className="mt-5 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <SectionHeading title={`Presupuesto vs consumo · ${platformName}`} detail="Mes en curso; importes tomados del archivo del cliente." />
       <DashboardDataTable title="Totales por cuenta" searchable={false} columns={[
         { key: 'account', label: 'Cuenta' }, { key: 'assigned', label: 'Presupuesto mensual', format: 'money', right: true },
@@ -485,10 +485,11 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
         <button type="button" onClick={() => { setAccountFilter('all'); setCampaignFilter(''); setObjectiveFilter('all'); setChannelFilter('all'); setStatusFilter('all'); setBrandFilter('all'); setModelFilter('all'); setModalityFilter('all'); setMonthFilter('current') }} className="h-9 rounded-lg px-3 text-[11px] font-medium text-[#6a6a6a] underline underline-offset-2">Limpiar filtros</button>
       </div>
 
+      <div className="mt-4 flex flex-col gap-4">
       {hasMetaData ? <MetricGrid metrics={kpis} /> : <EmptyPanel text="Sin datos disponibles para este cliente y período en Meta Ads." />}
-      {hasMetaData && <div className="mt-4"><DashboardDataTable title="Resultados por tipo" columns={[{ key: 'type', label: 'Tipo de resultado' }, { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'spend', label: 'Inversión', format: 'money', right: true }, { key: 'cost', label: 'Costo por resultado', format: 'money', right: true }]} rows={resultTypeRows} emptyMessage="No se recibieron tipos de resultado para este período." /></div>}
+      {hasMetaData && <DashboardDataTable title="Resultados por tipo" columns={[{ key: 'type', label: 'Tipo de resultado' }, { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'spend', label: 'Inversión', format: 'money', right: true }, { key: 'cost', label: 'Costo por resultado', format: 'money', right: true }]} rows={resultTypeRows} emptyMessage="No se recibieron tipos de resultado para este período." />}
 
-      <div className="mt-5 rounded-xl border border-[#e6e6e3] bg-white p-4">
+      <div className="rounded-xl border border-[#e6e6e3] bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div><SectionHeading title="Evolución diaria por cuenta" detail={period} /><p className="text-[10px] text-[#878787]">Los datos se agrupan por cuenta publicitaria; el selector de cuenta filtra la serie.</p></div>
           <select value={dailyMetric} onChange={(event) => setDailyMetric(event.target.value as 'spend' | 'results')} aria-label="Métrica de evolución diaria" className="h-8 rounded-lg border border-[#e6e6e3] bg-white px-2.5 text-[11px]">
@@ -524,7 +525,7 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
         { key: 'cplAverage', label: 'CPL promedio', format: 'money', right: true }, { key: 'target', label: 'Objetivo', format: 'money', right: true },
       ]} rows={objectiveDetailRows} emptyMessage="El archivo no incluye objetivos CPL para estas cuentas." />
 
-      <div className="mt-5 rounded-xl border border-[#e6e6e3] bg-white p-4">
+      <div className="rounded-xl border border-[#e6e6e3] bg-white p-4">
         <SectionHeading title="Leads por provincia" detail="Meta solo informa esta dimensión cuando está disponible en la cuenta." />
         {regionLoading ? <EmptyPanel text="Cargando desglose regional…" /> : regionRows.length ? (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.5fr]">
@@ -547,7 +548,7 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
         ) : <EmptyPanel text={regionData?.message ?? 'No hay desglose por provincia disponible para este cliente y período.'} />}
       </div>
 
-      <div className="mt-5 flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <DashboardDataTable title="Campañas" columns={metaColumns} rows={campaignRows} emptyMessage="Sin campañas con datos para el período seleccionado." />
         <DashboardDataTable title="Conjuntos de anuncios" columns={[
           { key: 'account', label: 'Cuenta' }, { key: 'campaign', label: 'Campaña' }, { key: 'adset', label: 'Conjunto' }, { key: 'status', label: 'Estado' },
@@ -566,6 +567,7 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
       </div>
 
       <AlertGroups critical={visibleCriticalAlerts} attention={visibleAttentionAlerts} />
+      </div>
     </section>
   )
 }
@@ -600,7 +602,7 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
       {unavailable ? (
         <EmptyPanel text="Sin datos disponibles para este cliente y período." />
       ) : (
-        <>
+        <div className="mt-4 flex flex-col gap-4">
           {metrics.length > 0 && <MetricGrid metrics={metrics.map((metric) => ({ label: platform.key === 'analytics' && normalize(metric.label) === 'conversiones' ? 'Eventos clave' : metric.label, value: metric.value, money: normalize(metric.label).includes('inversion') }))} />}
           {daily.length > 0 && <DailyPlatformChart platformKey={platform.key} period={period} rows={daily} />}
           {platform.key === 'google' && <>
@@ -617,12 +619,12 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
             <DashboardDataTable title="Objetivos CPL" columns={[{ key: 'account', label: 'Cuenta' }, { key: 'brand', label: 'Marca' }, { key: 'model', label: 'Modelo' }, { key: 'cplAverage', label: 'CPL promedio', format: 'money', right: true }, { key: 'target', label: 'Objetivo', format: 'money', right: true }]} rows={googleObjectiveRows} emptyMessage="El archivo no incluye objetivos CPL para estas cuentas." />
             <AlertGroups critical={googleAlertItems.critical} attention={googleAlertItems.attention} />
           </>}
-          <div className="mt-4 flex flex-col gap-4">
+<div className="flex flex-col gap-4">
             {tables.map((table) => <DashboardDataTable key={`${platform.key}-${table.title}`} title={table.title} columns={table.columns} rows={table.rows} emptyMessage={table.emptyMessage} />)}
           </div>
-          {platform.key === 'analytics' && <p className="mt-4 rounded-lg border border-[#e6e6e3] bg-white px-3 py-2.5 text-[10px] leading-4 text-[#777]">Analytics mide tráfico y eventos del sitio; sus eventos clave no se suman a las conversiones de las plataformas publicitarias.</p>}
-          {platform.key === 'crm' && <p className="mt-4 rounded-lg border border-[#e6e6e3] bg-white px-3 py-2.5 text-[10px] leading-4 text-[#777]">El CRM se muestra en forma agregada; no se incluyen nombres, teléfonos ni correos de contactos.</p>}
-        </>
+          {platform.key === 'analytics' && <p className="rounded-lg border border-[#e6e6e3] bg-white px-3 py-2.5 text-[10px] leading-4 text-[#777]">Analytics mide tráfico y eventos del sitio; sus eventos clave no se suman a las conversiones de las plataformas publicitarias.</p>}
+          {platform.key === 'crm' && <p className="rounded-lg border border-[#e6e6e3] bg-white px-3 py-2.5 text-[10px] leading-4 text-[#777]">El CRM se muestra en forma agregada; no se incluyen nombres, teléfonos ni correos de contactos.</p>}
+        </div>
       )}
     </section>
   )
@@ -650,7 +652,7 @@ function DailyPlatformChart({ platformKey, period, rows }: { platformKey: string
   const option = options.find((item) => item.key === metric) ?? options[0]
   const config = { [option.key]: { label: option.label, color: 'var(--chart-1)' } } satisfies ChartConfig
   return (
-    <div className="mt-4 rounded-xl border border-[#e6e6e3] bg-white p-4">
+    <div className="rounded-xl border border-[#e6e6e3] bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading title="Evolución diaria" detail={period} /><label className="flex items-center gap-2 text-[10px] text-[#777]">Métrica<select value={metric} onChange={(event) => setMetric(event.target.value)} className="h-8 rounded-lg border border-[#e6e6e3] bg-white px-2 text-[11px]">{options.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></div>
       <ChartContainer config={config} className="h-[220px] w-full">
         <LineChart accessibilityLayer data={rows} margin={{ left: 8, right: 10, top: 8 }}>
@@ -772,7 +774,7 @@ function genericTables(key: string, data: DashboardRecord): Array<{ title: strin
 
 function AlertGroups({ critical, attention }: { critical: Array<{title:string;description:string;account:string}>; attention: Array<{title:string;description:string;account:string}> }) {
   return (
-    <section className="mt-5 flex flex-col gap-3">
+    <section className="flex flex-col gap-3">
       <details open className="overflow-hidden rounded-xl border border-[#f1c8c5] bg-white">
         <summary className="cursor-pointer px-4 py-3 text-[12px] font-semibold text-[#a63e38]">Críticas · {critical.length}</summary>
         {critical.length ? <div className="border-t border-[#f7e1df] px-4 py-2">{critical.map((alert,index)=><p key={`${alert.title}-${index}`} className="border-b border-[#f5edec] py-2.5 text-[11px] text-[#494949]"><strong>{alert.title}</strong> · {alert.account} — {alert.description}</p>)}</div> : <p className="border-t border-[#f7e1df] px-4 py-3 text-[11px] text-[#818181]">No hay alertas críticas.</p>}
