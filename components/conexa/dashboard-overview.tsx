@@ -242,7 +242,7 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div role={embedded ? undefined : 'region'} aria-label={embedded ? undefined : 'Contenido del tablero de métricas'} tabIndex={embedded ? undefined : 0} className={embedded ? 'min-h-0' : 'h-full min-h-0 overflow-y-auto overscroll-contain'}>
       <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 py-6 sm:px-6">
         {!embedded && <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
