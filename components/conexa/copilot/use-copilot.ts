@@ -1,76 +1,52 @@
 'use client'
 
-import useSWR, { useSWRConfig } from 'swr'
-import { toast } from 'sonner'
-import { copilotApi, copilotFetcher, copilotUrls } from '@/lib/conexa/copilot/api'
-import type { LearningsResponse, Recommendation, RecommendationsResponse } from '@/lib/conexa/copilot/types'
+import useSWR from 'swr'
+import { copilotApi } from '@/lib/conexa/copilot/api'
+import type { ClientContextRecord, CopilotChatMessage, Recommendation } from '@/lib/conexa/copilot/types'
 
 export function useCopilot(clientId: string) {
-  const recsKey = copilotUrls.recommendations(clientId)
-  const learningsKey = copilotUrls.learnings(clientId)
-  const recs = useSWR<RecommendationsResponse>(recsKey, copilotFetcher, { revalidateOnFocus: false })
-  const learnings = useSWR<LearningsResponse>(learningsKey, copilotFetcher, { revalidateOnFocus: false })
-  const { mutate } = useSWRConfig()
-
-  const patchLocal = (id: string, patch: Partial<Recommendation>) =>
-    recs.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? { ...item, ...patch } : item)) }, { revalidate: false })
-
-  const refreshSecondary = () => {
-    void learnings.mutate()
-    void mutate((key) => typeof key === 'string' && key.startsWith('/api/conexa/copilot/dashboard'))
-  }
-
-  /** Aplica el cambio al instante y lo deshace si la API falla. */
-  async function optimistic(id: string, patch: Partial<Recommendation>, call: () => Promise<{ recommendation: Recommendation }>) {
-    const snapshot = recs.data
-    await patchLocal(id, patch)
-    try {
-      const { recommendation } = await call()
-      await patchLocal(id, recommendation)
-      refreshSecondary()
-      return true
-    } catch (error) {
-      await recs.mutate(snapshot, { revalidate: false })
-      toast.error(error instanceof Error ? error.message : 'No se pudo completar la acción')
-      return false
-    }
-  }
+  const recommendations = useSWR(`/api/conexa/copilot/recommendations?clientId=${encodeURIComponent(clientId)}`, (_url: string) => copilotApi.list(clientId), { revalidateOnFocus: false })
+  const messages = useSWR(`/api/conexa/copilot/messages?clientId=${encodeURIComponent(clientId)}`, (_url: string) => copilotApi.messages(clientId), { revalidateOnFocus: false })
+  const contexts = useSWR(`/api/conexa/copilot/context?clientId=${encodeURIComponent(clientId)}`, async (url: string) => {
+    const response = await fetch(url)
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error ?? 'No se pudo cargar el contexto adicional.')
+    return data as { context: ClientContextRecord[] }
+  }, { revalidateOnFocus: false })
 
   return {
-    recommendations: recs.data?.recommendations ?? [],
-    plays: recs.data?.plays ?? [],
-    context: recs.data?.context,
-    decisions: learnings.data?.decisions ?? [],
-    learnings: learnings.data?.learnings ?? [],
-    isLoading: recs.isLoading,
-    error: recs.error as Error | undefined,
-    edit: (rec: Recommendation, after: string) => optimistic(rec.id, { after, edited: true, diff: 'Editado a mano', version: rec.version + 1 }, () => copilotApi.edit(rec.id, after)),
-    reformulate: async (rec: Recommendation, instruction: string) => {
-      try {
-        const { recommendation } = await copilotApi.reformulate(rec.id, instruction)
-        await patchLocal(rec.id, recommendation)
-        return true
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'No se pudo reformular')
-        return false
-      }
+    recommendations: recommendations.data?.recommendations ?? [],
+    messages: messages.data?.messages ?? [],
+    contexts: contexts.data?.context ?? [],
+    isLoading: recommendations.isLoading || messages.isLoading || contexts.isLoading,
+    error: recommendations.error ?? messages.error ?? (contexts.error as Error | undefined),
+    mutateRecommendations: recommendations.mutate,
+    mutateMessages: messages.mutate,
+    mutateContexts: contexts.mutate,
+    send: async (message: string, editingRecommendationId?: string) => {
+      const result = await copilotApi.send({ clientId, message, editingRecommendationId })
+      await Promise.all([recommendations.mutate(), messages.mutate(), contexts.mutate()])
+      return result
     },
-    approve: (rec: Recommendation, mode: 'now' | 'schedule', slot?: string) =>
-      optimistic(rec.id, mode === 'now' ? { status: 'executing' } : { status: 'scheduled', slot }, () => copilotApi.approve(rec.id, mode, slot)),
-    reject: (rec: Recommendation, reason: string) => optimistic(rec.id, { status: 'rejected', rejectReason: reason }, () => copilotApi.reject(rec.id, reason)),
-    runNow: (rec: Recommendation) => optimistic(rec.id, { status: 'executing', slot: undefined }, () => copilotApi.runNow(rec.id)),
-    cancel: (rec: Recommendation) => optimistic(rec.id, { status: 'pending', slot: undefined }, () => copilotApi.cancel(rec.id)),
-    revert: async (decisionId: string) => {
-      const snapshot = learnings.data
-      await learnings.mutate((current) => current && { ...current, decisions: current.decisions.map((item) => (item.id === decisionId ? { ...item, decision: 'Revertida', revertible: false } : item)) }, { revalidate: false })
-      try {
-        await copilotApi.revert(decisionId)
-        refreshSecondary()
-        toast.success('Cambio revertido al valor anterior')
-      } catch (error) {
-        await learnings.mutate(snapshot, { revalidate: false })
-        toast.error(error instanceof Error ? error.message : 'No se pudo revertir')
-      }
+    addContext: async (content: string) => {
+      await copilotApi.addContext({ clientId, content })
+      await contexts.mutate()
+    },
+    edit: async (id: string, patch: Partial<Recommendation>) => {
+      await copilotApi.edit(clientId, id, patch)
+      await recommendations.mutate()
+    },
+    publish: async (id: string) => {
+      await copilotApi.publish(clientId, id)
+      await recommendations.mutate()
+    },
+    discard: async (id: string, reason?: string) => {
+      await copilotApi.discard(clientId, id, reason)
+      await recommendations.mutate()
+    },
+    restore: async (id: string) => {
+      await copilotApi.restore(clientId, id)
+      await recommendations.mutate()
     },
   }
 }
