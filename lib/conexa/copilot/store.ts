@@ -1,178 +1,107 @@
-import { getExecutor, type ExecutionRecord } from '@/lib/conexa/executors'
-import { seedDecisions, seedLearnings, seedPlays, seedRecommendations } from './seed'
-import type { CopilotPlatform, DashboardFilters, DashboardResponse, Decision, Learning, Play, Recommendation, RecommendationStatus } from './types'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { CopilotError } from './route-helpers'
+import type { ClientContextRecord, CopilotChatMessage, CopilotContext, Recommendation, RecommendationDraft, RecommendationStatus } from './types'
 
-/**
- * Stub en memoria hasta que exista la persistencia real. Vive por instancia del servidor,
- * así que se reinicia en cada deploy o arranque en frío.
- */
-type ClientState = { recommendations: Recommendation[]; plays: Play[]; decisions: Decision[]; learnings: Learning[]; executions: Map<string, ExecutionRecord> }
+const REC_TABLE = 'conexa_copilot_recommendations'
+const CONTEXT_TABLE = 'conexa_copilot_context'
+const MESSAGE_TABLE = 'conexa_copilot_chat_messages'
+const TABLE_ERROR = 'No se pudieron leer las tablas de Recomendaciones. Aplicá el SQL del módulo en el proyecto Supabase conectado a esta aplicación.'
 
-const globalStore = globalThis as unknown as { __conexaCopilot?: Map<string, ClientState> }
-const states = (globalStore.__conexaCopilot ??= new Map())
-
-export class CopilotError extends Error {
-  constructor(message: string, public status = 400) { super(message) }
+export async function assertClientAccess(supabase: SupabaseClient, clientId: string) {
+  const { data, error } = await supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, meta_ads_account_ids, google_ads_customer_id, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type').eq('id', clientId).maybeSingle()
+  if (error) throw new CopilotError('No se pudo validar el cliente seleccionado.', 500)
+  if (!data) throw new CopilotError('El cliente no existe o tu usuario no tiene acceso.', 404)
+  return data
 }
 
-function state(clientId: string): ClientState {
-  let current = states.get(clientId)
-  if (!current) {
-    current = { recommendations: seedRecommendations(clientId), plays: seedPlays(), decisions: seedDecisions(clientId), learnings: seedLearnings(clientId), executions: new Map() }
-    states.set(clientId, current)
-  }
-  return current
+function dbError(error: { code?: string; message?: string } | null): never {
+  if (error?.code === '42P01' || error?.code === 'PGRST205' || error?.code === '42703') throw new CopilotError(TABLE_ERROR, 503)
+  throw new CopilotError(TABLE_ERROR, 500)
 }
 
-function findRecommendation(id: string) {
-  for (const current of states.values()) {
-    const rec = current.recommendations.find((item) => item.id === id)
-    if (rec) return { rec, current }
-  }
-  throw new CopilotError('Acción no encontrada', 404)
+export async function listRecommendations(supabase: SupabaseClient, clientId: string, status?: RecommendationStatus) {
+  let query = supabase.from(REC_TABLE).select('*').eq('client_id', clientId).order('created_at', { ascending: false }).limit(200)
+  if (status) query = query.eq('status', status)
+  const { data, error } = await query
+  if (error) dbError(error)
+  const rows = (data ?? []) as unknown as Recommendation[]
+  const authorIds = [...new Set(rows.flatMap((item) => [item.published_by, item.discarded_by]).filter((id): id is string => Boolean(id)))]
+  if (!authorIds.length) return rows
+  const { data: authors } = await supabase.from('colaboradores').select('id, nombre, apellido').in('id', authorIds)
+  const authorNames = new Map((authors ?? []).map((author) => [author.id, [author.nombre, author.apellido].filter(Boolean).join(' ')]))
+  return rows.map((item) => ({ ...item, published_by_name: item.published_by ? authorNames.get(item.published_by) ?? null : null, discarded_by_name: item.discarded_by ? authorNames.get(item.discarded_by) ?? null : null }))
 }
 
-const newId = (prefix: string) => `${prefix}-${crypto.randomUUID().slice(0, 8)}`
-
-export function listRecommendations(clientId: string, status?: RecommendationStatus) {
-  const current = state(clientId)
-  return {
-    recommendations: status ? current.recommendations.filter((item) => item.status === status) : current.recommendations,
-    plays: current.plays,
-    context: { objective: 'Ventas sobre volumen de leads', decisionsCount: current.decisions.length, sources: ['Meta', 'Google Ads', 'GA4', 'CRM', 'GTM'] },
-  }
+export async function listMessages(supabase: SupabaseClient, clientId: string, userId: string) {
+  const { data, error } = await supabase.from(MESSAGE_TABLE).select('*').eq('client_id', clientId).eq('user_id', userId).order('created_at', { ascending: false }).limit(60)
+  if (error) dbError(error)
+  return ((data ?? []) as unknown as CopilotChatMessage[]).reverse()
 }
 
-export function editRecommendation(id: string, after: string) {
-  const { rec } = findRecommendation(id)
-  if (rec.status !== 'pending') throw new CopilotError('Solo se pueden editar acciones pendientes')
-  Object.assign(rec, { after: after.trim(), diff: 'Editado a mano', edited: true, version: rec.version + 1 })
-  return rec
+export async function insertMessages(supabase: SupabaseClient, messages: Array<Omit<CopilotChatMessage, 'id' | 'created_at'>>) {
+  if (!messages.length) return []
+  const { data, error } = await supabase.from(MESSAGE_TABLE).insert(messages).select('*')
+  if (error) dbError(error)
+  return (data ?? []) as unknown as CopilotChatMessage[]
 }
 
-const parseAmount = (value: string) => {
-  const match = value.match(/-?[\d.]+(?:,\d+)?/)
-  return match ? Number(match[0].replace(/\./g, '').replace(',', '.')) : null
-}
-const formatAmount = (template: string, amount: number) => template.replace(/-?[\d.]+(?:,\d+)?/, Math.round(amount).toLocaleString('es-AR'))
-
-export function reformulateRecommendation(id: string, instruction: string) {
-  const { rec } = findRecommendation(id)
-  if (rec.status !== 'pending') throw new CopilotError('Solo se pueden reformular acciones pendientes')
-  const text = instruction.trim()
-  if (!text) throw new CopilotError('Falta la instrucción')
-
-  const lower = text.toLowerCase()
-  const factor = lower.includes('conservadora') ? 0.5 : lower.includes('agresiva') ? 1.5 : null
-  const before = parseAmount(rec.before)
-  const after = parseAmount(rec.after)
-  let note = `Se tuvo en cuenta: "${text}".`
-
-  if (factor && before !== null && after !== null) {
-    const next = before + (after - before) * factor
-    const delta = next - before
-    rec.after = formatAmount(rec.after, next)
-    rec.diff = formatAmount(rec.diff, Math.abs(delta))
-    note = `${factor < 1 ? 'Más conservadora' : 'Más agresiva'}: el cambio pasa a ${rec.diff}.`
-  } else if (lower.includes('7 días')) {
-    rec.after = `${rec.after.replace(/ · por 7 días$/, '')} · por 7 días`
-    note = 'Se aplica por 7 días y después vuelve al valor anterior.'
-  }
-
-  Object.assign(rec, { version: rec.version + 1, revisionNote: note })
-  return rec
+export async function addClientContext(supabase: SupabaseClient, input: { clientId: string; content: string; source: 'chat' | 'manual'; userId: string }) {
+  const { data, error } = await supabase.from(CONTEXT_TABLE).insert({ client_id: input.clientId, content: input.content, source: input.source, created_by: input.userId }).select('*').single()
+  if (error) dbError(error)
+  return data as unknown as ClientContextRecord
 }
 
-function recordDecision(current: ClientState, rec: Recommendation, by: string, scheduled: boolean): Decision {
-  const decision: Decision = {
-    id: newId('dec'), recId: rec.id, date: new Date().toISOString(), by,
-    decision: rec.edited ? 'Editada y aprobada' : 'Aprobada', title: rec.title, platform: rec.platform, type: rec.type,
-    recommended: rec.diff, executed: rec.after, before: rec.before, after: rec.after,
-    revertible: !scheduled, result: scheduled ? { state: 'scheduled' } : { state: 'measuring', day: 0, metric: 'Conexa mide el resultado a 7 días' },
-  }
-  current.decisions.unshift(decision)
-  return decision
+export async function listClientContext(supabase: SupabaseClient, clientId: string) {
+  const { data, error } = await supabase.from(CONTEXT_TABLE).select('*').eq('client_id', clientId).order('created_at', { ascending: false }).limit(100)
+  if (error) dbError(error)
+  return (data ?? []) as unknown as ClientContextRecord[]
 }
 
-async function execute(current: ClientState, rec: Recommendation) {
-  current.executions.set(rec.id, await getExecutor(rec.platform).apply(rec))
-  rec.status = 'executed'
+export async function getCopilotContext(supabase: SupabaseClient, clientId: string, clientName: string, platforms: CopilotContext['platforms']) {
+  const [{ data: profile }, { data: tasks }, { data: comments }, notes] = await Promise.all([
+    supabase.from('ai_client_profile').select('industry, commercial_objective, product_type, primary_conversion_type, target_monthly_sales, target_cpl, additional_context').eq('client_id', clientId).maybeSingle(),
+    supabase.from('tareas').select('id, titulo, descripcion, estado, prioridad, fecha_vencimiento').or(`cliente_id.eq.${clientId},cliente_ids.cs.{${clientId}}`).order('updated_at', { ascending: false }).limit(40),
+    supabase.from('comentarios_clientes').select('id, contenido, autor, creado_en').eq('cliente_id', clientId).order('creado_en', { ascending: false }).limit(40),
+    listClientContext(supabase, clientId),
+  ])
+  return { clientName, profile: profile as Record<string, unknown> | null, tasks: (tasks ?? []) as Array<Record<string, unknown>>, comments: (comments ?? []) as Array<Record<string, unknown>>, notes, platforms }
 }
 
-export async function approveRecommendation(id: string, mode: 'now' | 'schedule', by: string, slot?: string) {
-  const { rec, current } = findRecommendation(id)
-  if (rec.status !== 'pending') throw new CopilotError('La acción ya fue resuelta')
-  if (mode === 'schedule') {
-    if (!slot?.trim()) throw new CopilotError('Falta el horario')
-    Object.assign(rec, { status: 'scheduled', slot: slot.trim() })
-    return { recommendation: rec, decision: recordDecision(current, rec, by, true) }
-  }
-  await execute(current, rec)
-  return { recommendation: rec, decision: recordDecision(current, rec, by, false) }
+export async function createRecommendationDrafts(supabase: SupabaseClient, clientId: string, createdBy: string, drafts: RecommendationDraft[]) {
+  if (!drafts.length) return []
+  const rows = drafts.map((draft) => ({ ...draft, client_id: clientId, status: 'draft', discard_reason: null, created_by: createdBy, payload: {} }))
+  const { data, error } = await supabase.from(REC_TABLE).insert(rows).select('*')
+  if (error) dbError(error)
+  return (data ?? []) as unknown as Recommendation[]
 }
 
-export function rejectRecommendation(id: string, reason: string, by: string) {
-  const { rec, current } = findRecommendation(id)
-  if (rec.status !== 'pending') throw new CopilotError('La acción ya fue resuelta')
-  Object.assign(rec, { status: 'rejected', rejectReason: reason })
-  current.decisions.unshift({ id: newId('dec'), recId: rec.id, date: new Date().toISOString(), by, decision: 'Rechazada', title: rec.title, platform: rec.platform, type: rec.type, recommended: rec.diff, revertible: false, result: { state: 'none' } })
-  const learning: Learning = { id: newId('lrn'), date: new Date().toISOString(), isNew: true, text: `"${rec.title}" se descartó: ${reason.toLowerCase()}.` }
-  current.learnings.unshift(learning)
-  return { recommendation: rec, learning }
+export async function editRecommendation(supabase: SupabaseClient, clientId: string, id: string, patch: RecommendationDraft) {
+  const { data, error } = await supabase.from(REC_TABLE).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
+  if (error) dbError(error)
+  if (!data) throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
+  return data as unknown as Recommendation
 }
 
-export async function runScheduledNow(id: string) {
-  const { rec, current } = findRecommendation(id)
-  if (rec.status !== 'scheduled') throw new CopilotError('La acción no está programada')
-  await execute(current, rec)
-  rec.slot = undefined
-  const decision = current.decisions.find((item) => item.recId === rec.id && item.result.state === 'scheduled')
-  if (decision) Object.assign(decision, { date: new Date().toISOString(), revertible: true, result: { state: 'measuring', day: 0, metric: 'Conexa mide el resultado a 7 días' } })
-  return rec
+export async function publishRecommendation(supabase: SupabaseClient, clientId: string, id: string, userId: string) {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from(REC_TABLE).update({ status: 'published', published_by: userId, published_at: now, updated_at: now }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
+  if (error) dbError(error)
+  if (!data) throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
+  return data as unknown as Recommendation
 }
 
-export function cancelScheduled(id: string) {
-  const { rec, current } = findRecommendation(id)
-  if (rec.status !== 'scheduled') throw new CopilotError('La acción no está programada')
-  Object.assign(rec, { status: 'pending', slot: undefined })
-  current.decisions = current.decisions.filter((item) => !(item.recId === rec.id && item.result.state === 'scheduled'))
-  return rec
+export async function discardRecommendation(supabase: SupabaseClient, clientId: string, id: string, userId: string, reason: string | null) {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from(REC_TABLE).update({ status: 'discarded', discard_reason: reason, discarded_by: userId, discarded_at: now, updated_at: now }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
+  if (error) dbError(error)
+  if (!data) throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
+  return data as unknown as Recommendation
 }
 
-export async function revertDecision(id: string) {
-  for (const current of states.values()) {
-    const decision = current.decisions.find((item) => item.id === id)
-    if (!decision) continue
-    if (!decision.revertible) throw new CopilotError('Esta decisión no se puede revertir')
-    const execution = current.executions.get(decision.recId)
-    if (execution) await getExecutor(execution.platform).revert(execution)
-    Object.assign(decision, { decision: 'Revertida', revertible: false, after: decision.before, result: { state: 'none', metric: `Restaurado a ${decision.before}` } })
-    return decision
-  }
-  throw new CopilotError('Decisión no encontrada', 404)
-}
-
-export function listLearnings(clientId: string) {
-  const current = state(clientId)
-  return { decisions: current.decisions, learnings: current.learnings }
-}
-
-const isExecuted = (item: Decision) => (item.decision === 'Aprobada' || item.decision === 'Editada y aprobada') && item.result.state !== 'scheduled'
-
-export function dashboard(clientId: string, filters: DashboardFilters): DashboardResponse {
-  const all = state(clientId).decisions
-  const since = Date.now() - Number(filters.range) * 86_400_000
-  const rows = all.filter((item) => new Date(item.date).getTime() >= since && (!filters.type || item.type === filters.type) && (!filters.platform || item.platform === filters.platform) && (!filters.by || item.by === filters.by))
-  const executed = rows.filter(isExecuted)
-  const ok = rows.filter((item) => item.result.state === 'ok').length
-  const bad = rows.filter((item) => item.result.state === 'bad').length
-  const count = <K extends string>(keys: (K | undefined)[]) => Object.entries(keys.reduce<Record<string, number>>((acc, key) => (key ? { ...acc, [key]: (acc[key] ?? 0) + 1 } : acc), {})).map(([key, value]) => ({ key: key as K, count: value })).sort((a, b) => b.count - a.count)
-
-  return {
-    kpis: { executed: executed.length, successRate: ok + bad ? Math.round((ok / (ok + bad)) * 100) : 0, rejected: rows.filter((item) => item.decision === 'Rechazada').length, measuring: rows.filter((item) => item.result.state === 'measuring').length },
-    byPlatform: count<CopilotPlatform>(executed.map((item) => item.platform)),
-    byType: count(executed.map((item) => item.type)),
-    rows,
-    options: { types: [...new Set(all.map((item) => item.type).filter(Boolean) as string[])], people: [...new Set(all.map((item) => item.by))] },
-  }
+export async function restoreRecommendation(supabase: SupabaseClient, clientId: string, id: string) {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from(REC_TABLE).update({ status: 'draft', discard_reason: null, discarded_by: null, discarded_at: null, updated_at: now }).eq('id', id).eq('client_id', clientId).eq('status', 'discarded').select('*').maybeSingle()
+  if (error) dbError(error)
+  if (!data) throw new CopilotError('Solo se pueden restaurar recomendaciones descartadas del cliente seleccionado.', 409)
+  return data as unknown as Recommendation
 }

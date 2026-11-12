@@ -1,100 +1,82 @@
-export type SourceKind = 'Performance' | 'Competencia' | 'Historial' | 'Objetivo' | 'Contexto'
-export type Source = { k: SourceKind; t: string; f: string }
+export const RECOMMENDATION_STATUSES = ['draft', 'published', 'discarded'] as const
+export type RecommendationStatus = (typeof RECOMMENDATION_STATUSES)[number]
 
-/** Agrupa acciones relacionadas en una misma jugada. */
-export type Play = { id: string; kind: string; move: string; impact: string }
+export const RECOMMENDATION_PLATFORMS = ['meta', 'google_ads', 'ga4', 'tag_manager', 'crm'] as const
+export type RecommendationPlatform = (typeof RECOMMENDATION_PLATFORMS)[number]
+export type RecommendationPriority = 'alta' | 'media' | 'baja'
+export type RecommendationType = 'presupuesto' | 'creatividades' | 'segmentacion' | 'estructura' | 'tracking' | 'crm' | 'otro'
+export type ContextSource = 'chat' | 'manual'
+export type ChatRole = 'user' | 'assistant'
 
-export type CopilotPlatform = 'meta' | 'google-ads' | 'crm' | 'tracking'
-export type Priority = 'alta' | 'media' | 'baja'
-export type RecommendationStatus = 'pending' | 'executing' | 'executed' | 'scheduled' | 'rejected'
-
+export type RecommendationEvidence = { id: string; label: string; excerpt: string }
 export type Recommendation = {
   id: string
-  clientId: string
-  playId?: string
-  type: string
-  platform: CopilotPlatform
-  priority: Priority
-  entity: string
+  client_id: string
   title: string
-  summary: string
-  why: string
-  sources: Source[]
-  before: string
-  after: string
-  diff: string
-  impact: string
-  how: string
+  platforms: RecommendationPlatform[]
+  type: RecommendationType
+  priority: RecommendationPriority
+  description: string
+  rationale: string
+  suggested_actions: string[]
+  expected_impact: string
+  evidence: RecommendationEvidence[]
   status: RecommendationStatus
-  version: number
-  edited?: boolean
-  revisionNote?: string
-  slot?: string
-  rejectReason?: string
+  discard_reason: string | null
+  created_by: string
+  published_by: string | null
+  published_by_name?: string | null
+  published_at: string | null
+  discarded_by: string | null
+  discarded_by_name?: string | null
+  discarded_at: string | null
+  created_at: string
+  updated_at: string
 }
 
-export type DecisionKind = 'Aprobada' | 'Editada y aprobada' | 'Rechazada' | 'Revertida'
-export type ResultState = 'measuring' | 'ok' | 'bad' | 'scheduled' | 'none'
+export type RecommendationDraft = Pick<Recommendation, 'title' | 'platforms' | 'type' | 'priority' | 'description' | 'rationale' | 'suggested_actions' | 'expected_impact' | 'evidence'>
 
-export type Decision = {
+export type ClientContextRecord = {
   id: string
-  recId: string
-  date: string
-  by: string
-  decision: DecisionKind
-  recommended: string
-  executed?: string
-  before?: string
-  after?: string
-  revertible: boolean
-  result: { state: ResultState; metric?: string; day?: number }
-  title?: string
-  platform?: CopilotPlatform
-  type?: string
+  client_id: string
+  content: string
+  source: ContextSource
+  created_by: string
+  created_at: string
 }
 
-export type Learning = { id: string; text: string; isNew?: boolean; date: string }
-
-export type CopilotContext = { objective: string; decisionsCount: number; sources: string[] }
-
-export type RecommendationsResponse = { recommendations: Recommendation[]; plays: Play[]; context: CopilotContext }
-export type LearningsResponse = { decisions: Decision[]; learnings: Learning[] }
-
-export type DashboardRange = '7' | '30' | '90'
-export type DashboardFilters = { type?: string; platform?: CopilotPlatform | ''; range: DashboardRange; by?: string }
-export type DashboardResponse = {
-  kpis: { executed: number; successRate: number; rejected: number; measuring: number }
-  byPlatform: { key: CopilotPlatform; count: number }[]
-  byType: { key: string; count: number }[]
-  rows: Decision[]
-  options: { types: string[]; people: string[] }
+export type CopilotChatMessage = {
+  id: string
+  client_id: string
+  user_id: string
+  role: ChatRole
+  content: string
+  created_at: string
 }
 
-export const PLATFORM_LABEL: Record<CopilotPlatform, string> = {
+export type CopilotContext = {
+  clientName: string
+  profile: Record<string, unknown> | null
+  tasks: Array<Record<string, unknown>>
+  comments: Array<Record<string, unknown>>
+  notes: ClientContextRecord[]
+  platforms: RecommendationPlatform[]
+}
+
+export const PLATFORM_LABEL: Record<RecommendationPlatform, string> = {
   meta: 'Meta Ads',
-  'google-ads': 'Google Ads',
+  google_ads: 'Google Ads',
+  ga4: 'Google Analytics',
+  tag_manager: 'Tag Manager',
   crm: 'CRM',
-  tracking: 'Tracking',
 }
 
-export const REJECT_REASONS = [
-  'No aplica en este momento',
-  'El cliente no lo aprobaría',
-  'Los datos no son correctos',
-  'Ya lo hicimos a mano',
-] as const
-
-const WHY_ORDER: SourceKind[] = ['Performance', 'Competencia', 'Historial']
-
-/**
- * La línea de motivo nunca es el objetivo general del cliente: se usa el `why` propio,
- * después las fuentes por prioridad y, como último recurso, el resumen.
- */
-export function resolveWhy(rec: Pick<Recommendation, 'why' | 'sources' | 'summary'>) {
-  if (rec.why?.trim()) return rec.why
-  for (const kind of WHY_ORDER) {
-    const match = rec.sources.find((source) => source.k === kind)
-    if (match) return match.t
-  }
-  return rec.sources.find((source) => source.k !== 'Objetivo')?.t ?? rec.summary
+export const RECOMMENDATION_TYPE_LABEL: Record<RecommendationType, string> = {
+  presupuesto: 'Presupuesto',
+  creatividades: 'Creatividades',
+  segmentacion: 'Segmentación',
+  estructura: 'Estructura de campañas',
+  tracking: 'Tracking / medición',
+  crm: 'CRM / seguimiento',
+  otro: 'Otro',
 }
