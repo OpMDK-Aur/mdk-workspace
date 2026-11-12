@@ -5,7 +5,7 @@ type Snapshot = { clientName?: string; period?: string; range?: { dateFrom?: str
 type Report = { name: string; created_at: string; data_snapshot: Snapshot }
 
 const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char)
-const titleFor = (key: string) => ({ meta: 'Meta Ads', google: 'Google Ads', analytics: 'GA4', tag_manager: 'Tag Manager', crm: 'CRM' } as Record<string, string>)[key] ?? key
+const titleFor = (key: string) => ({ meta: 'Meta Ads', google: 'Google Ads', analytics: 'GA4', tag_manager: 'Tag Manager', crm: 'CRM', file: 'Archivo adjunto' } as Record<string, string>)[key] ?? key
 
 function metricCards(snapshot: Snapshot) {
   const metrics = Object.entries(snapshot.platformMetrics ?? {}).flatMap(([platform, rows]) => rows.map((row) => ({ platform, ...row, previous: (snapshot.previousPlatformMetrics?.[platform] ?? []).find((item) => item.label === row.label)?.value }))).slice(0, 24)
