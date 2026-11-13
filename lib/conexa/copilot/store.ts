@@ -22,7 +22,7 @@ export async function assertClientAccess(supabase: SupabaseClient, clientId: str
 
 type SupabaseErrorLike = { code?: string; message?: string; details?: string | null; hint?: string | null } | null
 /** Describe la consulta sin valores: tabla, operación, columnas y filtros. */
-type QueryInfo = { table: string; op: 'select' | 'insert' | 'update'; columns: string; filters: string }
+type QueryInfo = { table: string; op: 'select' | 'insert' | 'update' | 'delete'; columns: string; filters: string }
 
 const SCHEMA_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205'])
 const isPermissionError = (error: SupabaseErrorLike) => error?.code === '42501' || /row-level security|permission denied/i.test(error?.message ?? '')
@@ -63,6 +63,13 @@ export async function listRecommendations(supabase: SupabaseClient, clientId: st
     decisionsByRecommendation.set(decision.recommendation_id, list)
   }
   return rows.map((item) => ({ ...item, decisions: decisionsByRecommendation.get(item.id) ?? [], published_by_name: item.published_by ? authorNames.get(item.published_by) ?? null : null, discarded_by_name: item.discarded_by ? authorNames.get(item.discarded_by) ?? null : null }))
+}
+
+/** Borra solo la conversación del usuario con este cliente; el contexto, las recomendaciones y el histórico no se tocan. Llamar después de assertClientAccess. */
+export async function clearMessages(clientId: string, userId: string) {
+  const { data, error } = await createAdminClient().from(MESSAGE_TABLE).delete().eq('client_id', clientId).eq('user_id', userId).select('id')
+  if (error) dbError(error, { table: MESSAGE_TABLE, op: 'delete', columns: 'id', filters: 'client_id=eq, user_id=eq' })
+  return data?.length ?? 0
 }
 
 export async function listMessages(supabase: SupabaseClient, clientId: string, userId: string) {

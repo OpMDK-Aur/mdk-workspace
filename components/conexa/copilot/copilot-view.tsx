@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, ArrowDownToLine, ArrowRight, BarChart3, Check, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Lock, Maximize2, MessageCircle, Minimize2, Search, Send, Sparkles, Tag, Users, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowDownToLine, ArrowRight, BarChart3, Check, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Lock, RotateCcw, Maximize2, MessageCircle, Minimize2, Search, Send, Sparkles, Tag, Users, X, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -63,6 +63,8 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   const [discardTarget, setDiscardTarget] = useState<Recommendation | null>(null)
   const [discardReason, setDiscardReason] = useState('')
   const [manualContextOpen, setManualContextOpen] = useState(false)
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [manualContext, setManualContext] = useState('')
   const [hydratedPanels, setHydratedPanels] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -236,7 +238,7 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   }
 
   const panels: Record<Panel, ReactNode> = {
-    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} competitors={{ suggesting: copilot.suggestingCompetitors, onSuggest: async () => { const result = await copilot.suggestCompetitors(); toast.message(result.suggested ? `Conexa sugirió ${result.suggested} competidor(es). Quitá los que no correspondan.` : 'No se encontraron competidores nuevos.') }, onAdd: copilot.addCompetitor, onRemove: copilot.removeCompetitor }} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage(COMPLETE_CONTEXT_MESSAGE)} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
+    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} competitors={{ suggesting: copilot.suggestingCompetitors, onSuggest: async () => { const result = await copilot.suggestCompetitors(); toast.message(result.suggested ? `Conexa sugirió ${result.suggested} competidor(es). Quitá los que no correspondan.` : 'No se encontraron competidores nuevos.') }, onAdd: copilot.addCompetitor, onRemove: copilot.removeCompetitor }} onReset={() => setResetOpen(true)} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage(COMPLETE_CONTEXT_MESSAGE)} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
     recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} missingContext={missingContext} onCompleteContext={() => { setMobilePanel('chat'); void submitMessage(COMPLETE_CONTEXT_MESSAGE) }} filters={filters} search={search} loading={copilot.isLoading || busy || scanning} scanning={scanning} onScan={scan} onMarkDone={markDone} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
     history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
   }
@@ -288,6 +290,22 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
         <DialogFooter><Button variant="outline" onClick={() => setDiscardTarget(null)}>Cancelar</Button><Button variant="destructive" onClick={discard}>Descartar</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={resetOpen} onOpenChange={(open) => { if (!resetting) setResetOpen(open) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Reiniciar chat</DialogTitle><DialogDescription>Se borra tu conversación con Conexa para este cliente. El contexto guardado, los competidores, las recomendaciones y el histórico no se tocan.</DialogDescription></DialogHeader>
+        <DialogFooter><Button variant="outline" disabled={resetting} onClick={() => setResetOpen(false)}>Cancelar</Button><Button disabled={resetting} onClick={async () => {
+          setResetting(true)
+          try {
+            await copilot.resetChat()
+            setEditingRecommendationId(undefined)
+            setProfileProposal([])
+            setMessageInput('')
+            setResetOpen(false)
+            toast.success('Chat reiniciado')
+          } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo reiniciar el chat') } finally { setResetting(false) }
+        }} className="bg-[#f97316] text-[#ffffff] hover:bg-[#e7650c]">{resetting ? <><LoaderCircle className="size-3.5 animate-spin" />Reiniciando…</> : 'Reiniciar'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog open={manualContextOpen} onOpenChange={setManualContextOpen}>
       <DialogContent>
         <DialogHeader><DialogTitle>Agregar contexto del cliente</DialogTitle><DialogDescription>Este dato se suma al contexto de Recomendaciones, sin modificar el formulario existente del cliente.</DialogDescription></DialogHeader>
@@ -317,13 +335,14 @@ function PanelShell({ panel, full = false, onCollapse, onExpand, children }: { p
   </section>
 }
 
-function ChatPanel({ clientName, connectedPlatforms, messages, assessment, contextUnavailable, competitors, proposal, savingProfile, onSaveProposal, onDismissProposal, onCompleteContext, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
+function ChatPanel({ clientName, connectedPlatforms, messages, assessment, contextUnavailable, competitors, onReset, proposal, savingProfile, onSaveProposal, onDismissProposal, onCompleteContext, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
   clientName: string
   connectedPlatforms: RecommendationPlatform[]
   messages: ReturnType<typeof useCopilot>['messages']
   assessment: ContextAssessment | null
   contextUnavailable: boolean
   competitors: CompetitorControls
+  onReset: () => void
   proposal: ProfileUpdate[]
   savingProfile: boolean
   onSaveProposal: (updates: ProfileUpdate[]) => void
@@ -352,7 +371,10 @@ function ChatPanel({ clientName, connectedPlatforms, messages, assessment, conte
       {editing && <div className="mb-2 flex items-center justify-between rounded-md bg-[#fff5ee] px-2.5 py-1.5 text-[10px] text-[#9a4d13]"><span>Editando un borrador</span><button type="button" onClick={onClearEditing} className="underline">Cancelar edición</button></div>}
       <label htmlFor="recommendation-chat-input" className="sr-only">Mensaje para Conexa</label>
       <div className="flex items-end gap-2 rounded-lg border border-[#e5e5e3] bg-white p-1.5 focus-within:border-[#f97316]"><Textarea id="recommendation-chat-input" value={input} rows={2} maxLength={4000} onChange={(event) => onInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={busy} placeholder="Sumá contexto o pedí recomendaciones…" className="min-h-10 resize-none border-0 text-[11px] shadow-none focus-visible:ring-0" /><Button type="submit" size="icon" aria-label="Enviar mensaje" disabled={!input.trim() || busy} className="size-8 shrink-0 bg-[#f97316] text-white hover:bg-[#e7650c]"><Send className="size-3.5" /></Button></div>
-      <p className="mt-2 text-[9px] leading-4 text-[#999]">Conexa no publica ni ejecuta cambios. Los mensajes solo se usan como contexto de Recomendaciones.</p>
+      <div className="mt-2 flex items-start justify-between gap-2">
+        <p className="text-[9px] leading-4 text-[#999]">Conexa no publica ni ejecuta cambios. Los mensajes solo se usan como contexto de Recomendaciones.</p>
+        {messages.length > 0 && <button type="button" onClick={onReset} disabled={busy} className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-[#666] hover:bg-[#f5f5f4] hover:text-[#252525] disabled:opacity-50"><RotateCcw className="size-3" aria-hidden="true" />Reiniciar chat</button>}
+      </div>
     </form>
   </div>
 }
@@ -412,6 +434,11 @@ function ContextStatus({ assessment, unavailable, busy, competitors, onAddManual
       </button>
       <Button type="button" variant="outline" size="sm" onClick={onAddManual} className="h-7 shrink-0 px-2 text-[10px]">+ Contexto</Button>
     </div>
+    {!open && assessment && assessment.competitorEntries.length > 0 && <div className="flex flex-wrap items-center gap-1 px-3 pb-2" aria-label="Competidores guardados en el contexto">
+      <span className="text-[10px] text-[#777]">Competencia:</span>
+      {assessment.competitorEntries.slice(0, 4).map((entry) => <span key={entry.noteId} className="rounded-full border border-[#ececea] bg-[#fafaf9] px-2 py-0.5 text-[10px] text-[#444]">{entry.name}</span>)}
+      {assessment.competitorEntries.length > 4 && <span className="text-[10px] text-[#777]">+{assessment.competitorEntries.length - 4}</span>}
+    </div>}
     {open && assessment && <div id="context-status-detail" className="flex flex-col gap-3 border-t border-[#f2f2f0] bg-[#fafaf9] px-3 py-3">
       <ul className="flex flex-col gap-1.5">
         {assessment.fields.map((field) => <li key={field.key} className="flex items-start gap-2 text-[11px] leading-snug">
