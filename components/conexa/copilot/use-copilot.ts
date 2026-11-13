@@ -31,6 +31,10 @@ export function useCopilot(clientId: string) {
     profileError: profile.error as Error | undefined,
     suggestingCompetitors: autoSuggest.isLoading,
     suggestCompetitorsError: autoSuggest.error as Error | undefined,
+    resetChat: async () => {
+      await copilotApi.resetChat(clientId)
+      await messages.mutate({ messages: [] }, { revalidate: false })
+    },
     suggestCompetitors: () => applyCompetitors({ clientId, action: 'suggest' }),
     addCompetitor: (name: string) => applyCompetitors({ clientId, action: 'add', name }),
     removeCompetitor: (noteId: string) => applyCompetitors({ clientId, action: 'remove', noteId }),

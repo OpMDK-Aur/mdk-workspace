@@ -13,7 +13,9 @@ const input = z.discriminatedUnion('action', [
   z.object({ action: z.literal('suggest'), clientId: z.string().uuid(), onlyIfEmpty: z.boolean().optional() }),
   z.object({ action: z.literal('add'), clientId: z.string().uuid(), name: nameSchema, detail: z.string().trim().max(500).optional() }),
   z.object({ action: z.literal('remove'), clientId: z.string().uuid(), noteId: z.string().uuid() }),
+  z.object({ action: z.literal('set'), clientId: z.string().uuid(), names: z.array(nameSchema).max(12) }),
 ])
+const same = (a: string, b: string) => a.localeCompare(b, 'es', { sensitivity: 'base' }) === 0
 
 export async function POST(request: Request) {
   const auth = await requireUser()
@@ -41,8 +43,13 @@ export async function POST(request: Request) {
       suggested = suggestions.length
     }
     if (body.action === 'add') {
-      if (current.competitors.some((name) => name.localeCompare(body.name, 'es', { sensitivity: 'base' }) === 0)) throw new CopilotError(`«${body.name}» ya está en la lista de competidores.`, 409)
+      if (current.competitors.some((name) => same(name, body.name))) throw new CopilotError(`«${body.name}» ya está en la lista de competidores.`, 409)
       await addClientContext(auth.supabase, { clientId: body.clientId, content: `${COMPETITOR_PREFIX}${body.name}${body.detail ? `: ${body.detail}` : ''}`, source: 'manual', userId: auth.user.id })
+    }
+    if (body.action === 'set') {
+      const names = body.names.filter((name, index) => name.length >= 2 && body.names.findIndex((other) => same(other, name)) === index)
+      for (const entry of current.competitorEntries) if (!names.some((name) => same(name, entry.name))) await rewriteClientContext(body.clientId, entry.noteId, `${DISCARDED_COMPETITOR_PREFIX}${entry.name}`)
+      for (const name of names) if (!current.competitorEntries.some((entry) => same(entry.name, name))) await addClientContext(auth.supabase, { clientId: body.clientId, content: `${COMPETITOR_PREFIX}${name}`, source: 'manual', userId: auth.user.id })
     }
     if (body.action === 'remove') {
       const note = notes.find((item) => item.id === body.noteId)

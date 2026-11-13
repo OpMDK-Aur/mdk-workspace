@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import useSWR, { mutate } from 'swr'
+import { X } from 'lucide-react'
+import { copilotApi } from '@/lib/conexa/copilot/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -21,7 +24,14 @@ export function ClientContextForm({ clientId, clientName, initialMemory, mode = 
   const industryChoice = useMemo(() => industries.find((x) => x.toLowerCase() === industry.toLowerCase()), [industry])
   const objectiveChoice = useMemo(() => objectives.find((x) => x.toLowerCase() === objective.toLowerCase()), [objective])
   const selectedConversion = conversions.find(([, value]) => value === conversion)
-  async function submit() { setError(''); if (!industry.trim() || !objective.trim() || !product.trim()) { setError('Completá industria, objetivo comercial y qué vende el cliente.'); return } setSaving(true); try { const response = await fetch('/api/ai/client-memory', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, industry, commercial_objective: objective, product_type: product, primary_conversion_type: conversion || undefined, target_monthly_sales: targetSales.trim() || null, target_cpl: targetCpl.trim() || null, additional_context: notes }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'No se pudo guardar el contexto.'); onCompleted(data.memory) } catch (error) { setError(error instanceof Error ? error.message : 'No pudimos guardar el contexto. Intentá nuevamente.') } finally { setSaving(false) } }
+  const profileKey = `/api/conexa/copilot/profile?clientId=${encodeURIComponent(clientId)}`
+  const savedProfile = useSWR(profileKey, () => copilotApi.profile(clientId), { revalidateOnFocus: false })
+  const savedCompetitors = useMemo(() => savedProfile.data?.assessment.competitorEntries.map((entry) => entry.name) ?? [], [savedProfile.data])
+  const [competitorDraft, setCompetitorDraft] = useState<string[] | null>(null)
+  const competitors = competitorDraft ?? savedCompetitors
+  async function submit() { setError(''); if (!industry.trim() || !objective.trim() || !product.trim()) { setError('Completá industria, objetivo comercial y qué vende el cliente.'); return } setSaving(true); try { const response = await fetch('/api/ai/client-memory', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, industry, commercial_objective: objective, product_type: product, primary_conversion_type: conversion || undefined, target_monthly_sales: targetSales.trim() || null, target_cpl: targetCpl.trim() || null, additional_context: notes }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'No se pudo guardar el contexto.')
+    if (competitorDraft) { const result = await copilotApi.competitors({ clientId, action: 'set', names: competitorDraft }); await mutate(profileKey, { profile: result.profile, assessment: result.assessment }, { revalidate: false }); setCompetitorDraft(null) } else await mutate(profileKey)
+    onCompleted(data.memory) } catch (error) { setError(error instanceof Error ? error.message : 'No pudimos guardar el contexto. Intentá nuevamente.') } finally { setSaving(false) } }
   if (loading) return <div className="flex flex-col gap-6"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
   return <section className="flex w-full max-w-2xl flex-col gap-8" aria-labelledby="context-title">
     <div className="flex flex-col gap-2"><p className="font-mono text-xs uppercase tracking-[0.18em] text-primary">{mode === 'edit' ? 'Contexto del cliente' : 'Primer paso'}</p><h2 id="context-title" className="text-balance text-3xl font-semibold tracking-tight">{mode === 'edit' ? clientName : 'Antes de comenzar'}</h2><p className="text-pretty leading-6 text-muted-foreground">Ayudanos a entender mejor a {clientName}. Este contexto mejora los análisis y comparaciones futuras.</p></div>
@@ -37,8 +47,27 @@ export function ClientContextForm({ clientId, clientName, initialMemory, mode = 
       </div>
       <label className="flex flex-col gap-1.5 text-sm text-muted-foreground">Contexto adicional<Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} rows={3} placeholder="Ticket promedio, zonas, estacionalidad, presupuesto, particularidades del negocio…" /></label>
     </fieldset>
+    <CompetitorsField names={competitors} loading={savedProfile.isLoading} onChange={setCompetitorDraft} />
     {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><Button onClick={submit} disabled={saving}>{saving ? 'Guardando contexto…' : mode === 'edit' ? 'Guardar contexto' : 'Confirmar y comenzar'}</Button>{mode === 'edit' && onCancel && <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}</div>
   </section>
+}
+function CompetitorsField({ names, loading, onChange }: { names: string[]; loading: boolean; onChange: (names: string[]) => void }) {
+  const [value, setValue] = useState('')
+  const add = () => {
+    const name = value.replace(/[:\n·]/g, ' ').replace(/\s+/g, ' ').trim()
+    if (name.length < 2 || names.some((item) => item.localeCompare(name, 'es', { sensitivity: 'base' }) === 0)) { setValue(''); return }
+    onChange([...names, name].slice(0, 12))
+    setValue('')
+  }
+  return <fieldset className="flex flex-col gap-3">
+    <legend className="text-lg font-medium">Competidores <span className="text-sm font-normal text-muted-foreground">(opcional)</span></legend>
+    <p className="text-pretty text-sm leading-6 text-muted-foreground">Conexa los usa para comparar ofertas y mensajes. Si los dejás vacíos, los sugiere automáticamente.</p>
+    {loading ? <Skeleton className="h-8 w-1/2" /> : names.length > 0 && <ul className="flex flex-wrap gap-2" aria-label="Competidores">{names.map((name) => <li key={name} className="flex items-center gap-1 rounded-full border border-border bg-muted py-1 pl-3 pr-1 text-sm">{name}<button type="button" onClick={() => onChange(names.filter((item) => item !== name))} aria-label={`Quitar ${name}`} className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"><X className="size-3.5" /></button></li>)}</ul>}
+    <div className="flex gap-2">
+      <Input value={value} maxLength={80} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); add() } }} placeholder="Nombre del competidor" aria-label="Agregar competidor" />
+      <Button type="button" variant="outline" onClick={add} disabled={value.trim().length < 2}>Agregar</Button>
+    </div>
+  </fieldset>
 }
 function ContextQuestion({ title, options, value, onSelect, custom, customPlaceholder, onCustom, alwaysCustom = false }: { title: string; options: readonly string[]; value: string; onSelect: (v: string) => void; custom?: string; customPlaceholder: string; onCustom: (v: string) => void; alwaysCustom?: boolean }) { return <fieldset className="flex flex-col gap-3"><legend className="text-lg font-medium">{title}</legend><div className="flex flex-wrap gap-2">{options.map((option) => <Button key={option} type="button" variant={value === option ? 'default' : 'outline'} aria-pressed={value === option} className="rounded-full" onClick={() => onSelect(option)}>{value === option ? '✓ ' : ''}{option}</Button>)}</div>{(alwaysCustom || !value) && <Input value={custom ?? ''} onChange={(e) => onCustom(e.target.value)} placeholder={customPlaceholder} aria-label={customPlaceholder} />}</fieldset> }
