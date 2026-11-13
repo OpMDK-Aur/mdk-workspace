@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { copilotError, readJson, requireUser } from '@/lib/conexa/copilot/route-helpers'
-import { assertClientAccess, discardRecommendation, editRecommendation, publishRecommendation, restoreRecommendation } from '@/lib/conexa/copilot/store'
+import { assertClientAccess, discardRecommendation, editRecommendation, prepareRecommendationOperation, publishRecommendation, restoreRecommendation } from '@/lib/conexa/copilot/store'
+
+export const maxDuration = 90
 import type { RecommendationDraft } from '@/lib/conexa/copilot/types'
 
 const draftSchema = z.object({
@@ -35,12 +37,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const auth = await requireUser()
   if ('error' in auth) return auth.error
   const { id } = await params
-  const body = await readJson<{ clientId: string; action: 'publish' | 'discard' | 'restore'; reason?: string }>(request)
+  const body = await readJson<{ clientId: string; action: 'prepare' | 'publish' | 'discard' | 'restore'; reason?: string }>(request)
   if (typeof body.clientId !== 'string' || !body.clientId) return NextResponse.json({ error: 'Falta el cliente' }, { status: 400 })
-  if (!['publish', 'discard', 'restore'].includes(body.action ?? '')) return NextResponse.json({ error: 'Acción inválida' }, { status: 400 })
+  if (!['prepare', 'publish', 'discard', 'restore'].includes(body.action ?? '')) return NextResponse.json({ error: 'Acción inválida' }, { status: 400 })
   if (body.action === 'discard' && body.reason !== undefined && (typeof body.reason !== 'string' || body.reason.length > 1000)) return NextResponse.json({ error: 'El motivo no puede superar los 1000 caracteres.' }, { status: 400 })
   try {
     await assertClientAccess(auth.supabase, body.clientId)
+    if (body.action === 'prepare') return NextResponse.json({ recommendation: await prepareRecommendationOperation(auth.supabase, body.clientId, id) })
     if (body.action === 'publish') return NextResponse.json({ recommendation: await publishRecommendation(auth.supabase, body.clientId, id, auth.user.id) })
     if (body.action === 'discard') return NextResponse.json({ recommendation: await discardRecommendation(auth.supabase, body.clientId, id, auth.user.id, body.reason?.trim() || null) })
     return NextResponse.json({ recommendation: await restoreRecommendation(auth.supabase, body.clientId, id) })
