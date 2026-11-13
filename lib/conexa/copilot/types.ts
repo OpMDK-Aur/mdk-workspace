@@ -13,6 +13,7 @@ export type RecommendationEvidence = { id: string; label: string; excerpt: strin
 export type RecommendationOperation =
   | { platform: 'meta'; kind: 'set_status'; level: 'campaign' | 'adset' | 'ad'; entityId: string; entityName: string; status: 'ACTIVE' | 'PAUSED' }
   | { platform: 'meta'; kind: 'set_daily_budget'; level: 'campaign' | 'adset'; entityId: string; entityName: string; dailyBudget: number }
+  | { platform: 'meta'; kind: 'set_age_range'; adsets: Array<{ id: string; name: string }>; ageMin: number; ageMax: number }
   | { platform: 'google_ads'; kind: 'set_status'; customerId: string; campaignId: string; entityName: string; status: 'ENABLED' | 'PAUSED' }
   | { platform: 'google_ads'; kind: 'set_daily_budget'; customerId: string; campaignId: string; entityName: string; dailyBudget: number }
 
@@ -21,6 +22,10 @@ export type ExecutionResult = { platform: 'meta' | 'google_ads'; entityId: strin
 export const META_LEVEL_LABEL = { campaign: 'Campaña', adset: 'Conjunto de anuncios', ad: 'Anuncio' } as const
 
 export function describeOperation(operation: RecommendationOperation) {
+  if (operation.kind === 'set_age_range') {
+    const names = operation.adsets.map((adset) => `«${adset.name}»`).join(', ')
+    return `${operation.adsets.length === 1 ? 'Conjunto' : `${operation.adsets.length} conjuntos`} ${names}: edad ${operation.ageMin} a ${operation.ageMax === 65 ? '65+' : operation.ageMax}`
+  }
   const target = operation.platform === 'meta' ? `${META_LEVEL_LABEL[operation.level]} «${operation.entityName}»` : `Campaña «${operation.entityName}»`
   if (operation.kind === 'set_status') return `${target}: ${operation.status === 'PAUSED' ? 'pausar' : 'activar'}`
   return `${target}: presupuesto diario a ${operation.dailyBudget.toLocaleString('es-AR')}`
