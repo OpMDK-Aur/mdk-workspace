@@ -78,7 +78,7 @@ export async function createRecommendationDrafts(supabase: SupabaseClient, clien
 }
 
 export async function editRecommendation(supabase: SupabaseClient, clientId: string, id: string, patch: RecommendationDraft) {
-  const { data, error } = await supabase.from(REC_TABLE).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
+  const { data, error } = await supabase.from(REC_TABLE).update({ ...patch, operation: patch.operation ?? null, execution_error: null, updated_at: new Date().toISOString() }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
   if (error) dbError(error)
   if (!data) throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
   return data as unknown as Recommendation
