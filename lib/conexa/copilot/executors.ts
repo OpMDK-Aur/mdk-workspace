@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getMetaAccessToken, META_GRAPH_VERSION } from '@/lib/meta-ads/token'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
-import { MAX_BUDGET_CHANGE, RECENT_EDIT_WINDOW_DAYS } from './config'
+import { MAX_BUDGET_CHANGE, NEW_CAMPAIGN_MAX_BUDGET_RATIO, RECENT_EDIT_WINDOW_DAYS } from './config'
 import { CopilotError } from './route-helpers'
-import type { ExecutionPlan, PlanStep, PlanStepResult, RecommendationOperation } from './types'
+import type { CreatedEntities, ExecutionPlan, PlanStep, PlanStepResult, RecommendationOperation } from './types'
 
 const GOOGLE_ADS_API_VERSION = 'v23'
 export const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'COP', 'CRC', 'HUF', 'ISK', 'IDR', 'JPY', 'KRW', 'PYG', 'TWD', 'VND'])
@@ -87,10 +87,78 @@ export async function loadRecentEdits(supabase: SupabaseClient, clientId: string
 const ageLabel = (min: number, max: number) => `${min} a ${max >= 65 ? '65+' : max}`
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
 
-type InternalStep = PlanStep & { apply: () => Promise<void> }
+type InternalStep = PlanStep & { apply: () => Promise<CreatedEntities | void> }
 
-function step(input: Omit<PlanStep, 'alreadyApplied' | 'pctChange' | 'warnings'> & { pctChange?: number | null; warnings?: string[] }, apply: () => Promise<void>): InternalStep {
+function step(input: Omit<PlanStep, 'alreadyApplied' | 'pctChange' | 'warnings'> & { pctChange?: number | null; warnings?: string[] }, apply: () => Promise<CreatedEntities | void>): InternalStep {
   return { ...input, pctChange: input.pctChange ?? null, warnings: input.warnings ?? [], alreadyApplied: input.before === input.after, apply }
+}
+
+type TemplateAdset = {
+  id: string; name?: string; account_id?: string; daily_budget?: string; optimization_goal?: string; billing_event?: string; bid_strategy?: string; bid_amount?: string
+  promoted_object?: Record<string, unknown>; destination_type?: string; attribution_spec?: unknown[]
+  targeting?: Record<string, unknown> & { age_min?: number; age_max?: number; targeting_automation?: { advantage_audience?: number } }
+  campaign?: { id?: string; name?: string; objective?: string; special_ad_categories?: string[]; daily_budget?: string; bid_strategy?: string }
+}
+
+/** Copia objetivo, optimización, destino y público del conjunto modelo; todo se crea en PAUSED para que una persona lo revise y lo active en Meta. */
+async function planMetaCreate(operation: Extract<RecommendationOperation, { kind: 'create_campaign' }>, assertAccount: (accountId: unknown, name: string) => string): Promise<InternalStep[]> {
+  const [template, ...ads] = await Promise.all([
+    metaRequest<TemplateAdset>(encodeURIComponent(operation.templateAdsetId), { fields: 'id,name,account_id,daily_budget,optimization_goal,billing_event,bid_strategy,bid_amount,promoted_object,destination_type,attribution_spec,targeting,campaign{id,name,objective,special_ad_categories,daily_budget,bid_strategy}' }),
+    ...operation.ads.map((ad) => metaRequest<{ id: string; name?: string; account_id?: string; creative?: { id?: string } }>(encodeURIComponent(ad.id), { fields: 'id,name,account_id,creative{id}' })),
+  ])
+  const templateName = template.name ?? operation.templateAdsetName
+  const accountId = assertAccount(template.account_id, templateName)
+  if (!template.campaign?.objective || !template.optimization_goal || !template.targeting) throw new CopilotError(`No se pudo leer la configuración completa del conjunto modelo «${templateName}».`, 422)
+  for (const ad of ads) {
+    if (assertAccount(ad.account_id, ad.name ?? ad.id) !== accountId) throw new CopilotError(`El anuncio «${ad.name ?? ad.id}» es de otra cuenta publicitaria que el conjunto modelo.`, 422)
+    if (!ad.creative?.id) throw new CopilotError(`No se pudo leer la creatividad del anuncio «${ad.name ?? ad.id}».`, 422)
+  }
+  if (operation.ageMin !== null && operation.ageMax !== null && (operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax)) throw new CopilotError('El rango de edad propuesto no es válido (debe estar entre 18 y 65+).', 422)
+
+  const { currency = 'USD' } = await metaRequest<{ currency?: string }>(`act_${accountId}`, { fields: 'currency' })
+  const factor = metaCurrencyFactor(currency)
+  const reference = Number(template.daily_budget ?? template.campaign.daily_budget ?? 0) / factor
+  const nextMinor = Math.round(operation.dailyBudget * factor)
+  const next = nextMinor / factor
+  if (!Number.isFinite(next) || next <= 0) throw new CopilotError('El presupuesto diario de la campaña nueva no es válido.', 422)
+  if (reference <= 0) throw new CopilotError(`«${templateName}» no tiene presupuesto de referencia para acotar el de la campaña nueva.`, 422)
+  if (next > reference * NEW_CAMPAIGN_MAX_BUDGET_RATIO + 1e-9) throw new CopilotError(`El presupuesto de la campaña nueva (${money(next, currency)}) supera ${NEW_CAMPAIGN_MAX_BUDGET_RATIO} veces el del modelo (${money(reference, currency)}).`, 422)
+
+  const targeting = { ...template.targeting, ...(operation.ageMin !== null && operation.ageMax !== null ? { age_min: operation.ageMin, age_max: operation.ageMax } : {}) }
+  const age = `${targeting.age_min ?? 18}-${targeting.age_max ?? 65}`
+  const creatives = ads.map((ad) => ({ id: ad.creative!.id!, name: ad.name ?? 'Anuncio' }))
+  const warnings = [
+    'Se crea en PAUSA: revisala en Meta Ads y activala a mano cuando esté lista.',
+    `Copia objetivo (${template.campaign.objective}), optimización (${template.optimization_goal}), destino y público de «${templateName}»${operation.ageMin !== null ? ', con la edad indicada' : ''}.`,
+    ...(targeting.targeting_automation?.advantage_audience === 1 ? ['El público usa Advantage+: Meta puede tomar la edad como sugerencia.'] : []),
+  ]
+  const after = `${operation.campaignName}|${nextMinor}|${age}|${creatives.map((item) => item.id).join(',')}`
+  const bidStrategy = template.bid_strategy ?? template.campaign.bid_strategy ?? 'LOWEST_COST_WITHOUT_CAP'
+
+  return [step({ platform: 'meta', accountId, entityType: 'campaign', entityId: `nueva:${template.id}`, entityName: operation.campaignName, field: 'create', before: 'none', after, beforeLabel: 'No existe', afterLabel: `Campaña nueva en pausa · ${money(next, currency)} / día · edad ${ageLabel(targeting.age_min ?? 18, targeting.age_max ?? 65)} · ${creatives.length} anuncio(s)`, warnings },
+    async () => {
+      const campaign = await metaRequest<{ id: string }>(`act_${accountId}/campaigns`, { name: operation.campaignName, objective: template.campaign!.objective!, status: 'PAUSED', special_ad_categories: JSON.stringify(template.campaign!.special_ad_categories ?? []), is_adset_budget_sharing_enabled: 'false' }, 'POST')
+      try {
+        const adset = await metaRequest<{ id: string }>(`act_${accountId}/adsets`, {
+          name: operation.adsetName, campaign_id: campaign.id, daily_budget: String(nextMinor), status: 'PAUSED',
+          billing_event: template.billing_event ?? 'IMPRESSIONS', optimization_goal: template.optimization_goal!, bid_strategy: bidStrategy,
+          ...(template.bid_amount && bidStrategy !== 'LOWEST_COST_WITHOUT_CAP' ? { bid_amount: template.bid_amount } : {}),
+          ...(template.promoted_object ? { promoted_object: JSON.stringify(template.promoted_object) } : {}),
+          ...(template.destination_type ? { destination_type: template.destination_type } : {}),
+          ...(template.attribution_spec ? { attribution_spec: JSON.stringify(template.attribution_spec) } : {}),
+          targeting: JSON.stringify(targeting),
+        }, 'POST')
+        const adIds: string[] = []
+        for (const creative of creatives) {
+          const ad = await metaRequest<{ id: string }>(`act_${accountId}/ads`, { name: `${creative.name} · ${operation.campaignName}`.slice(0, 250), adset_id: adset.id, creative: JSON.stringify({ creative_id: creative.id }), status: 'PAUSED' }, 'POST')
+          adIds.push(ad.id)
+        }
+        return { campaignId: campaign.id, adsetId: adset.id, adIds }
+      } catch (error) {
+        await metaRequest(encodeURIComponent(campaign.id), { status: 'DELETED' }, 'POST').catch((cleanupError) => console.error('[conexa:copilot] no se pudo borrar la campaña incompleta', campaign.id, cleanupError instanceof Error ? cleanupError.message : cleanupError))
+        throw new CopilotError(`${error instanceof Error ? error.message : 'Meta Ads rechazó la creación.'} La campaña incompleta se eliminó.`, 502)
+      }
+    })]
 }
 
 async function planMeta(operation: Extract<RecommendationOperation, { platform: 'meta' }>, accounts: Set<string>): Promise<InternalStep[]> {
@@ -100,6 +168,7 @@ async function planMeta(operation: Extract<RecommendationOperation, { platform: 
     return id
   }
 
+  if (operation.kind === 'create_campaign') return planMetaCreate(operation, assertAccount)
   if (operation.kind === 'set_age_range') {
     if (operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax) throw new CopilotError('El rango de edad propuesto no es válido (debe estar entre 18 y 65+).', 422)
     const adsets = await Promise.all(operation.adsets.map((adset) => metaRequest<{ id: string; name?: string; account_id?: string; targeting?: Record<string, unknown> & { age_min?: number; age_max?: number; targeting_automation?: { advantage_audience?: number } } }>(encodeURIComponent(adset.id), { fields: 'id,name,account_id,targeting' })))
@@ -193,8 +262,8 @@ export async function executePlan(internal: InternalStep[]): Promise<PlanStepRes
     const { apply, ...publicStep } = item
     if (item.alreadyApplied) { results.push({ ...publicStep, outcome: 'skipped' }); continue }
     try {
-      await apply()
-      results.push({ ...publicStep, outcome: 'success' })
+      const created = await apply()
+      results.push({ ...publicStep, outcome: 'success', ...(created ? { created } : {}) })
     } catch (error) {
       results.push({ ...publicStep, outcome: 'failed', error: error instanceof Error ? error.message.slice(0, 500) : 'La plataforma no pudo aplicar el cambio.' })
     }
