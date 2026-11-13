@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { CopilotError } from './route-helpers'
 import type { ClientContextRecord } from './types'
 
-import { COMPETITOR_PREFIX, PROFILE_FIELD_KEYS, PROFILE_FIELDS, type ProfileFieldKey } from './profile-fields'
+import { COMPETITOR_PREFIX, DISCARDED_COMPETITOR_PREFIX, PROFILE_FIELD_KEYS, PROFILE_FIELDS, SUGGESTED_COMPETITOR_MARK, type ProfileFieldKey } from './profile-fields'
 
 export { COMPETITOR_PREFIX, PROFILE_FIELD_KEYS, PROFILE_FIELDS, type ProfileFieldKey }
 export type ClientProfile = Record<ProfileFieldKey, string | number | null>
@@ -15,6 +15,10 @@ export type ContextAssessment = {
   score: number
   fields: Array<{ key: ProfileFieldKey; label: string; value: string | number | null; filled: boolean; core: boolean }>
   competitors: string[]
+  competitorEntries: Array<{ noteId: string; name: string; detail: string; suggested: boolean }>
+  discardedCompetitors: string[]
+  /** Datos base completos y nunca se cargó ni descartó un competidor: la UI pide sugerencias automáticamente. */
+  autoSuggestCompetitors: boolean
   notesCount: number
   missing: Array<{ key: ProfileFieldKey | 'competitors'; label: string; question: string }>
 }
@@ -26,6 +30,8 @@ export function parseCompetitorNote(content: string) {
   const name = (separator > 0 ? rest.slice(0, separator) : rest).trim()
   return name ? { name, detail: separator > 0 ? rest.slice(separator + 1).trim() : '' } : null
 }
+
+export const discardedCompetitorNames = (notes: ClientContextRecord[]) => [...new Set(notes.filter((note) => note.content.startsWith(DISCARDED_COMPETITOR_PREFIX)).map((note) => note.content.slice(DISCARDED_COMPETITOR_PREFIX.length).trim()).filter(Boolean))]
 
 export const competitorNames = (notes: ClientContextRecord[]) => [...new Set(notes.map((note) => parseCompetitorNote(note.content)?.name).filter((name): name is string => Boolean(name)))]
 
@@ -42,10 +48,15 @@ export function assessContext(profile: ClientProfile | null, notes: ClientContex
   const complete = coreComplete && filled('primary_conversion_type') && hasTarget && competitors.length > 0
   const missing: ContextAssessment['missing'] = PROFILE_FIELDS.filter((field) => !filled(field.key) && (field.core || field.key === 'primary_conversion_type' || ((field.key === 'target_cpl' || field.key === 'target_monthly_sales') && !hasTarget) || field.key === 'additional_context'))
     .map((field) => ({ key: field.key, label: field.label, question: field.question }))
-  if (!competitors.length) missing.push({ key: 'competitors', label: 'Competencia', question: '¿Quiénes son sus 2 o 3 competidores principales y qué están haciendo (ofertas, mensajes, canales)?' })
+  if (!competitors.length) missing.push({ key: 'competitors', label: 'Competencia', question: 'Tocá «Sugerir con IA» en el bloque Contexto para que Conexa busque los competidores, o nombrá los que conozcas.' })
   const points = fields.filter((field) => field.filled).length + Math.min(competitors.length, 2) + Math.min(notes.length - competitors.length, 3) * 0.5
   const maxPoints = PROFILE_FIELDS.length + 2 + 1.5
-  return { level: complete ? 'completo' : coreComplete ? 'intermedio' : 'debil', score: Math.min(1, points / maxPoints), fields, competitors, notesCount: notes.length, missing }
+  const competitorEntries = notes.flatMap((note) => {
+    const parsed = parseCompetitorNote(note.content)
+    return parsed ? [{ noteId: note.id, name: parsed.name, detail: parsed.detail, suggested: parsed.detail.startsWith(SUGGESTED_COMPETITOR_MARK) }] : []
+  })
+  const discardedCompetitors = discardedCompetitorNames(notes)
+  return { level: complete ? 'completo' : coreComplete ? 'intermedio' : 'debil', score: Math.min(1, points / maxPoints), fields, competitors, competitorEntries, discardedCompetitors, autoSuggestCompetitors: coreComplete && !competitorEntries.length && !discardedCompetitors.length, notesCount: notes.length, missing }
 }
 
 export async function readClientProfile(clientId: string): Promise<ClientProfile | null> {
