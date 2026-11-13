@@ -37,8 +37,9 @@ export function useCopilot(clientId: string) {
       await recommendations.mutate()
     },
     publish: async (id: string) => {
-      await copilotApi.publish(clientId, id)
-      await recommendations.mutate()
+      const { recommendation } = await copilotApi.publish(clientId, id)
+      await recommendations.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? recommendation : item)) }, { revalidate: true })
+      return recommendation
     },
     discard: async (id: string, reason?: string) => {
       await copilotApi.discard(clientId, id, reason)
