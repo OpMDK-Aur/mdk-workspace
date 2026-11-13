@@ -248,15 +248,15 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(publishTarget)} onOpenChange={(open) => { if (!open && !publishing && !preparing) { setPublishTarget(null); setPlan(null) } }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription>Se aplica en la cuenta real del cliente exactamente lo que ves abajo, leído recién de la plataforma. Si algo cambia antes de confirmar, se te vuelve a mostrar.</DialogDescription></DialogHeader>
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-[#e7e7e5] bg-[#ffffff] text-[#1c1917] sm:max-w-lg">
+        <DialogHeader><DialogTitle className="text-[#1c1917]">Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription className="text-xs leading-relaxed text-[#666]">Se aplica en la cuenta real del cliente exactamente lo que ves abajo, leído recién de la plataforma. Si algo cambia antes de confirmar, se te vuelve a mostrar.</DialogDescription></DialogHeader>
         {publishTarget && <div className="flex flex-col gap-3">
           <p className="text-sm font-semibold leading-snug">{publishTarget.title}</p>
           {preparing && <p role="status" className="flex items-center gap-2 rounded-md bg-[#fafaf9] px-3 py-2.5 text-xs text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Leyendo los valores actuales en la plataforma…</p>}
           {plan && <PlanSteps steps={plan.steps} />}
           {prepareError && <p role="alert" className="rounded-md bg-[#fff0ec] px-3 py-2.5 text-xs leading-relaxed text-[#b42318]">{prepareError}</p>}
         </div>}
-        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => { setPublishTarget(null); setPlan(null) }}>{prepareError ? 'Cerrar' : 'Cancelar'}</Button>{prepareError && !plan && publishTarget && !preparing ? <Button variant="outline" onClick={() => openPublish(publishTarget)}>Volver a leer</Button> : <Button onClick={publish} disabled={publishing || preparing || !plan || plan.steps.every((item) => item.alreadyApplied)} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Confirmar'}</Button>}</DialogFooter>
+        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => { setPublishTarget(null); setPlan(null) }} className="border-[#e5e5e3] bg-[#ffffff] text-[#1c1917] hover:bg-[#f5f5f4] hover:text-[#1c1917]">{prepareError ? 'Cerrar' : 'Cancelar'}</Button>{prepareError && !plan && publishTarget && !preparing ? <Button variant="outline" onClick={() => openPublish(publishTarget)} className="border-[#e5e5e3] bg-[#ffffff] text-[#1c1917] hover:bg-[#f5f5f4] hover:text-[#1c1917]">Volver a leer</Button> : <Button onClick={publish} disabled={publishing || preparing || !plan || plan.steps.every((item) => item.alreadyApplied)} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Confirmar'}</Button>}</DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(discardTarget)} onOpenChange={(open) => { if (!open) setDiscardTarget(null) }}>
@@ -424,10 +424,23 @@ function OperationFields({ operation, onChange }: { operation: RecommendationOpe
 }
 
 function PlanSteps({ steps }: { steps: PlanStep[] }) {
-  return <ul className="flex flex-col gap-2">{steps.map((step) => <li key={`${step.entityId}-${step.field}`} className={cn('rounded-lg border p-3', step.alreadyApplied ? 'border-[#e7e7e5] bg-[#fafaf9] opacity-70' : 'border-[#f3dcc9] bg-[#fff8f2]')}>
-    <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{step.entityName}</p><span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[9px] font-medium text-[#666]">{PLATFORM_LABEL[step.platform]} · {step.entityType === 'campaign' ? 'Campaña' : step.entityType === 'adset' ? 'Conjunto' : 'Anuncio'}</span></div>
-    {step.alreadyApplied ? <p className="mt-1.5 text-[11px] text-[#666]">Ya aplicado ({step.afterLabel}); se omite.</p> : <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]"><span className="text-[#666]">{step.beforeLabel}</span><ArrowRight className="size-3 text-[#a8440c]" aria-label="pasa a" /><span className="font-semibold text-[#a8440c]">{step.afterLabel}</span>{step.pctChange !== null && <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-semibold text-[#5a3a22]">{step.pctChange > 0 ? '+' : ''}{Math.round(step.pctChange * 100)}%</span>}</p>}
-    {step.warnings.map((warning) => <p key={warning} className="mt-1.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-[#8a541e]"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{warning}</p>)}
+  return <ul className="flex flex-col gap-2">{steps.map((step) => <li key={`${step.entityId}-${step.field}`} className={cn('flex flex-col gap-3 rounded-xl border p-4 text-[#1c1917]', step.alreadyApplied ? 'border-[#e7e7e5] bg-[#fafaf9]' : 'border-[#f3dcc9] bg-[#fff8f2]')}>
+    <div className="flex items-start justify-between gap-3">
+      <p className="text-sm font-semibold leading-snug text-pretty">{step.entityName}</p>
+      <span className="shrink-0 rounded-full border border-[#ececea] bg-[#ffffff] px-2 py-0.5 text-[10px] font-medium text-[#666]">{PLATFORM_LABEL[step.platform]} · {step.entityType === 'campaign' ? 'Campaña' : step.entityType === 'adset' ? 'Conjunto' : 'Anuncio'}</span>
+    </div>
+    {step.alreadyApplied ? <p className="text-xs text-[#666]">Ya aplicado ({step.afterLabel}). Este paso se omite.</p> : <div className="flex items-stretch gap-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-[#ececea] bg-[#ffffff] px-3 py-2">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-[#8a8a87]">Actual</span>
+        <span className="text-sm font-medium text-[#444]">{step.beforeLabel}</span>
+      </div>
+      <ArrowRight className="size-4 shrink-0 self-center text-[#f97316]" aria-label="pasa a" />
+      <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-[#f9c9a3] bg-[#ffffff] px-3 py-2">
+        <span className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-wide text-[#a8440c]">Nuevo{step.pctChange !== null && <span className="rounded-full bg-[#fff1e6] px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-[#a8440c]">{step.pctChange > 0 ? '+' : ''}{Math.round(step.pctChange * 100)}%</span>}</span>
+        <span className="text-sm font-semibold text-[#a8440c]">{step.afterLabel}</span>
+      </div>
+    </div>}
+    {step.warnings.map((warning) => <p key={warning} className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[#8a541e]"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{warning}</p>)}
   </li>)}</ul>
 }
 
