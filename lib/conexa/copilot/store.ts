@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { STUCK_EXECUTION_MINUTES } from './config'
 import { CopilotError } from './route-helpers'
 import { buildPlan, executePlan } from './executors'
@@ -46,7 +47,8 @@ export async function listRecommendations(supabase: SupabaseClient, clientId: st
   const publishedIds = rows.filter((item) => item.status === 'published').map((item) => item.id)
   let decisions: DecisionRecord[] = []
   if (publishedIds.length) {
-    const { data: decisionRows, error: decisionError } = await supabase.from(DECISION_TABLE).select('id, recommendation_id, user_id, action, platform, entity_type, entity_id, value_before, value_after, outcome, created_at, payload').in('recommendation_id', publishedIds.slice(0, 200)).order('created_at', { ascending: true })
+    // Las decisiones son auditoría: solo el servidor las lee y escribe. Se acotan a recomendaciones que la sesión ya pudo leer con RLS.
+    const { data: decisionRows, error: decisionError } = await createAdminClient().from(DECISION_TABLE).select('id, recommendation_id, user_id, action, platform, entity_type, entity_id, value_before, value_after, outcome, created_at, payload').in('recommendation_id', publishedIds.slice(0, 200)).order('created_at', { ascending: true })
     if (decisionError) logDbError(decisionError, { table: DECISION_TABLE, op: 'select', columns: 'id, recommendation_id, user_id, action, platform, entity_type, entity_id, value_before, value_after, outcome, created_at, payload', filters: 'recommendation_id=in, order created_at asc' })
     else decisions = (decisionRows ?? []) as unknown as DecisionRecord[]
   }
@@ -197,9 +199,10 @@ function decisionRow(recommendation: Recommendation, userId: string, item: PlanS
   }
 }
 
-async function recordDecisions(supabase: SupabaseClient, rows: Array<Record<string, unknown>>) {
+/** Solo se llama después de que la sesión del usuario tomó o cerró la recomendación con RLS, así que la fila corresponde a una aprobación real. */
+async function recordDecisions(rows: Array<Record<string, unknown>>) {
   if (!rows.length) return
-  const { error } = await supabase.from(DECISION_TABLE).insert(rows)
+  const { error } = await createAdminClient().from(DECISION_TABLE).insert(rows)
   if (error) logDbError(error, { table: DECISION_TABLE, op: 'insert', columns: [...new Set(rows.flatMap((row) => Object.keys(row)))].join(', '), filters: `${rows.length} fila(s)` })
 }
 
@@ -226,7 +229,7 @@ export async function confirmPublish(supabase: SupabaseClient, clientId: string,
   }
 
   const results = await executePlan(built.internal)
-  await recordDecisions(supabase, results.filter((item) => item.outcome !== 'skipped').map((item) => decisionRow(recommendation, userId, item, built.plan.hash)))
+  await recordDecisions(results.filter((item) => item.outcome !== 'skipped').map((item) => decisionRow(recommendation, userId, item, built.plan.hash)))
   const executionResult: ExecutionResult = { steps: results, planHash: built.plan.hash, executedAt: new Date().toISOString() }
   const failed = results.filter((item) => item.outcome === 'failed')
 
@@ -251,7 +254,7 @@ export async function markManualDone(supabase: SupabaseClient, clientId: string,
   if (!data) throw new CopilotError('Solo se pueden marcar como hechas las recomendaciones en borrador sin acción ejecutable.', 409)
   const recommendation = data as unknown as Recommendation
   const platform = recommendation.platforms.find((item) => item === 'meta' || item === 'google_ads') ?? null
-  await recordDecisions(supabase, [{ recommendation_id: id, client_id: clientId, user_id: userId, action: 'manual_done', platform, outcome: 'success', payload: { manual: true, title: recommendation.title } }])
+  await recordDecisions([{ recommendation_id: id, client_id: clientId, user_id: userId, action: 'manual_done', platform, outcome: 'success', payload: { manual: true, title: recommendation.title } }])
   return recommendation
 }
 
