@@ -89,6 +89,8 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ block: 'end' }) }, [copilot.messages.length, busy])
 
   const [publishing, setPublishing] = useState(false)
+  const [preparing, setPreparing] = useState(false)
+  const [prepareError, setPrepareError] = useState<string | null>(null)
   const drafts = useMemo(() => copilot.recommendations.filter((item) => item.status === 'draft' || item.status === 'executing'), [copilot.recommendations])
   const history = useMemo(() => copilot.recommendations.filter((item) => item.status === 'published' || item.status === 'discarded').sort((a, b) => new Date(b.status === 'published' ? b.published_at ?? b.updated_at : b.discarded_at ?? b.updated_at).getTime() - new Date(a.status === 'published' ? a.published_at ?? a.updated_at : a.discarded_at ?? a.updated_at).getTime()), [copilot.recommendations])
   const filteredDrafts = useMemo(() => {
@@ -165,6 +167,18 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
     } finally { setPublishing(false) }
   }
 
+  async function openPublish(item: Recommendation) {
+    setPublishTarget(item)
+    setPrepareError(null)
+    if (item.operation) return
+    setPreparing(true)
+    try {
+      setPublishTarget(await copilot.prepare(item.id))
+    } catch (error) {
+      setPrepareError(error instanceof Error ? error.message : 'No se pudo preparar la acción en la plataforma.')
+    } finally { setPreparing(false) }
+  }
+
   async function discard() {
     if (!discardTarget) return
     try {
@@ -177,7 +191,7 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
 
   const panels: Record<Panel, ReactNode> = {
     chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} contextCount={copilot.contexts.length} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
-    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={setPublishTarget} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
+    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
     history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
   }
 
@@ -209,11 +223,11 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
         {editTarget && <EditRecommendationDialog item={editTarget} onCancel={() => setEditTarget(null)} onSave={async (patch) => { try { await copilot.edit(editTarget.id, patch); setEditTarget(null); toast.success('Borrador actualizado') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo editar') } }} />}
       </DialogContent>
     </Dialog>
-    <Dialog open={Boolean(publishTarget)} onOpenChange={(open) => { if (!open && !publishing) setPublishTarget(null) }}>
+    <Dialog open={Boolean(publishTarget)} onOpenChange={(open) => { if (!open && !publishing && !preparing) setPublishTarget(null) }}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription>El cambio se aplicará ahora en la cuenta real del cliente. Antes de enviarlo, Conexa verifica que la entidad pertenezca a una cuenta vinculada y lee el valor actual; los cambios de presupuesto mayores a ±30% se rechazan.</DialogDescription></DialogHeader>
-        {publishTarget && <div className="flex flex-col gap-2 rounded-lg border border-[#e7e7e5] bg-[#fafaf9] p-3"><p className="text-sm font-semibold">{publishTarget.title}</p>{publishTarget.operation && <p className="rounded-md bg-white px-2.5 py-2 text-xs font-medium text-[#a8440c]">{describeOperation(publishTarget.operation)}</p>}<p className="text-xs text-[#666]">{publishTarget.description}</p></div>}
-        <DialogFooter><Button variant="outline" disabled={publishing} onClick={() => setPublishTarget(null)}>Cancelar</Button><Button onClick={publish} disabled={publishing} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Ejecutar en plataforma'}</Button></DialogFooter>
+        <DialogHeader><DialogTitle>Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription>El cambio se aplicará en la cuenta real del cliente. Antes de enviarlo, Conexa verifica que la entidad pertenezca a una cuenta vinculada y lee el valor actual; los cambios de presupuesto mayores a ±30% se rechazan.</DialogDescription></DialogHeader>
+        {publishTarget && <div className="flex flex-col gap-2 rounded-lg border border-[#e7e7e5] bg-[#fafaf9] p-3"><p className="text-sm font-semibold">{publishTarget.title}</p>{preparing ? <p role="status" className="flex items-center gap-2 rounded-md bg-white px-2.5 py-2 text-xs text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Buscando en la plataforma la campaña o anuncio que corresponde…</p> : publishTarget.operation ? <p className="rounded-md bg-white px-2.5 py-2 text-xs font-medium text-[#a8440c]">{describeOperation(publishTarget.operation)}</p> : null}{prepareError && <p role="alert" className="rounded-md bg-[#fff0ec] px-2.5 py-2 text-xs leading-relaxed text-[#b42318]">{prepareError}</p>}<p className="text-xs text-[#666]">{publishTarget.description}</p></div>}
+        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => setPublishTarget(null)}>{prepareError ? 'Cerrar' : 'Cancelar'}</Button><Button onClick={publish} disabled={publishing || preparing || !publishTarget?.operation} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Ejecutar en plataforma'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(discardTarget)} onOpenChange={(open) => { if (!open) setDiscardTarget(null) }}>
@@ -320,9 +334,9 @@ function RecommendationCard({ item, onSelect, onEdit, onEditWithChat, onPublish,
     {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-[#fafaf9] p-3"><p className="text-[11px] leading-relaxed text-[#555]">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[10px] leading-relaxed text-[#666]"><span className="font-semibold">{evidence.label}: </span>{evidence.excerpt}</li>)}</ul></div>}
     <div className="mt-3"><p className="text-[10px] font-semibold text-[#555]">Acciones sugeridas</p><ol className="mt-1 list-decimal pl-4 text-[10px] leading-relaxed text-[#666]">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></div>
     <p className="mt-2 text-[10px] text-[#555]"><span className="font-semibold">Impacto esperado:</span> {item.expected_impact}</p>
-    <div className="mt-3 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-[#a8440c]">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-[#5a3a22]">{describeOperation(item.operation)}</span></> : <span className="text-[#777]">Acción manual: esta recomendación no tiene un cambio ejecutable automáticamente. Pedile al chat una versión con una acción concreta (pausar/activar o presupuesto en Meta Ads o Google Ads).</span>}</div>
+    <div className="mt-3 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-[#a8440c]">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-[#5a3a22]">{describeOperation(item.operation)}</span></> : <span className="text-[#777]">Al publicar, Conexa buscará en Meta Ads o Google Ads la entidad que corresponde y te mostrará el cambio exacto antes de ejecutarlo.</span>}</div>
     {item.execution_error && <p role="alert" className="mt-2 rounded-md bg-[#fff0ec] px-3 py-2 text-[10px] leading-relaxed text-[#b42318]">Último intento falló: {item.execution_error}</p>}
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eeeeeb] pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-[#777]">Descartar</Button></div><Button size="sm" onClick={onPublish} disabled={!item.operation || item.status === 'executing'} title={item.operation ? undefined : 'Sin acción ejecutable en plataforma'} className="h-8 bg-[#f97316] px-3 text-[10px] text-white hover:bg-[#e7650c]">{item.status === 'executing' ? <><LoaderCircle className="size-3 animate-spin" />Ejecutando…</> : 'Publicar'}</Button></div>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eeeeeb] pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-[#777]">Descartar</Button></div><Button size="sm" onClick={onPublish} disabled={item.status === 'executing'} className="h-8 bg-[#f97316] px-3 text-[10px] text-white hover:bg-[#e7650c]">{item.status === 'executing' ? <><LoaderCircle className="size-3 animate-spin" />Ejecutando…</> : 'Publicar'}</Button></div>
   </li>
 }
 
