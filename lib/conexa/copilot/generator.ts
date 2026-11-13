@@ -81,7 +81,7 @@ CONTEXTO PERSISTENTE: contextToSave contiene solo fragmentos (text) que aparezca
 FORMULARIO DE CONTEXTO (contextAssessment): muestra qué campos del formulario Contexto del cliente están cargados, cuáles faltan y el nivel (debil, intermedio, completo).
 - En modo "chat", si el usuario da un dato que corresponde a un campo del formulario, devolvelo en profileUpdates con el valor limpio (números sin símbolos para target_cpl y target_monthly_sales; en la moneda de la cuenta). Solo datos que el usuario dijo en currentUserMessage; nunca deduzcas ni inventes. El usuario los confirma antes de guardarlos.
 - Si el nivel es "debil" o "intermedio", al final de reply pedí UNO o DOS de los datos de contextAssessment.missing, en el orden en que aparecen, con una pregunta concreta. No repitas una pregunta que el usuario ya respondió en history. Si el usuario pide algo concreto, primero respondé eso.
-- Con contexto débil, igual podés proponer recomendaciones si los datos de plataforma alcanzan, pero aclaralo en reply.
+- CONTEXTO OBLIGATORIO: si contextGate.blocked es true, Recomendaciones está bloqueado hasta completar los datos base (contextGate.missingCore). Devolvé recommendations vacío, no analices las cuentas y dedicá reply a pedir esos datos de a uno o dos, explicando en una frase que son necesarios para recomendar. Igual devolvé profileUpdates con lo que el usuario haya dicho.
 - En modo "scan", profileUpdates va vacío.
 
 COMPETENCIA (competitorResearch): por competidor trae lo que cargó el equipo, anuncios activos de la Biblioteca de anuncios de Meta y un resumen de búsqueda web, cada uno con su evidenceId. Usalo para detectar ofertas, mensajes o canales que el cliente no está cubriendo. Distinguí siempre la fuente: lo de la web puede estar desactualizado y lo tenés que presentar como "según información pública". Nunca copies anuncios ni marcas de un competidor.
@@ -201,12 +201,15 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   const connectedPlatforms = platformData.platforms
   const profile = storedProfile ?? (context.profile as unknown as ClientProfile | null)
   const assessment = assessContext(profile, context.notes)
+  const missingCore = assessment.fields.filter((field) => field.core && !field.filled).map((field) => field.label)
+  const contextBlocked = missingCore.length > 0
+  if (contextBlocked && (runMode === 'scan' || input.editingRecommendationId)) throw new CopilotError(`Para usar Recomendaciones primero completá el contexto del cliente. Falta: ${missingCore.join(', ')}.`, 412)
   const competitorNotes = new Map<string, string[]>()
   for (const note of context.notes) {
     const parsed = parseCompetitorNote(note.content)
     if (parsed) competitorNotes.set(parsed.name, [...(competitorNotes.get(parsed.name) ?? []), ...(parsed.detail ? [parsed.detail] : [])])
   }
-  const shouldResearch = competitorNotes.size > 0 && (runMode === 'scan' || COMPETITOR_INTENT.test(message))
+  const shouldResearch = !contextBlocked && competitorNotes.size > 0 && (runMode === 'scan' || COMPETITOR_INTENT.test(message))
   const competitors = shouldResearch
     ? await researchCompetitors([...competitorNotes].map(([name, notes]) => ({ name, notes })), typeof profile?.industry === 'string' ? profile.industry : null)
     : { research: [], sources: [] }
@@ -233,6 +236,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
     connectedPlatforms,
     profile,
     contextAssessment: { level: assessment.level, missing: assessment.missing, competitors: assessment.competitors },
+    contextGate: { blocked: contextBlocked, missingCore },
     competitorResearch: competitors.research,
     storedContext: context.notes.slice(0, 30).map((note) => ({ source: note.source, content: clip(note.content, 900) })),
     tasks: context.tasks.slice(0, 25).map((task) => ({ id: task.id, title: clip(task.titulo, 160), description: clip(task.descripcion, 420), state: task.estado, priority: task.prioridad, dueDate: task.fecha_vencimiento })),
@@ -255,7 +259,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   let output = await callModel()
   let evaluated = evaluate(output, evidenceById, connectedPlatforms, catalog, linkedAccounts)
   const failing = evaluated.map((item, index) => ({ index, title: item.draft.title, errors: item.errors })).filter((item) => item.errors.length)
-  if (failing.length) {
+  if (failing.length && !contextBlocked) {
     try {
       const retry = await callModel({ validationErrors: failing.map(({ index, title, errors }) => ({ recommendationIndex: index, title, errors })), previousDraftOutput: output.recommendations })
       output = retry
@@ -264,7 +268,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
       console.error('[conexa:copilot] reintento de validación', error instanceof Error ? error.message : error)
     }
   }
-  const drafts = finalize(evaluated)
+  const drafts = contextBlocked ? [] : finalize(evaluated)
 
   const runId = randomUUID()
   let createdRecommendations: Recommendation[] = []

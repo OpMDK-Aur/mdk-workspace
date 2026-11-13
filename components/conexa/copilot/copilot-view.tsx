@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, ArrowDownToLine, ArrowRight, BarChart3, Check, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Maximize2, MessageCircle, Minimize2, Search, Send, Sparkles, Tag, Users, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowDownToLine, ArrowRight, BarChart3, Check, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Lock, Maximize2, MessageCircle, Minimize2, Search, Send, Sparkles, Tag, Users, X, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,7 @@ const PLATFORM_LOGOS: Partial<Record<RecommendationPlatform, string>> = {
 }
 const PRIORITY_OPTIONS: RecommendationPriority[] = ['alta', 'media', 'baja']
 const FILTER_ALL = 'all'
+const COMPLETE_CONTEXT_MESSAGE = 'Ayudame a completar el contexto del cliente. Preguntame lo que falta de a uno o dos datos por vez.'
 
 export function CopilotView({ client }: { client: Client | null }) {
   if (!client) return <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Elegí un cliente para ver sus recomendaciones.</div>
@@ -127,6 +128,7 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
     window.setTimeout(() => document.getElementById('recommendation-chat-input')?.focus(), 30)
   }
 
+  const missingContext = useMemo(() => copilot.assessment?.fields.filter((field) => field.core && !field.filled).map((field) => field.label) ?? [], [copilot.assessment])
   const [profileProposal, setProfileProposal] = useState<ProfileUpdate[]>([])
   const [savingProfile, setSavingProfile] = useState(false)
 
@@ -234,8 +236,8 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   }
 
   const panels: Record<Panel, ReactNode> = {
-    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage('Ayudame a completar el contexto del cliente. Preguntame lo que falta de a uno o dos datos por vez.')} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
-    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy || scanning} scanning={scanning} onScan={scan} onMarkDone={markDone} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
+    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage(COMPLETE_CONTEXT_MESSAGE)} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
+    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} missingContext={missingContext} onCompleteContext={() => { setMobilePanel('chat'); void submitMessage(COMPLETE_CONTEXT_MESSAGE) }} filters={filters} search={search} loading={copilot.isLoading || busy || scanning} scanning={scanning} onScan={scan} onMarkDone={markDone} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
     history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
   }
 
@@ -402,8 +404,10 @@ function ProfileProposalCard({ proposal, saving, onSave, onDismiss }: { proposal
   </section>
 }
 
-function RecommendationsPanel({ items, total, filters, search, loading, scanning, error, onScan, onMarkDone, onSearch, onFilters, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: {
+function RecommendationsPanel({ items, total, filters, search, loading, scanning, error, missingContext, onCompleteContext, onScan, onMarkDone, onSearch, onFilters, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: {
   items: Recommendation[]; total: number; filters: { platform: string; type: string; priority: string; status: string }; search: string; loading: boolean; scanning: boolean; error?: string
+  missingContext: string[]
+  onCompleteContext: () => void
   onScan: () => void
   onMarkDone: (item: Recommendation) => void
   onSearch: (value: string) => void
@@ -414,9 +418,10 @@ function RecommendationsPanel({ items, total, filters, search, loading, scanning
   onPublish: (item: Recommendation) => void
   onDiscard: (item: Recommendation) => void
 }) {
+  const blocked = missingContext.length > 0
   return <div className="flex min-h-0 flex-1 flex-col bg-[#fafaf9]">
     <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2.5">
-      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">{total} pendientes</span><Button type="button" size="sm" onClick={onScan} disabled={scanning} className="ml-auto h-7 bg-[#f97316] px-2.5 text-[10px] text-white hover:bg-[#e7650c]">{scanning ? <><LoaderCircle className="size-3 animate-spin" />Analizando cuentas…</> : <><Sparkles className="size-3" />Generar recomendaciones</>}</Button></div>
+      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">{total} pendientes</span><Button type="button" size="sm" onClick={onScan} disabled={scanning || blocked} title={blocked ? 'Completá el contexto del cliente para generar recomendaciones' : undefined} className="ml-auto h-7 bg-[#f97316] px-2.5 text-[10px] text-white hover:bg-[#e7650c]">{scanning ? <><LoaderCircle className="size-3 animate-spin" />Analizando cuentas…</> : <><Sparkles className="size-3" />Generar recomendaciones</>}</Button></div>
       <div className="flex flex-wrap gap-1.5">
         <select aria-label="Filtrar por plataforma" value={filters.platform} onChange={(event) => onFilters({ ...filters, platform: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todas las plataformas</option>{PLATFORM_OPTIONS.map((platform) => <option key={platform} value={platform}>{PLATFORM_LABEL[platform]}</option>)}</select>
         <select aria-label="Filtrar por tipo" value={filters.type} onChange={(event) => onFilters({ ...filters, type: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todos los tipos</option>{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select>
@@ -425,6 +430,17 @@ function RecommendationsPanel({ items, total, filters, search, loading, scanning
       </div>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      {blocked && <section aria-labelledby="context-gate-title" className="mb-3 flex flex-col gap-3 rounded-xl border border-[#f3dcc9] bg-[#ffffff] p-4 text-[#252525]">
+        <div className="flex items-start gap-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#fff2e9]"><Lock className="size-4 text-[#c55208]" aria-hidden="true" /></span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <h3 id="context-gate-title" className="text-sm font-semibold text-balance">Completá el contexto para usar Recomendaciones</h3>
+            <p className="text-[11px] leading-relaxed text-[#666] text-pretty">Sin saber qué vende el cliente y qué busca lograr, Conexa no puede juzgar si una campaña rinde. Respondé en el chat y se guarda en Contexto del cliente.</p>
+          </div>
+        </div>
+        <ul className="flex flex-wrap gap-1.5" aria-label="Datos que faltan">{missingContext.map((label) => <li key={label} className="rounded-full border border-[#f3dcc9] bg-[#fff8f2] px-2.5 py-1 text-[10px] font-medium text-[#8a541e]">{label}</li>)}</ul>
+        <Button type="button" size="sm" onClick={onCompleteContext} className="h-8 self-start bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]"><MessageCircle className="size-3.5" />Completar en el chat</Button>
+      </section>}
       {error && <p role="alert" className="mb-3 rounded-md bg-[#fff3ed] px-3 py-2 text-[11px] text-[#9a3412]">{error}</p>}
       {scanning && <p role="status" className="mb-3 flex items-center gap-2 rounded-md bg-white px-3 py-2 text-[11px] text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está revisando los últimos 30 días de las cuentas, el CRM y el contexto. Puede tardar un par de minutos.</p>}
       {loading && !error ? <div className="flex flex-col gap-3" aria-label="Generando recomendaciones"><Skeleton className="h-36 w-full bg-[#f0f0ee]" /><Skeleton className="h-36 w-full bg-[#f0f0ee]" /></div> : items.length ? <ul className="flex flex-col gap-3">{items.map((item) => <RecommendationCard key={item.id} item={item} onSelect={() => onSelect(item)} onEdit={() => onEdit(item)} onEditWithChat={() => onEditWithChat(item)} onPublish={() => onPublish(item)} onMarkDone={() => onMarkDone(item)} onDiscard={() => onDiscard(item)} />)}</ul> : <div className="mt-8 rounded-xl border border-dashed border-[#dededb] bg-white p-8 text-center"><Lightbulb className="mx-auto size-5 text-[#f97316]" /><p className="mt-3 text-sm font-semibold">No hay recomendaciones pendientes.</p><p className="mt-1 text-xs text-[#777]">Usá «Generar recomendaciones» o contale al chat sobre el cliente.</p></div>}
