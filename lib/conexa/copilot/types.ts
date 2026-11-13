@@ -17,7 +17,55 @@ export type RecommendationOperation =
   | { platform: 'google_ads'; kind: 'set_status'; customerId: string; campaignId: string; entityName: string; status: 'ENABLED' | 'PAUSED' }
   | { platform: 'google_ads'; kind: 'set_daily_budget'; customerId: string; campaignId: string; entityName: string; dailyBudget: number }
 
-export type ExecutionResult = { platform: 'meta' | 'google_ads'; entityId: string; entityName: string; before: string; after: string; executedAt: string }
+export type PlanStep = {
+  platform: 'meta' | 'google_ads'
+  accountId: string
+  entityType: 'campaign' | 'adset' | 'ad'
+  entityId: string
+  entityName: string
+  field: 'status' | 'daily_budget' | 'age_range'
+  before: string | number
+  after: string | number
+  beforeLabel: string
+  afterLabel: string
+  pctChange: number | null
+  warnings: string[]
+  alreadyApplied: boolean
+}
+export type ExecutionPlan = { steps: PlanStep[]; hash: string }
+export type PlanStepResult = PlanStep & { outcome: 'success' | 'failed' | 'skipped'; error?: string }
+
+type LegacyExecutionResult = { platform: 'meta' | 'google_ads'; entityId: string; entityName: string; before: string; after: string; executedAt: string }
+export type ExecutionResult =
+  | LegacyExecutionResult
+  | { manual: true; executedAt: string }
+  | { steps: PlanStepResult[]; planHash: string; executedAt: string }
+
+export type DecisionRecord = {
+  id: string
+  recommendation_id?: string | null
+  user_id: string | null
+  user_name?: string | null
+  action: 'publish' | 'discard' | 'revert' | 'manual_done'
+  platform: 'meta' | 'google_ads' | null
+  entity_type: string | null
+  entity_id: string | null
+  value_before: { value?: unknown; label?: string } | null
+  value_after: { value?: unknown; label?: string } | null
+  outcome: 'success' | 'failed' | null
+  created_at: string
+  payload: { step?: Partial<PlanStepResult>; [key: string]: unknown } | null
+}
+
+export type RecommendationSource = 'chat' | 'scan' | 'manual'
+
+/** Líneas legibles del resultado, compatibles con filas anteriores a la migración. */
+export function executionLines(result: ExecutionResult | null) {
+  if (!result) return []
+  if ('manual' in result) return ['Marcada como hecha manualmente']
+  if ('steps' in result) return result.steps.map((item) => `${item.entityName}: ${item.beforeLabel} → ${item.afterLabel}${item.outcome === 'failed' ? ' (falló)' : item.outcome === 'skipped' ? ' (ya aplicado)' : ''}`)
+  return [`${result.entityName}: ${result.before} → ${result.after}`]
+}
 
 export const META_LEVEL_LABEL = { campaign: 'Campaña', adset: 'Conjunto de anuncios', ad: 'Anuncio' } as const
 
@@ -35,6 +83,12 @@ export type Recommendation = {
   operation: RecommendationOperation | null
   execution_result: ExecutionResult | null
   execution_error: string | null
+  non_executable_reason: string | null
+  source?: RecommendationSource | null
+  run_id?: string | null
+  dedupe_key?: string | null
+  executing_at?: string | null
+  decisions?: DecisionRecord[]
   id: string
   client_id: string
   title: string
@@ -59,7 +113,7 @@ export type Recommendation = {
   updated_at: string
 }
 
-export type RecommendationDraft = Pick<Recommendation, 'title' | 'platforms' | 'type' | 'priority' | 'description' | 'rationale' | 'suggested_actions' | 'expected_impact' | 'evidence'> & { operation?: RecommendationOperation | null }
+export type RecommendationDraft = Pick<Recommendation, 'title' | 'platforms' | 'type' | 'priority' | 'description' | 'rationale' | 'suggested_actions' | 'expected_impact' | 'evidence'> & { operation?: RecommendationOperation | null; non_executable_reason?: string | null; dedupe_key?: string | null }
 
 export type ClientContextRecord = {
   id: string
