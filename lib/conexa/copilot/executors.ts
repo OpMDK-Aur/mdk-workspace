@@ -45,7 +45,34 @@ export async function metaRequest<T>(path: string, params: Record<string, string
   return data as T
 }
 
+const ageLabel = (min: number, max: number) => `${min} a ${max >= 65 ? '65+' : max}`
+
+async function executeMetaAgeRange(operation: Extract<RecommendationOperation, { kind: 'set_age_range' }>, accounts: Set<string>): Promise<ExecutionResult> {
+  if (operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax) throw new CopilotError('El rango de edad propuesto no es válido (debe estar entre 18 y 65+).', 422)
+  const adsets = await Promise.all(operation.adsets.map((adset) => metaRequest<{ id: string; name?: string; account_id?: string; targeting?: Record<string, unknown> & { age_min?: number; age_max?: number } }>(encodeURIComponent(adset.id), { fields: 'id,name,account_id,targeting' })))
+  for (const adset of adsets) {
+    if (!accounts.has(String(adset.account_id ?? '').replace(/^act_/, ''))) throw new CopilotError(`El conjunto «${adset.name ?? adset.id}» no pertenece a una cuenta de Meta vinculada a este cliente.`, 403)
+    if (!adset.targeting) throw new CopilotError(`No se pudo leer la segmentación del conjunto «${adset.name ?? adset.id}».`, 422)
+  }
+  const pending = adsets.filter((adset) => (adset.targeting!.age_min ?? 18) !== operation.ageMin || (adset.targeting!.age_max ?? 65) !== operation.ageMax)
+  if (!pending.length) throw new CopilotError(`Los conjuntos ya tienen la edad ${ageLabel(operation.ageMin, operation.ageMax)}.`, 409)
+
+  const applied: string[] = []
+  for (const adset of pending) {
+    try {
+      await metaRequest(encodeURIComponent(adset.id), { targeting: JSON.stringify({ ...adset.targeting, age_min: operation.ageMin, age_max: operation.ageMax }) }, 'POST')
+      applied.push(adset.name ?? adset.id)
+    } catch (error) {
+      if (!applied.length) throw error
+      throw new CopilotError(`Se cambió la edad en ${applied.map((name) => `«${name}»`).join(', ')}, pero falló en «${adset.name ?? adset.id}»: ${error instanceof Error ? error.message : 'error de Meta'}. Revisá Meta Ads antes de reintentar.`, 502)
+    }
+  }
+  const before = [...new Set(pending.map((adset) => ageLabel(adset.targeting!.age_min ?? 18, adset.targeting!.age_max ?? 65)))].join(' / ')
+  return { platform: 'meta', entityId: pending.map((adset) => adset.id).join(','), entityName: pending.length === 1 ? pending[0].name ?? pending[0].id : `${pending.length} conjuntos`, before: `Edad ${before}`, after: `Edad ${ageLabel(operation.ageMin, operation.ageMax)}`, executedAt: new Date().toISOString() }
+}
+
 async function executeMeta(operation: Extract<RecommendationOperation, { platform: 'meta' }>, accounts: Set<string>): Promise<ExecutionResult> {
+  if (operation.kind === 'set_age_range') return executeMetaAgeRange(operation, accounts)
   const entity = await metaRequest<{ id: string; name?: string; account_id?: string; status?: string; daily_budget?: string }>(encodeURIComponent(operation.entityId), { fields: operation.level === 'ad' ? 'id,name,account_id,status' : 'id,name,account_id,status,daily_budget' })
   const accountId = String(entity.account_id ?? '').replace(/^act_/, '')
   if (!accountId || !accounts.has(accountId)) throw new CopilotError('La entidad de Meta no pertenece a una cuenta vinculada a este cliente.', 403)
