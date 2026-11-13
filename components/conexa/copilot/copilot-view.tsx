@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useCopilot } from './use-copilot'
+import type { ContextAssessment, ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
+import { PROFILE_FIELD_LABEL } from '@/lib/conexa/copilot/profile-fields'
 import { describeOperation, executionLines, PLATFORM_LABEL, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
 
 type Client = {
@@ -125,14 +127,32 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
     window.setTimeout(() => document.getElementById('recommendation-chat-input')?.focus(), 30)
   }
 
-  async function sendMessage(event: FormEvent) {
+  const [profileProposal, setProfileProposal] = useState<ProfileUpdate[]>([])
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  async function saveProfileProposal(updates: ProfileUpdate[]) {
+    if (savingProfile || !updates.length) return
+    setSavingProfile(true)
+    try {
+      await copilot.saveProfile(updates)
+      setProfileProposal([])
+      toast.success('Guardado en Contexto del cliente')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contexto') } finally { setSavingProfile(false) }
+  }
+
+  function sendMessage(event: FormEvent) {
     event.preventDefault()
-    const message = messageInput.trim()
+    void submitMessage(messageInput)
+  }
+
+  async function submitMessage(text: string) {
+    const message = text.trim()
     if (!message || busy) return
     setMessageInput('')
     setBusy(true)
     try {
       const result = await copilot.send(message, editingRecommendationId)
+      if (result.profileProposal?.length) setProfileProposal(result.profileProposal)
       if (result.recommendations.length) { setMobilePanel('recommendations'); toast.success(`${result.recommendations.length} borrador(es) agregados`) }
       if (result.editedRecommendation) { setMobilePanel('recommendations'); toast.success('La recomendación quedó actualizada como borrador') }
       if (result.contextSaved) toast.success('El contexto nuevo quedó guardado para próximas conversaciones')
@@ -214,7 +234,7 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   }
 
   const panels: Record<Panel, ReactNode> = {
-    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} contextCount={copilot.contexts.length} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
+    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage('Ayudame a completar el contexto del cliente. Preguntame lo que falta de a uno o dos datos por vez.')} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
     recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy || scanning} scanning={scanning} onScan={scan} onMarkDone={markDone} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
     history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
   }
@@ -295,11 +315,17 @@ function PanelShell({ panel, full = false, onCollapse, onExpand, children }: { p
   </section>
 }
 
-function ChatPanel({ clientName, connectedPlatforms, messages, contextCount, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
+function ChatPanel({ clientName, connectedPlatforms, messages, assessment, contextUnavailable, proposal, savingProfile, onSaveProposal, onDismissProposal, onCompleteContext, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
   clientName: string
   connectedPlatforms: RecommendationPlatform[]
   messages: ReturnType<typeof useCopilot>['messages']
-  contextCount: number
+  assessment: ContextAssessment | null
+  contextUnavailable: boolean
+  proposal: ProfileUpdate[]
+  savingProfile: boolean
+  onSaveProposal: (updates: ProfileUpdate[]) => void
+  onDismissProposal: () => void
+  onCompleteContext: () => void
   busy: boolean
   input: string
   editing: boolean
@@ -310,11 +336,12 @@ function ChatPanel({ clientName, connectedPlatforms, messages, contextCount, bus
   endRef: React.RefObject<HTMLDivElement | null>
 }) {
   return <div className="flex min-h-0 flex-1 flex-col">
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#eeeeec] px-3 py-2"><p className="truncate text-[11px] text-[#777]">{clientName} · {contextCount} notas guardadas</p><Button type="button" variant="outline" size="sm" onClick={onAddManual} className="h-7 shrink-0 px-2 text-[10px]">+ Contexto</Button></div>
+    <ContextStatus assessment={assessment} unavailable={contextUnavailable} busy={busy} onAddManual={onAddManual} onComplete={onCompleteContext} />
     {!connectedPlatforms.length && <p role="status" className="border-b border-[#f0e5d9] bg-[#fff8f1] px-3 py-2 text-[10px] leading-relaxed text-[#8a541e]">Este cliente no tiene plataformas conectadas. El chat recomendará únicamente a partir del contexto, las tareas y los comentarios.</p>}
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
       {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Tiene una promoción este mes', 'El cliente quiere priorizar calidad sobre volumen'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
       <div className="flex flex-col gap-3">{messages.map((message) => <article key={message.id} className={cn('max-w-[96%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-[#fff2e9] text-[#4a2b18]' : 'self-start border border-[#eeeeec] bg-[#fafaf9] text-[#444]')}><p className="mb-1 text-[9px] font-semibold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'Vos' : 'Conexa'}</p><p className="whitespace-pre-wrap">{message.content}</p></article>)}</div>
+      {proposal.length > 0 && <ProfileProposalCard key={proposal.map((item) => `${item.field}:${item.value}`).join('|')} proposal={proposal} saving={savingProfile} onSave={onSaveProposal} onDismiss={onDismissProposal} />}
       {busy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está analizando contexto y datos…</div>}
       <div ref={endRef} />
     </div>
@@ -325,6 +352,54 @@ function ChatPanel({ clientName, connectedPlatforms, messages, contextCount, bus
       <p className="mt-2 text-[9px] leading-4 text-[#999]">Conexa no publica ni ejecuta cambios. Los mensajes solo se usan como contexto de Recomendaciones.</p>
     </form>
   </div>
+}
+
+const LEVEL_STYLE = {
+  debil: { label: 'Débil', badge: 'bg-[#fff0ec] text-[#b42318]', bar: 'bg-[#e5533d]', segments: 1 },
+  intermedio: { label: 'Intermedio', badge: 'bg-[#fff4e5] text-[#8a541e]', bar: 'bg-[#f59e0b]', segments: 2 },
+  completo: { label: 'Completo', badge: 'bg-[#e7f5ec] text-[#1b6b38]', bar: 'bg-[#22a05a]', segments: 3 },
+} as const
+
+function ContextStatus({ assessment, unavailable, busy, onAddManual, onComplete }: { assessment: ContextAssessment | null; unavailable: boolean; busy: boolean; onAddManual: () => void; onComplete: () => void }) {
+  const [open, setOpen] = useState(false)
+  const style = assessment ? LEVEL_STYLE[assessment.level] : null
+  const formatValue = (value: string | number | null) => (typeof value === 'number' ? value.toLocaleString('es-AR') : String(value ?? '').replace(/_/g, ' '))
+  return <div className="shrink-0 border-b border-[#eeeeec]">
+    <div className="flex items-center gap-2 px-3 py-2">
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="context-status-detail" className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left">
+        <span className="text-[11px] font-semibold text-[#252525]">Contexto</span>
+        {style ? <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', style.badge)}>{style.label}</span> : unavailable ? <span className="text-[10px] text-[#999]">No disponible</span> : <Skeleton className="h-4 w-14 rounded-full" />}
+        {style && <span className="flex items-center gap-0.5" aria-hidden="true">{[1, 2, 3].map((segment) => <span key={segment} className={cn('h-1.5 w-4 rounded-full', segment <= style.segments ? style.bar : 'bg-[#ececea]')} />)}</span>}
+        <ChevronDown className={cn('ml-auto size-3.5 shrink-0 text-[#777] transition-transform', open && 'rotate-180')} aria-hidden="true" />
+      </button>
+      <Button type="button" variant="outline" size="sm" onClick={onAddManual} className="h-7 shrink-0 px-2 text-[10px]">+ Contexto</Button>
+    </div>
+    {open && assessment && <div id="context-status-detail" className="flex flex-col gap-3 border-t border-[#f2f2f0] bg-[#fafaf9] px-3 py-3">
+      <ul className="flex flex-col gap-1.5">
+        {assessment.fields.map((field) => <li key={field.key} className="flex items-start gap-2 text-[11px] leading-snug">
+          {field.filled ? <Check className="mt-0.5 size-3 shrink-0 text-[#22a05a]" aria-label="Cargado" /> : <span className="mt-1 size-2 shrink-0 rounded-full border border-[#c9c9c6]" aria-label="Falta" />}
+          <span className="w-28 shrink-0 text-[#777]">{field.label}{field.core && <span className="sr-only"> (obligatorio)</span>}</span>
+          <span className={cn('min-w-0 flex-1 break-words', field.filled ? 'text-[#252525]' : 'italic text-[#a3a3a0]')}>{field.filled ? formatValue(field.value) : 'Falta'}</span>
+        </li>)}
+        <li className="flex items-start gap-2 text-[11px] leading-snug">
+          {assessment.competitors.length ? <Check className="mt-0.5 size-3 shrink-0 text-[#22a05a]" aria-label="Cargado" /> : <span className="mt-1 size-2 shrink-0 rounded-full border border-[#c9c9c6]" aria-label="Falta" />}
+          <span className="w-28 shrink-0 text-[#777]">Competencia</span>
+          <span className={cn('min-w-0 flex-1', assessment.competitors.length ? 'text-[#252525]' : 'italic text-[#a3a3a0]')}>{assessment.competitors.length ? assessment.competitors.join(', ') : 'Falta'}</span>
+        </li>
+      </ul>
+      <p className="text-[10px] leading-relaxed text-[#777]">{assessment.notesCount} nota(s) de contexto guardadas. Lo que confirmes en el chat se guarda en el formulario Contexto del cliente.</p>
+      {assessment.level !== 'completo' && <Button type="button" size="sm" disabled={busy} onClick={() => { setOpen(false); onComplete() }} className="h-8 self-start bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]"><Sparkles className="size-3.5" />Completar con Conexa</Button>}
+    </div>}
+  </div>
+}
+
+function ProfileProposalCard({ proposal, saving, onSave, onDismiss }: { proposal: ProfileUpdate[]; saving: boolean; onSave: (updates: ProfileUpdate[]) => void; onDismiss: () => void }) {
+  const [values, setValues] = useState(proposal)
+  return <section aria-label="Datos para el Contexto del cliente" className="mt-3 flex flex-col gap-3 rounded-xl border border-[#f3dcc9] bg-[#fff8f2] p-3 text-[#252525]">
+    <div className="flex flex-col gap-1"><p className="text-[11px] font-semibold">¿Guardo esto en Contexto del cliente?</p><p className="text-[10px] leading-relaxed text-[#777]">Revisá o corregí los valores antes de guardar.</p></div>
+    <div className="flex flex-col gap-2">{values.map((item, index) => <label key={item.field} className="flex flex-col gap-1 text-[10px] font-medium text-[#5a3a22]">{PROFILE_FIELD_LABEL[item.field]}<Input value={item.value} maxLength={600} onChange={(event) => setValues((current) => current.map((entry, position) => (position === index ? { ...entry, value: event.target.value } : entry)))} className="h-8 border-[#ecd9c6] bg-[#ffffff] text-[11px] text-[#252525]" /></label>)}</div>
+    <div className="flex justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={onDismiss} disabled={saving} className="h-8 px-3 text-[11px] text-[#666] hover:bg-[#fdeee2] hover:text-[#252525]">Descartar</Button><Button type="button" size="sm" disabled={saving || values.some((item) => !item.value.trim())} onClick={() => onSave(values.map((item) => ({ ...item, value: item.value.trim() })))} className="h-8 bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]">{saving ? <><LoaderCircle className="size-3.5 animate-spin" />Guardando…</> : 'Guardar'}</Button></div>
+  </section>
 }
 
 function RecommendationsPanel({ items, total, filters, search, loading, scanning, error, onScan, onMarkDone, onSearch, onFilters, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: {
@@ -418,6 +493,13 @@ function OperationFields({ operation, onChange }: { operation: RecommendationOpe
     <p className="text-[11px] text-[#5a3a22]">{describeOperation(operation)}</p>
     {operation.kind === 'set_status' && <label className="flex flex-col gap-1 text-xs font-medium">Estado<select value={operation.status} onChange={(event) => onChange(operation.platform === 'meta' ? { ...operation, status: event.target.value as 'ACTIVE' | 'PAUSED' } : { ...operation, status: event.target.value as 'ENABLED' | 'PAUSED' })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs"><option value={operation.platform === 'meta' ? 'ACTIVE' : 'ENABLED'}>Activar</option><option value="PAUSED">Pausar</option></select></label>}
     {operation.kind === 'set_daily_budget' && <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario nuevo (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>}
+    {operation.kind === 'create_campaign' && <>
+      <label className="flex flex-col gap-1 text-xs font-medium">Nombre de la campaña<Input value={operation.campaignName} maxLength={120} onChange={(event) => onChange({ ...operation, campaignName: event.target.value })} /></label>
+      <label className="flex flex-col gap-1 text-xs font-medium">Nombre del conjunto<Input value={operation.adsetName} maxLength={120} onChange={(event) => onChange({ ...operation, adsetName: event.target.value })} /></label>
+      <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>
+      <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Edad mínima (vacío = la del modelo)<Input type="number" min={18} max={65} value={operation.ageMin ?? ''} onChange={(event) => onChange({ ...operation, ageMin: event.target.value === '' ? null : numberValue(event.target.value) })} /></label><label className="flex flex-col gap-1 text-xs font-medium">Edad máxima (65 = 65+)<Input type="number" min={18} max={65} value={operation.ageMax ?? ''} onChange={(event) => onChange({ ...operation, ageMax: event.target.value === '' ? null : numberValue(event.target.value) })} /></label></div>
+      <p className="text-[11px] text-[#5a3a22]">Modelo: «{operation.templateAdsetName}» · Creatividades: {operation.ads.map((ad) => `«${ad.name}»`).join(', ')}</p>
+    </>}
     {operation.kind === 'set_age_range' && <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Edad mínima<Input type="number" min={18} max={65} value={Number.isNaN(operation.ageMin) ? '' : operation.ageMin} onChange={(event) => onChange({ ...operation, ageMin: numberValue(event.target.value) })} /></label><label className="flex flex-col gap-1 text-xs font-medium">Edad máxima (65 = 65+)<Input type="number" min={18} max={65} value={Number.isNaN(operation.ageMax) ? '' : operation.ageMax} onChange={(event) => onChange({ ...operation, ageMax: numberValue(event.target.value) })} /></label></div>}
     <p className="text-[10px] leading-relaxed text-[#777]">Al guardar se valida contra las cuentas vinculadas y el tope de ±30% de presupuesto.</p>
   </fieldset>

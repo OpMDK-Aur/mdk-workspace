@@ -1,3 +1,4 @@
+import type { ClientProfile, ContextAssessment, ProfileUpdate } from './client-profile'
 import type { CopilotChatMessage, ExecutionPlan, Recommendation } from './types'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -10,7 +11,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const copilotApi = {
   list: (clientId: string) => request<{ recommendations: Recommendation[] }>(`/api/conexa/copilot/recommendations?clientId=${encodeURIComponent(clientId)}`),
   messages: (clientId: string) => request<{ messages: CopilotChatMessage[] }>(`/api/conexa/copilot/messages?clientId=${encodeURIComponent(clientId)}`),
-  send: (body: { clientId: string; message: string; editingRecommendationId?: string }) => request<{ message: CopilotChatMessage; recommendations: Recommendation[]; editedRecommendation?: Recommendation; needsClarification: boolean; contextSaved: number }>('/api/conexa/copilot/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+  profile: (clientId: string) => request<{ profile: ClientProfile | null; assessment: ContextAssessment }>(`/api/conexa/copilot/profile?clientId=${encodeURIComponent(clientId)}`),
+  saveProfile: (clientId: string, updates: ProfileUpdate[]) => request<{ profile: ClientProfile | null; assessment: ContextAssessment }>('/api/conexa/copilot/profile', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, updates }) }),
+  send: (body: { clientId: string; message: string; editingRecommendationId?: string }) => request<{ message: CopilotChatMessage; recommendations: Recommendation[]; editedRecommendation?: Recommendation; needsClarification: boolean; contextSaved: number; profileProposal: ProfileUpdate[] }>('/api/conexa/copilot/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   addContext: (body: { clientId: string; content: string }) => request('/api/conexa/copilot/context', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   edit: (clientId: string, id: string, patch: unknown) => request<{ recommendation: Recommendation }>(`/api/conexa/copilot/recommendations/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(patch as Record<string, unknown>), clientId }) }),
   prepare: (clientId: string, id: string) => request<{ recommendation: Recommendation }>(`/api/conexa/copilot/recommendations/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, action: 'prepare' }) }),
