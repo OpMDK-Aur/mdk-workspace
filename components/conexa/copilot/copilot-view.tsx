@@ -236,7 +236,7 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   }
 
   const panels: Record<Panel, ReactNode> = {
-    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage(COMPLETE_CONTEXT_MESSAGE)} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
+    chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} assessment={copilot.assessment} contextUnavailable={Boolean(copilot.profileError)} competitors={{ suggesting: copilot.suggestingCompetitors, onSuggest: async () => { const result = await copilot.suggestCompetitors(); toast.message(result.suggested ? `Conexa sugirió ${result.suggested} competidor(es). Quitá los que no correspondan.` : 'No se encontraron competidores nuevos.') }, onAdd: copilot.addCompetitor, onRemove: copilot.removeCompetitor }} proposal={profileProposal} savingProfile={savingProfile} onSaveProposal={saveProfileProposal} onDismissProposal={() => setProfileProposal([])} onCompleteContext={() => submitMessage(COMPLETE_CONTEXT_MESSAGE)} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
     recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} missingContext={missingContext} onCompleteContext={() => { setMobilePanel('chat'); void submitMessage(COMPLETE_CONTEXT_MESSAGE) }} filters={filters} search={search} loading={copilot.isLoading || busy || scanning} scanning={scanning} onScan={scan} onMarkDone={markDone} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
     history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
   }
@@ -317,12 +317,13 @@ function PanelShell({ panel, full = false, onCollapse, onExpand, children }: { p
   </section>
 }
 
-function ChatPanel({ clientName, connectedPlatforms, messages, assessment, contextUnavailable, proposal, savingProfile, onSaveProposal, onDismissProposal, onCompleteContext, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
+function ChatPanel({ clientName, connectedPlatforms, messages, assessment, contextUnavailable, competitors, proposal, savingProfile, onSaveProposal, onDismissProposal, onCompleteContext, busy, input, editing, onInput, onSubmit, onAddManual, onClearEditing, endRef }: {
   clientName: string
   connectedPlatforms: RecommendationPlatform[]
   messages: ReturnType<typeof useCopilot>['messages']
   assessment: ContextAssessment | null
   contextUnavailable: boolean
+  competitors: CompetitorControls
   proposal: ProfileUpdate[]
   savingProfile: boolean
   onSaveProposal: (updates: ProfileUpdate[]) => void
@@ -338,10 +339,10 @@ function ChatPanel({ clientName, connectedPlatforms, messages, assessment, conte
   endRef: React.RefObject<HTMLDivElement | null>
 }) {
   return <div className="flex min-h-0 flex-1 flex-col">
-    <ContextStatus assessment={assessment} unavailable={contextUnavailable} busy={busy} onAddManual={onAddManual} onComplete={onCompleteContext} />
+    <ContextStatus assessment={assessment} unavailable={contextUnavailable} busy={busy} competitors={competitors} onAddManual={onAddManual} onComplete={onCompleteContext} />
     {!connectedPlatforms.length && <p role="status" className="border-b border-[#f0e5d9] bg-[#fff8f1] px-3 py-2 text-[10px] leading-relaxed text-[#8a541e]">Este cliente no tiene plataformas conectadas. El chat recomendará únicamente a partir del contexto, las tareas y los comentarios.</p>}
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Tiene una promoción este mes', 'El cliente quiere priorizar calidad sobre volumen'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
+      {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Proponé una campaña nueva en Meta para captar más leads', '¿Cuáles son los competidores y qué están haciendo?', 'Tiene una promoción este mes'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
       <div className="flex flex-col gap-3">{messages.map((message) => <article key={message.id} className={cn('max-w-[96%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-[#fff2e9] text-[#4a2b18]' : 'self-start border border-[#eeeeec] bg-[#fafaf9] text-[#444]')}><p className="mb-1 text-[9px] font-semibold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'Vos' : 'Conexa'}</p><p className="whitespace-pre-wrap">{message.content}</p></article>)}</div>
       {proposal.length > 0 && <ProfileProposalCard key={proposal.map((item) => `${item.field}:${item.value}`).join('|')} proposal={proposal} saving={savingProfile} onSave={onSaveProposal} onDismiss={onDismissProposal} />}
       {busy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está analizando contexto y datos…</div>}
@@ -362,7 +363,41 @@ const LEVEL_STYLE = {
   completo: { label: 'Completo', badge: 'bg-[#e7f5ec] text-[#1b6b38]', bar: 'bg-[#22a05a]', segments: 3 },
 } as const
 
-function ContextStatus({ assessment, unavailable, busy, onAddManual, onComplete }: { assessment: ContextAssessment | null; unavailable: boolean; busy: boolean; onAddManual: () => void; onComplete: () => void }) {
+type CompetitorControls = { suggesting: boolean; onSuggest: () => Promise<unknown>; onAdd: (name: string) => Promise<unknown>; onRemove: (noteId: string) => Promise<unknown> }
+
+function CompetitorEditor({ assessment, controls }: { assessment: ContextAssessment; controls: CompetitorControls }) {
+  const [name, setName] = useState('')
+  const [pending, setPending] = useState<string | null>(null)
+  const run = async (key: string, task: () => Promise<unknown>, success?: string) => {
+    setPending(key)
+    try { await task(); if (success) toast.success(success) } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la competencia') } finally { setPending(null) }
+  }
+  const searching = controls.suggesting || pending === 'suggest'
+  const canSuggest = assessment.level !== 'debil'
+  return <section aria-labelledby="competitors-title" className="flex flex-col gap-2 rounded-lg border border-[#ececea] bg-[#ffffff] p-2.5">
+    <div className="flex items-center justify-between gap-2">
+      <h3 id="competitors-title" className="text-[11px] font-semibold text-[#252525]">Competencia</h3>
+      <Button type="button" variant="ghost" size="sm" disabled={searching || !canSuggest || Boolean(pending)} title={canSuggest ? undefined : 'Completá los datos base para buscar competidores'} onClick={() => run('suggest', controls.onSuggest)} className="h-6 gap-1 px-1.5 text-[10px] text-[#c55208] hover:bg-[#fff2e9] hover:text-[#a8440c]">{searching ? <LoaderCircle className="size-3 animate-spin" aria-hidden="true" /> : <Sparkles className="size-3" aria-hidden="true" />}{searching ? 'Buscando…' : 'Sugerir con IA'}</Button>
+    </div>
+    {searching && !assessment.competitorEntries.length && <p role="status" className="text-[10px] text-[#777]">Conexa está buscando competidores en la web…</p>}
+    {!searching && !assessment.competitorEntries.length && <p className="text-[10px] italic text-[#a3a3a0]">{canSuggest ? 'Sin competidores todavía.' : 'Completá industria, objetivo y qué vende para que Conexa los busque.'}</p>}
+    {assessment.competitorEntries.length > 0 && <ul className="flex flex-col gap-1.5">{assessment.competitorEntries.map((entry) => <li key={entry.noteId} className="flex items-start gap-2 rounded-md bg-[#fafaf9] px-2 py-1.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#252525]">{entry.name}{entry.suggested && <span className="rounded-full bg-[#fff2e9] px-1.5 py-px text-[9px] font-semibold text-[#c55208]">IA</span>}</span>
+        {entry.detail && <span className="text-[10px] leading-snug text-[#777]">{entry.detail.replace(/^Sugerido por Conexa\s*—\s*/, '')}</span>}
+      </div>
+      <button type="button" onClick={() => run(entry.noteId, () => controls.onRemove(entry.noteId))} disabled={Boolean(pending)} aria-label={`Quitar ${entry.name}`} title="No es competidor" className="rounded p-1 text-[#999] hover:bg-[#f0f0ee] hover:text-[#b42318] disabled:opacity-50">{pending === entry.noteId ? <LoaderCircle className="size-3 animate-spin" /> : <X className="size-3" />}</button>
+    </li>)}</ul>}
+    <form onSubmit={(event) => { event.preventDefault(); const value = name.trim(); if (value.length < 2) return; void run('add', async () => { await controls.onAdd(value); setName('') }) }} className="flex items-center gap-1.5">
+      <label htmlFor="competitor-name" className="sr-only">Agregar competidor</label>
+      <Input id="competitor-name" value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="Agregar competidor…" className="h-7 border-[#e5e5e3] bg-[#ffffff] text-[11px] text-[#252525]" />
+      <Button type="submit" variant="outline" size="sm" disabled={name.trim().length < 2 || Boolean(pending)} className="h-7 shrink-0 border-[#e5e5e3] bg-[#ffffff] px-2 text-[10px] text-[#252525] hover:bg-[#f5f5f4] hover:text-[#252525]">{pending === 'add' ? <LoaderCircle className="size-3 animate-spin" /> : 'Agregar'}</Button>
+    </form>
+    {assessment.discardedCompetitors.length > 0 && <p className="text-[9px] leading-relaxed text-[#a3a3a0]">Descartados (no se vuelven a sugerir): {assessment.discardedCompetitors.join(', ')}</p>}
+  </section>
+}
+
+function ContextStatus({ assessment, unavailable, busy, competitors, onAddManual, onComplete }: { assessment: ContextAssessment | null; unavailable: boolean; busy: boolean; competitors: CompetitorControls; onAddManual: () => void; onComplete: () => void }) {
   const [open, setOpen] = useState(false)
   const style = assessment ? LEVEL_STYLE[assessment.level] : null
   const formatValue = (value: string | number | null) => (typeof value === 'number' ? value.toLocaleString('es-AR') : String(value ?? '').replace(/_/g, ' '))
@@ -372,6 +407,7 @@ function ContextStatus({ assessment, unavailable, busy, onAddManual, onComplete 
         <span className="text-[11px] font-semibold text-[#252525]">Contexto</span>
         {style ? <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', style.badge)}>{style.label}</span> : unavailable ? <span className="text-[10px] text-[#999]">No disponible</span> : <Skeleton className="h-4 w-14 rounded-full" />}
         {style && <span className="flex items-center gap-0.5" aria-hidden="true">{[1, 2, 3].map((segment) => <span key={segment} className={cn('h-1.5 w-4 rounded-full', segment <= style.segments ? style.bar : 'bg-[#ececea]')} />)}</span>}
+        {competitors.suggesting && <span role="status" className="flex items-center gap-1 truncate text-[10px] text-[#777]"><LoaderCircle className="size-3 shrink-0 animate-spin text-[#f97316]" aria-hidden="true" />Buscando competidores</span>}
         <ChevronDown className={cn('ml-auto size-3.5 shrink-0 text-[#777] transition-transform', open && 'rotate-180')} aria-hidden="true" />
       </button>
       <Button type="button" variant="outline" size="sm" onClick={onAddManual} className="h-7 shrink-0 px-2 text-[10px]">+ Contexto</Button>
@@ -383,12 +419,8 @@ function ContextStatus({ assessment, unavailable, busy, onAddManual, onComplete 
           <span className="w-28 shrink-0 text-[#777]">{field.label}{field.core && <span className="sr-only"> (obligatorio)</span>}</span>
           <span className={cn('min-w-0 flex-1 break-words', field.filled ? 'text-[#252525]' : 'italic text-[#a3a3a0]')}>{field.filled ? formatValue(field.value) : 'Falta'}</span>
         </li>)}
-        <li className="flex items-start gap-2 text-[11px] leading-snug">
-          {assessment.competitors.length ? <Check className="mt-0.5 size-3 shrink-0 text-[#22a05a]" aria-label="Cargado" /> : <span className="mt-1 size-2 shrink-0 rounded-full border border-[#c9c9c6]" aria-label="Falta" />}
-          <span className="w-28 shrink-0 text-[#777]">Competencia</span>
-          <span className={cn('min-w-0 flex-1', assessment.competitors.length ? 'text-[#252525]' : 'italic text-[#a3a3a0]')}>{assessment.competitors.length ? assessment.competitors.join(', ') : 'Falta'}</span>
-        </li>
       </ul>
+      <CompetitorEditor assessment={assessment} controls={competitors} />
       <p className="text-[10px] leading-relaxed text-[#777]">{assessment.notesCount} nota(s) de contexto guardadas. Lo que confirmes en el chat se guarda en el formulario Contexto del cliente.</p>
       {assessment.level !== 'completo' && <Button type="button" size="sm" disabled={busy} onClick={() => { setOpen(false); onComplete() }} className="h-8 self-start bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]"><Sparkles className="size-3.5" />Completar con Conexa</Button>}
     </div>}
