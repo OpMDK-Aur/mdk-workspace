@@ -7,7 +7,7 @@ import { getToolDefinitions } from '@/lib/ai/tools'
 import { dateRange } from '@/lib/conexa/period-range'
 import { copilotError, readJson, requireUser } from '@/lib/conexa/copilot/route-helpers'
 import { addClientContext, assertClientAccess, createRecommendationDrafts, editRecommendation, getCopilotContext, insertMessages, listMessages, listRecommendations } from '@/lib/conexa/copilot/store'
-import type { Recommendation, RecommendationDraft, RecommendationPlatform, RecommendationType } from '@/lib/conexa/copilot/types'
+import type { Recommendation, RecommendationDraft, RecommendationOperation, RecommendationPlatform, RecommendationType } from '@/lib/conexa/copilot/types'
 
 export const maxDuration = 90
 
@@ -28,8 +28,38 @@ const modelSchema = z.object({
     suggested_actions: z.array(z.string().min(5).max(300)).min(1).max(8),
     expected_impact: z.string().min(5).max(400),
     evidenceIds: z.array(z.string()).min(1).max(12),
+    operation: z.object({
+      platform: z.enum(['meta', 'google_ads']),
+      kind: z.enum(['set_status', 'set_daily_budget']),
+      level: z.enum(['campaign', 'adset', 'ad']),
+      entityId: z.string().max(40),
+      entityName: z.string().max(200),
+      customerId: z.string().max(20),
+      status: z.enum(['ACTIVE', 'PAUSED', 'ENABLED']).nullable(),
+      dailyBudget: z.number().positive().nullable(),
+    }).nullable(),
   })).max(5),
 })
+
+type ModelOperation = NonNullable<z.infer<typeof modelSchema>['recommendations'][number]['operation']>
+
+function toOperation(raw: ModelOperation | null, platformText: Map<RecommendationPlatform, string>, googleIds: string[]): RecommendationOperation | null {
+  if (!raw) return null
+  const entityId = raw.entityId.trim().replace(/^act_/, '')
+  const entityName = raw.entityName.trim() || entityId
+  if (!/^\d{3,30}$/.test(entityId) || !platformText.get(raw.platform)?.includes(entityId)) return null
+  if (raw.platform === 'meta') {
+    if (raw.kind === 'set_status') return raw.status === 'ACTIVE' || raw.status === 'PAUSED' ? { platform: 'meta', kind: 'set_status', level: raw.level, entityId, entityName, status: raw.status } : null
+    return raw.level !== 'ad' && raw.dailyBudget ? { platform: 'meta', kind: 'set_daily_budget', level: raw.level, entityId, entityName, dailyBudget: raw.dailyBudget } : null
+  }
+  const customerId = raw.customerId.replace(/-/g, '').trim()
+  if (raw.level !== 'campaign' || !googleIds.includes(customerId)) return null
+  if (raw.kind === 'set_status') {
+    const status = raw.status === 'ACTIVE' ? 'ENABLED' : raw.status
+    return status === 'ENABLED' || status === 'PAUSED' ? { platform: 'google_ads', kind: 'set_status', customerId, campaignId: entityId, entityName, status } : null
+  }
+  return raw.dailyBudget ? { platform: 'google_ads', kind: 'set_daily_budget', customerId, campaignId: entityId, entityName, dailyBudget: raw.dailyBudget } : null
+}
 
 const TOOL_KEYS = ['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'get_google_tag_manager_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory']
 const MAX_SOURCE_CHARS = 1800
@@ -79,7 +109,7 @@ async function readPlatformData(supabase: SupabaseClient, clientId: string, user
     try { return compactValue(await tool.execute(range, executionContext)) } catch (error) { return { available: false, message: error instanceof Error ? clip(error.message, 180) : 'Fuente no disponible' } }
   }
   const data = await Promise.all(PLATFORM_DATA_KEYS.map(async ([key, platform, label]) => ({ key, platform, label, value: await read(key) })))
-  return { platforms, data: data.filter((item) => item.value !== null && !(item.value && typeof item.value === 'object' && 'available' in item.value && item.value.available === false)) }
+  return { platforms, googleIds, data: data.filter((item) => item.value !== null && !(item.value && typeof item.value === 'object' && 'available' in item.value && item.value.available === false)) }
 }
 
 const PLATFORM_DATA_KEYS: Array<[string, RecommendationPlatform, string]> = [
@@ -162,17 +192,22 @@ export async function POST(request: Request) {
         'PLATAFORMAS: las plataformas válidas para una propuesta son únicamente las de connectedPlatforms. Si no hay plataformas conectadas, podés proponer acciones basadas en contexto empresarial con platforms vacío, pero no inventes observaciones de medios.',
         'HISTORIAL: revisá previousRecommendations para evitar repetir propuestas publicadas o descartadas; si el usuario pide editar una tarjeta, proponé una versión corregida, conservá los datos válidos y no inventes evidencia.',
         'CONTEXTO PERSISTENTE: contextToSave debe contener solo fragmentos textuales que aparezcan literalmente dentro de currentUserMessage y que sean datos duraderos del negocio. No guardes preguntas, instrucciones generales ni mensajes del asistente.',
+        'OPERACIÓN EJECUTABLE: cada recomendación puede incluir operation, que se ejecutará en la plataforma solo cuando una persona presione Publicar. Las únicas operaciones válidas son: Meta Ads (platform "meta") pausar/activar campaña, conjunto o anuncio (kind "set_status", status ACTIVE o PAUSED) o cambiar el presupuesto diario de una campaña o conjunto (kind "set_daily_budget", dailyBudget en la moneda de la cuenta, unidades enteras, no centavos); y Google Ads (platform "google_ads", level "campaign") pausar/activar campaña (status ENABLED o PAUSED) o cambiar su presupuesto diario. entityId debe ser un ID exacto que figure en platformReadOnlyData; para Google Ads, customerId es la cuenta de esa campaña. Un cambio de presupuesto no puede superar ±30% del valor actual. Usá status o dailyBudget según kind y null en el otro. Si la recomendación no encaja exactamente en estas operaciones (creatividades, tracking, CRM, segmentación, etc.) o falta el ID, devolvé operation null: quedará como recomendación manual.',
         'Toda recomendación es un borrador para revisión humana. No afirmes que se publicó ni que modificaste una plataforma.',
       ].join('\n'),
       output: Output.object({ schema: modelSchema }),
       prompt: JSON.stringify({ history, context: modelInput }),
     })
 
+    const platformText = new Map<RecommendationPlatform, string>()
+    for (const item of platformData.data) platformText.set(item.platform, `${platformText.get(item.platform) ?? ''}${JSON.stringify(item.value)}`)
     const validDrafts: RecommendationDraft[] = output.recommendations.flatMap((item) => {
       const evidenceIds = [...new Set(item.evidenceIds)].filter((id) => evidenceById.has(id))
       if (!evidenceIds.length) return []
-      const platforms = [...new Set(item.platforms)].filter((platform) => connectedPlatforms.includes(platform))
+      const operation = toOperation(item.operation, platformText, platformData.googleIds)
+      const platforms = [...new Set([...item.platforms, ...(operation ? [operation.platform] : [])])].filter((platform) => connectedPlatforms.includes(platform))
       return [{
+        operation,
         title: item.title.trim(), platforms, type: item.type, priority: item.priority,
         description: item.description.trim(), rationale: item.rationale.trim(),
         suggested_actions: item.suggested_actions.map((action) => action.trim()), expected_impact: item.expected_impact.trim(),
