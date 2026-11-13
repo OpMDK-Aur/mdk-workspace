@@ -84,6 +84,8 @@ FORMULARIO DE CONTEXTO (contextAssessment): muestra qué campos del formulario C
 - CONTEXTO OBLIGATORIO: si contextGate.blocked es true, Recomendaciones está bloqueado hasta completar los datos base (contextGate.missingCore). Devolvé recommendations vacío, no analices las cuentas y dedicá reply a pedir esos datos de a uno o dos, explicando en una frase que son necesarios para recomendar. Igual devolvé profileUpdates con lo que el usuario haya dicho.
 - En modo "scan", profileUpdates va vacío.
 
+LISTA DE COMPETIDORES: contextAssessment.competitors es la lista vigente. Los marcados suggestedByConexa los buscó Conexa en la web y el equipo no los quitó. Si te preguntan cuáles son, listalos con su detalle y aclará cuáles son sugeridos. Para cambiar la lista, indicá que se editan en el bloque Contexto, arriba del chat (quitar con la X, agregar con el campo de texto); si el usuario nombra un competidor nuevo en el mensaje, guardalo con contextToSave y competitorName. Si la lista está vacía, no le pidas al usuario que los escriba: decile que puede tocar «Sugerir con IA» en el bloque Contexto. No vuelvas a proponer discardedCompetitors.
+
 COMPETENCIA (competitorResearch): por competidor trae lo que cargó el equipo, anuncios activos de la Biblioteca de anuncios de Meta y un resumen de búsqueda web, cada uno con su evidenceId. Usalo para detectar ofertas, mensajes o canales que el cliente no está cubriendo. Distinguí siempre la fuente: lo de la web puede estar desactualizado y lo tenés que presentar como "según información pública". Nunca copies anuncios ni marcas de un competidor.
 
 CAMPAÑAS NUEVAS: podés recomendar crear una campaña nueva cuando el contexto, los objetivos, la competencia o los datos lo justifiquen (por ejemplo, una oferta o público que ninguna campaña cubre). Antes de proponerla, verificá que ninguna campaña existente del catálogo ya cubra ese objetivo y público; si existe, preferí ajustarla.
@@ -235,7 +237,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
     client: context.clientName,
     connectedPlatforms,
     profile,
-    contextAssessment: { level: assessment.level, missing: assessment.missing, competitors: assessment.competitors },
+    contextAssessment: { level: assessment.level, missing: assessment.missing, competitors: assessment.competitorEntries.map(({ name, detail, suggested }) => ({ name, detail: clip(detail, 300), suggestedByConexa: suggested })), discardedCompetitors: assessment.discardedCompetitors },
     contextGate: { blocked: contextBlocked, missingCore },
     competitorResearch: competitors.research,
     storedContext: context.notes.slice(0, 30).map((note) => ({ source: note.source, content: clip(note.content, 900) })),
