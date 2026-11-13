@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { runGeneration } from '@/lib/conexa/copilot/generator'
 import { copilotError, readJson, requireUser } from '@/lib/conexa/copilot/route-helpers'
-import { addClientContext, assertClientAccess, insertMessages, listMessages } from '@/lib/conexa/copilot/store'
+import { addClientContext, assertClientAccess, clearMessages, insertMessages, listMessages } from '@/lib/conexa/copilot/store'
 
 export const maxDuration = 300
 
@@ -14,6 +14,17 @@ export async function GET(request: Request) {
   try {
     await assertClientAccess(auth.supabase, clientId)
     return NextResponse.json({ messages: await listMessages(auth.supabase, clientId, auth.user.id) })
+  } catch (error) { return copilotError(error) }
+}
+
+export async function DELETE(request: Request) {
+  const auth = await requireUser()
+  if ('error' in auth) return auth.error
+  const clientId = z.string().uuid().safeParse(new URL(request.url).searchParams.get('clientId'))
+  if (!clientId.success) return NextResponse.json({ error: 'Falta el cliente' }, { status: 400 })
+  try {
+    await assertClientAccess(auth.supabase, clientId.data)
+    return NextResponse.json({ deleted: await clearMessages(clientId.data, auth.user.id) })
   } catch (error) { return copilotError(error) }
 }
 

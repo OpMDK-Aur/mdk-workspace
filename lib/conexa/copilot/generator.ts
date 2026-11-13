@@ -27,6 +27,7 @@ const modelSchema = z.object({
   needsClarification: z.boolean(),
   questions: z.array(z.string().min(1).max(240)).max(5),
   contextToSave: z.array(z.object({ text: z.string().min(3).max(600), competitorName: z.string().max(80) })).max(5),
+  competitorsToAdd: z.array(z.string().max(80)).max(6),
   profileUpdates: z.array(z.object({ field: z.enum(PROFILE_FIELD_KEYS), value: z.string().max(600) })).max(PROFILE_FIELDS.length),
   recommendations: z.array(z.object({
     title: z.string().min(5).max(140),
@@ -84,7 +85,7 @@ FORMULARIO DE CONTEXTO (contextAssessment): muestra qué campos del formulario C
 - CONTEXTO OBLIGATORIO: si contextGate.blocked es true, Recomendaciones está bloqueado hasta completar los datos base (contextGate.missingCore). Devolvé recommendations vacío, no analices las cuentas y dedicá reply a pedir esos datos de a uno o dos, explicando en una frase que son necesarios para recomendar. Igual devolvé profileUpdates con lo que el usuario haya dicho.
 - En modo "scan", profileUpdates va vacío.
 
-LISTA DE COMPETIDORES: contextAssessment.competitors es la lista vigente. Los marcados suggestedByConexa los buscó Conexa en la web y el equipo no los quitó. Si te preguntan cuáles son, listalos con su detalle y aclará cuáles son sugeridos. Para cambiar la lista, indicá que se editan en el bloque Contexto, arriba del chat (quitar con la X, agregar con el campo de texto); si el usuario nombra un competidor nuevo en el mensaje, guardalo con contextToSave y competitorName. Si la lista está vacía, no le pidas al usuario que los escriba: decile que puede tocar «Sugerir con IA» en el bloque Contexto. No vuelvas a proponer discardedCompetitors.
+LISTA DE COMPETIDORES: contextAssessment.competitors es la lista vigente. Los marcados suggestedByConexa los buscó Conexa en la web y el equipo no los quitó. Si te preguntan cuáles son, listalos con su detalle y aclará cuáles son sugeridos. Si el usuario nombra competidores en currentUserMessage ("mis competidores son X e Y", "sumá a Z"), devolvé cada nombre exacto en competitorsToAdd: se guardan directamente en el contexto, así que confirmalo en reply ("Listo, sumé a X e Y a la competencia"). Si además cuenta qué hacen, guardá ese detalle en contextToSave con competitorName. Para quitar uno, indicá que se usa la X en el bloque Contexto, arriba del chat. En modo "scan", competitorsToAdd va vacío. Si la lista está vacía, no le pidas al usuario que los escriba: decile que puede tocar «Sugerir con IA» en el bloque Contexto. No vuelvas a proponer discardedCompetitors.
 
 COMPETENCIA (competitorResearch): por competidor trae lo que cargó el equipo, anuncios activos de la Biblioteca de anuncios de Meta y un resumen de búsqueda web, cada uno con su evidenceId. Usalo para detectar ofertas, mensajes o canales que el cliente no está cubriendo. Distinguí siempre la fuente: lo de la web puede estar desactualizado y lo tenés que presentar como "según información pública". Nunca copies anuncios ni marcas de un competidor.
 
@@ -284,6 +285,16 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
     const name = competitorName.replace(/[:\n]/g, ' ').trim()
     return [name ? `${COMPETITOR_PREFIX}${name}: ${clean}` : clean]
   })
+  if (runMode === 'chat') {
+    const known = [...assessment.competitors, ...contextToSave.map((item) => parseCompetitorNote(item)?.name ?? '')].filter(Boolean)
+    const lowerMessage = message.toLocaleLowerCase('es')
+    for (const raw of output.competitorsToAdd) {
+      const name = raw.replace(/[:\n·]/g, ' ').replace(/\s+/g, ' ').trim()
+      if (name.length < 2 || !lowerMessage.includes(name.toLocaleLowerCase('es')) || known.some((item) => item.localeCompare(name, 'es', { sensitivity: 'base' }) === 0)) continue
+      known.push(name)
+      contextToSave.push(`${COMPETITOR_PREFIX}${name}`)
+    }
+  }
   const profileProposal: ProfileUpdate[] = runMode === 'scan' ? [] : [...new Map(output.profileUpdates
     .map(({ field, value }) => ({ field, value: value.trim() }))
     .filter(({ field, value }) => value && String(profile?.[field] ?? '').trim() !== value)
