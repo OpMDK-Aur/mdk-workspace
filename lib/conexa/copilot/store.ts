@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CopilotError } from './route-helpers'
-import type { ClientContextRecord, CopilotChatMessage, CopilotContext, Recommendation, RecommendationDraft, RecommendationStatus } from './types'
+import { executeOperation } from './executors'
+import type { ClientContextRecord, CopilotChatMessage, CopilotContext, ExecutionResult, Recommendation, RecommendationDraft, RecommendationStatus } from './types'
 
 const REC_TABLE = 'conexa_copilot_recommendations'
 const CONTEXT_TABLE = 'conexa_copilot_context'
@@ -83,10 +84,23 @@ export async function editRecommendation(supabase: SupabaseClient, clientId: str
 }
 
 export async function publishRecommendation(supabase: SupabaseClient, clientId: string, id: string, userId: string) {
+  const { data: claimed, error: claimError } = await supabase.from(REC_TABLE).update({ status: 'executing', execution_error: null }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').not('operation', 'is', null).select('*').maybeSingle()
+  if (claimError) dbError(claimError)
+  if (!claimed) throw new CopilotError('La recomendación ya no está en borrador, no pertenece a este cliente o no tiene una acción ejecutable en plataforma.', 409)
+  const recommendation = claimed as unknown as Recommendation
+
+  let result: ExecutionResult
+  try {
+    result = await executeOperation(supabase, clientId, recommendation.operation!)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'La plataforma no pudo aplicar el cambio.'
+    await supabase.from(REC_TABLE).update({ status: 'draft', execution_error: message.slice(0, 1000) }).eq('id', id).eq('status', 'executing')
+    throw error instanceof CopilotError ? error : new CopilotError(message, 502)
+  }
+
   const now = new Date().toISOString()
-  const { data, error } = await supabase.from(REC_TABLE).update({ status: 'published', published_by: userId, published_at: now, updated_at: now }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
-  if (error) dbError(error)
-  if (!data) throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
+  const { data, error } = await supabase.from(REC_TABLE).update({ status: 'published', published_by: userId, published_at: now, execution_result: result, execution_error: null }).eq('id', id).eq('status', 'executing').select('*').maybeSingle()
+  if (error || !data) throw new CopilotError(`El cambio se aplicó en ${result.platform === 'meta' ? 'Meta Ads' : 'Google Ads'} (${result.before} → ${result.after}), pero no se pudo registrar en el histórico. No lo vuelvas a publicar; revisá la plataforma.`, 500)
   return data as unknown as Recommendation
 }
 
