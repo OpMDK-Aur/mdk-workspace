@@ -84,6 +84,14 @@ export async function addClientContext(supabase: SupabaseClient, input: { client
   return data as unknown as ClientContextRecord
 }
 
+/** Reescribe una nota del cliente; se usa para marcar competidores descartados. Llamar solo después de assertClientAccess. */
+export async function rewriteClientContext(clientId: string, noteId: string, content: string) {
+  const { data, error } = await createAdminClient().from(CONTEXT_TABLE).update({ content }).eq('id', noteId).eq('client_id', clientId).select('*').maybeSingle()
+  if (error) dbError(error, { table: CONTEXT_TABLE, op: 'update', columns: 'content', filters: 'id=eq, client_id=eq, returning *' })
+  if (!data) throw new CopilotError('Esa nota ya no existe para este cliente.', 404)
+  return data as unknown as ClientContextRecord
+}
+
 export async function listClientContext(supabase: SupabaseClient, clientId: string) {
   const { data, error } = await supabase.from(CONTEXT_TABLE).select('*').eq('client_id', clientId).order('created_at', { ascending: false }).limit(100)
   if (error) dbError(error, { table: CONTEXT_TABLE, op: 'select', columns: '*', filters: 'client_id=eq, order created_at desc, limit 100' })

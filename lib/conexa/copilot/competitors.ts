@@ -6,6 +6,33 @@ export type CompetitorSource = { id: string; label: string; excerpt: string }
 export type CompetitorResearch = { name: string; userNotes: string[]; adLibrary: { available: boolean; ads: Array<{ page: string; text: string; title: string; since: string | null; platforms: string[] }>; message?: string }; web: { available: boolean; summary: string; urls: string[]; message?: string } }
 
 const clip = (value: unknown, limit: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit)
+const sameName = (a: string, b: string) => a.localeCompare(b, 'es', { sensitivity: 'base' }) === 0
+
+/** Busca en la web competidores directos del cliente. Excluye los que ya están cargados o que el usuario descartó. */
+export async function suggestCompetitors(input: { clientName: string; industry: string | null; product: string | null; objective: string | null; exclude: string[] }) {
+  const result = await generateText({
+    model: 'perplexity/sonar',
+    abortSignal: AbortSignal.timeout(30_000),
+    prompt: [
+      `Identificá entre 3 y 4 competidores directos (marcas líderes y alternativas locales) de la empresa «${input.clientName}» en ${COMPETITOR_AD_COUNTRY === 'AR' ? 'Argentina' : COMPETITOR_AD_COUNTRY}.`,
+      input.industry && `Rubro: ${input.industry.replace(/_/g, ' ')}.`,
+      input.product && `Qué vende: ${input.product}.`,
+      input.objective && `Objetivo comercial: ${input.objective}.`,
+      input.exclude.length && `No incluyas: ${input.exclude.join(', ')}.`,
+      'Solo empresas reales que compitan por el mismo cliente y en el mismo mercado. No incluyas a la propia empresa.',
+      'Respondé SOLO con una línea por competidor, con este formato exacto y sin texto adicional: Nombre | motivo breve (qué ofrece que compite, máximo 20 palabras)',
+    ].filter(Boolean).join('\n'),
+  })
+  const seen: string[] = []
+  return result.text.split('\n').flatMap((line) => {
+    const [rawName, ...rest] = line.replace(/^[\s\-*•\d.)]+/, '').split('|')
+    const name = clip(rawName?.replace(/\*\*/g, '').replace(/\[\d+\]/g, ''), 80)
+    const reason = clip(rest.join('|').replace(/\[\d+\]/g, ''), 200)
+    if (!name || !reason || name.length < 2 || sameName(name, input.clientName) || [...input.exclude, ...seen].some((item) => sameName(item, name))) return []
+    seen.push(name)
+    return [{ name, reason }]
+  }).slice(0, 4)
+}
 const slug = (name: string) => name.toLocaleLowerCase('es').replace(/[^a-z0-9áéíóúñü]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
 
 type AdArchiveRow = { page_name?: string; ad_creative_bodies?: string[]; ad_creative_link_titles?: string[]; ad_delivery_start_time?: string; publisher_platforms?: string[] }

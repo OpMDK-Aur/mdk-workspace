@@ -16,9 +16,24 @@ export function useCopilot(clientId: string) {
   }, { revalidateOnFocus: false })
   const profile = useSWR(`/api/conexa/copilot/profile?clientId=${encodeURIComponent(clientId)}`, (_url: string) => copilotApi.profile(clientId), { revalidateOnFocus: false })
 
+  const autoSuggest = useSWR(profile.data?.assessment.autoSuggestCompetitors ? `/api/conexa/copilot/competitors?auto=${encodeURIComponent(clientId)}` : null, () => copilotApi.competitors({ clientId, action: 'suggest', onlyIfEmpty: true }), {
+    revalidateOnFocus: false, revalidateIfStale: false, shouldRetryOnError: false,
+    onSuccess: (result) => { void profile.mutate({ profile: result.profile, assessment: result.assessment }, { revalidate: false }); void contexts.mutate() },
+  })
+  const applyCompetitors = async (body: Parameters<typeof copilotApi.competitors>[0]) => {
+    const result = await copilotApi.competitors(body)
+    await Promise.all([profile.mutate({ profile: result.profile, assessment: result.assessment }, { revalidate: false }), contexts.mutate()])
+    return result
+  }
+
   return {
     assessment: profile.data?.assessment ?? null,
     profileError: profile.error as Error | undefined,
+    suggestingCompetitors: autoSuggest.isLoading,
+    suggestCompetitorsError: autoSuggest.error as Error | undefined,
+    suggestCompetitors: () => applyCompetitors({ clientId, action: 'suggest' }),
+    addCompetitor: (name: string) => applyCompetitors({ clientId, action: 'add', name }),
+    removeCompetitor: (noteId: string) => applyCompetitors({ clientId, action: 'remove', noteId }),
     saveProfile: async (updates: ProfileUpdate[]) => {
       const result = await copilotApi.saveProfile(clientId, updates)
       await profile.mutate(result, { revalidate: false })
