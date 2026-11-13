@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { MAX_BUDGET_CHANGE, RECENT_EDIT_WINDOW_DAYS } from './config'
+import { MAX_BUDGET_CHANGE, MAX_NEW_CAMPAIGN_ADS, NEW_CAMPAIGN_MAX_BUDGET_RATIO, RECENT_EDIT_WINDOW_DAYS } from './config'
 import type { EntityCatalog, GoogleCatalogAccount, GoogleCatalogCampaign, MetaCatalogAccount, MetaCatalogAd, MetaCatalogAdset, MetaCatalogCampaign } from './entity-catalog'
 import { money } from './executors'
 import type { RecommendationOperation } from './types'
@@ -36,11 +36,38 @@ function budgetErrors(name: string, current: number | null, next: number, curren
   return []
 }
 
+/** Presupuesto de referencia del modelo: el del conjunto o, si usa presupuesto de campaña, el de su campaña. */
+export function templateReferenceBudget(adset: MetaCatalogAdset, account: MetaCatalogAccount) {
+  return adset.dailyBudget ?? account.campaigns.find((campaign) => campaign.id === adset.campaignId)?.dailyBudget ?? null
+}
+
+function validateCreateCampaign(operation: Extract<RecommendationOperation, { kind: 'create_campaign' }>, index: ReturnType<typeof indexCatalog>, linked: LinkedAccounts) {
+  const template = index.meta.get(operation.templateAdsetId)
+  if (!template || template.level !== 'adset') return [`El conjunto modelo «${operation.templateAdsetName}» no está en el catálogo de cuentas vinculadas.`]
+  if (!linked.meta.has(template.account.accountId)) return [`El conjunto modelo «${template.entity.name}» no pertenece a una cuenta vinculada al cliente.`]
+  const errors: string[] = []
+  if (!operation.campaignName.trim()) errors.push('La campaña nueva necesita un nombre.')
+  if (operation.ageMin !== null && operation.ageMax !== null && (operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax)) errors.push('El rango de edad tiene que estar entre 18 y 65+.')
+  if (!operation.ads.length || operation.ads.length > MAX_NEW_CAMPAIGN_ADS) errors.push(`Elegí entre 1 y ${MAX_NEW_CAMPAIGN_ADS} anuncios existentes para reutilizar sus creatividades.`)
+  for (const ad of operation.ads) {
+    const entry = index.meta.get(ad.id)
+    if (!entry || entry.level !== 'ad') errors.push(`El anuncio «${ad.name}» no está en el catálogo.`)
+    else if (entry.account.accountId !== template.account.accountId) errors.push(`El anuncio «${entry.entity.name}» es de otra cuenta publicitaria que el conjunto modelo.`)
+  }
+  const reference = templateReferenceBudget(template.entity, template.account)
+  const currency = template.account.currency
+  if (!Number.isFinite(operation.dailyBudget) || operation.dailyBudget <= 0) errors.push('El presupuesto diario de la campaña nueva no es válido.')
+  else if (reference === null) errors.push(`No hay presupuesto de referencia en «${template.entity.name}» ni en su campaña para acotar el de la campaña nueva; elegí otro conjunto modelo.`)
+  else if (operation.dailyBudget > reference * NEW_CAMPAIGN_MAX_BUDGET_RATIO + 1e-9) errors.push(`El presupuesto de la campaña nueva (${money(operation.dailyBudget, currency)}) supera ${NEW_CAMPAIGN_MAX_BUDGET_RATIO} veces el del modelo (${money(reference, currency)}).`)
+  return errors
+}
+
 /** Controles de servidor sobre una operación propuesta. Devuelve errores legibles; vacío significa válida. */
 export function validateOperation(operation: RecommendationOperation, catalog: EntityCatalog, linked: LinkedAccounts): string[] {
   const index = indexCatalog(catalog)
 
   if (operation.platform === 'meta') {
+    if (operation.kind === 'create_campaign') return validateCreateCampaign(operation, index, linked)
     if (operation.kind === 'set_age_range') {
       const errors: string[] = []
       if (!Number.isInteger(operation.ageMin) || !Number.isInteger(operation.ageMax) || operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax) errors.push('El rango de edad tiene que estar entre 18 y 65+, con la edad mínima menor o igual a la máxima.')
@@ -85,6 +112,7 @@ export function validateOperation(operation: RecommendationOperation, catalog: E
 
 /** Clave para el índice único de borradores vigentes: misma acción sobre las mismas entidades con el mismo valor objetivo. */
 export function operationDedupeKey(operation: RecommendationOperation) {
+  if (operation.kind === 'create_campaign') return createHash('sha256').update(`create_campaign|meta|${operation.templateAdsetId}|${operation.campaignName.trim().toLocaleLowerCase('es')}|${operation.dailyBudget}`).digest('hex')
   const ids = operation.kind === 'set_age_range' ? operation.adsets.map((adset) => adset.id) : [operation.platform === 'meta' ? operation.entityId : `${operation.customerId}:${operation.campaignId}`]
   const target = operation.kind === 'set_age_range' ? `${operation.ageMin}-${operation.ageMax}` : operation.kind === 'set_status' ? operation.status : String(operation.dailyBudget)
   return createHash('sha256').update(`${operation.kind}|${operation.platform}|${[...ids].sort().join(',')}|${target}`).digest('hex')
