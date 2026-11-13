@@ -36,6 +36,11 @@ export function useCopilot(clientId: string) {
       await copilotApi.edit(clientId, id, patch)
       await recommendations.mutate()
     },
+    prepare: async (id: string) => {
+      const { recommendation } = await copilotApi.prepare(clientId, id)
+      await recommendations.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? recommendation : item)) }, { revalidate: false })
+      return recommendation
+    },
     publish: async (id: string) => {
       const { recommendation } = await copilotApi.publish(clientId, id)
       await recommendations.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? recommendation : item)) }, { revalidate: true })
