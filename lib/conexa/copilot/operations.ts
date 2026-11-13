@@ -7,7 +7,7 @@ import type { Recommendation, RecommendationOperation } from './types'
 
 export const rawOperationSchema = z.object({
   platform: z.enum(['meta', 'google_ads']),
-  kind: z.enum(['set_status', 'set_daily_budget', 'set_age_range']),
+  kind: z.enum(['set_status', 'set_daily_budget', 'set_age_range', 'create_campaign']),
   level: z.enum(['campaign', 'adset', 'ad']),
   entityId: z.string().max(40),
   entityName: z.string().max(200),
@@ -17,6 +17,9 @@ export const rawOperationSchema = z.object({
   ageTargets: z.array(z.object({ id: z.string().max(40), name: z.string().max(200) })).max(10),
   ageMin: z.number().int().nullable(),
   ageMax: z.number().int().nullable(),
+  newCampaignName: z.string().max(120),
+  newAdsetName: z.string().max(120),
+  adRefs: z.array(z.object({ id: z.string().max(40), name: z.string().max(200) })).max(3),
 })
 
 export const OPERATION_GUIDE = [
@@ -25,7 +28,8 @@ export const OPERATION_GUIDE = [
   '- Meta Ads: cambiar el presupuesto diario de una campaña o conjunto que ya tenga daily_budget (kind "set_daily_budget", dailyBudget en unidades de la moneda, no centavos, máximo ±30% del actual).',
   '- Meta Ads: ajustar el rango de edad de uno o más conjuntos (kind "set_age_range", level "adset", ageTargets con id y nombre de cada conjunto, ageMin y ageMax entre 18 y 65; 65 significa 65+). Usalo para pedidos de segmentación etaria; incluí solo los conjuntos que la recomendación menciona (por ejemplo, los de WhatsApp).',
   '- Google Ads (platform "google_ads", level "campaign"): pausar/activar campaña (status ENABLED o PAUSED) o cambiar su presupuesto diario (máximo ±30%). customerId es la cuenta de la campaña.',
-  'Los IDs deben ser exactos y existir en los datos entregados. Completá con null o vacío los campos que no use el kind: entityId/entityName "" y ageTargets [] cuando no apliquen; status, dailyBudget, ageMin y ageMax null cuando no apliquen; customerId "" para Meta.',
+  'Crear campañas nuevas (kind "create_campaign") no se prepara desde acá: si la recomendación pide una campaña nueva, devolvé operation null.',
+  'Los IDs deben ser exactos y existir en los datos entregados. Completá con null o vacío los campos que no use el kind: entityId/entityName "" y ageTargets [] cuando no apliquen; status, dailyBudget, ageMin y ageMax null cuando no apliquen; customerId "" para Meta; newCampaignName/newAdsetName "" y adRefs [] salvo en create_campaign.',
 ].join('\n')
 export type RawOperation = z.infer<typeof rawOperationSchema>
 
@@ -37,6 +41,16 @@ export type ExecutableEntities = {
 /** Normaliza la operación del modelo; solo acepta IDs que existen en las cuentas vinculadas. */
 export function normalizeOperation(raw: RawOperation | null, isKnownId: (platform: 'meta' | 'google_ads', id: string, customerId: string) => boolean): RecommendationOperation | null {
   if (!raw) return null
+  if (raw.kind === 'create_campaign') {
+    const templateAdsetId = raw.entityId.trim()
+    const campaignName = raw.newCampaignName.trim()
+    if (raw.platform !== 'meta' || !campaignName || !raw.dailyBudget || !/^\d{3,30}$/.test(templateAdsetId) || !isKnownId('meta', templateAdsetId, '')) return null
+    const hasAge = raw.ageMin !== null && raw.ageMax !== null
+    if (hasAge && (raw.ageMin! < 18 || raw.ageMax! > 65 || raw.ageMin! > raw.ageMax!)) return null
+    const ads = [...new Map(raw.adRefs.map((ad) => [ad.id.trim(), { id: ad.id.trim(), name: ad.name.trim() || ad.id.trim() }])).values()]
+    if (!ads.length || ads.some((ad) => !/^\d{3,30}$/.test(ad.id) || !isKnownId('meta', ad.id, ''))) return null
+    return { platform: 'meta', kind: 'create_campaign', templateAdsetId, templateAdsetName: raw.entityName.trim() || templateAdsetId, campaignName, adsetName: raw.newAdsetName.trim() || campaignName, dailyBudget: raw.dailyBudget, ageMin: hasAge ? Math.round(raw.ageMin!) : null, ageMax: hasAge ? Math.round(raw.ageMax!) : null, ads }
+  }
   if (raw.kind === 'set_age_range') {
     if (raw.platform !== 'meta' || raw.ageMin === null || raw.ageMax === null) return null
     const ageMin = Math.round(raw.ageMin)

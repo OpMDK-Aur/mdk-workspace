@@ -37,6 +37,6 @@ export async function POST(request: Request) {
     }
     const reply = [result.output.reply, ...result.output.questions.map((question) => `• ${question}`)].join('\n')
     const [assistantMessage] = await insertMessages(auth.supabase, [{ client_id: clientId, user_id: auth.user.id, role: 'assistant', content: reply }])
-    return NextResponse.json({ userMessage: userMessage[0], message: assistantMessage, recommendations: result.createdRecommendations, editedRecommendation: result.editedRecommendation, contextSaved, needsClarification: result.output.needsClarification })
+    return NextResponse.json({ userMessage: userMessage[0], message: assistantMessage, recommendations: result.createdRecommendations, editedRecommendation: result.editedRecommendation, contextSaved, profileProposal: result.profileProposal, needsClarification: result.output.needsClarification })
   } catch (error) { return copilotError(error) }
 }

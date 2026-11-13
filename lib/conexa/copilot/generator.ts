@@ -5,7 +5,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExecutionContext } from '@/lib/ai/types'
 import { getToolDefinitions } from '@/lib/ai/tools'
 import { dateRange } from '@/lib/conexa/period-range'
-import { MAX_BUDGET_CHANGE, MAX_RECS_PER_RUN, MIN_DAYS_OF_DATA, MIN_SPEND_MULTIPLIER_NO_RESULTS, RECENT_EDIT_WINDOW_DAYS } from './config'
+import { assessContext, COMPETITOR_PREFIX, parseCompetitorNote, PROFILE_FIELD_KEYS, PROFILE_FIELDS, readClientProfile, type ClientProfile, type ProfileUpdate } from './client-profile'
+import { researchCompetitors } from './competitors'
+import { MAX_BUDGET_CHANGE, MAX_NEW_CAMPAIGN_ADS, MAX_RECS_PER_RUN, MIN_DAYS_OF_DATA, MIN_SPEND_MULTIPLIER_NO_RESULTS, NEW_CAMPAIGN_MAX_BUDGET_RATIO, RECENT_EDIT_WINDOW_DAYS } from './config'
 import { buildEntityCatalog, catalogSourceItems, type EntityCatalog } from './entity-catalog'
 import { normalizeOperation, rawOperationSchema } from './operations'
 import { CopilotError } from './route-helpers'
@@ -15,7 +17,8 @@ import { operationDedupeKey, validateOperation, type LinkedAccounts } from './va
 
 export type RunMode = 'scan' | 'chat'
 export const SCAN_MESSAGE = 'Analizá los últimos 30 días y proponé recomendaciones'
-const MANUAL_REASON = 'La acción no corresponde a pausar/activar, cambiar presupuesto diario o ajustar la edad; se aplica a mano.'
+const MANUAL_REASON = 'La acción no corresponde a pausar/activar, cambiar presupuesto diario, ajustar la edad ni crear una campaña en pausa; se aplica a mano.'
+const COMPETITOR_INTENT = /competen|competidor|campa[nñ]a nueva|nueva campa|crear (una )?campa|anuncios? de/i
 
 const TYPE_VALUES = ['presupuesto', 'creatividades', 'segmentacion', 'estructura', 'tracking', 'crm', 'otro'] as const satisfies readonly RecommendationType[]
 const PLATFORM_VALUES = ['meta', 'google_ads', 'ga4', 'tag_manager', 'crm'] as const satisfies readonly RecommendationPlatform[]
@@ -23,7 +26,8 @@ const modelSchema = z.object({
   reply: z.string().min(1).max(1600),
   needsClarification: z.boolean(),
   questions: z.array(z.string().min(1).max(240)).max(5),
-  contextToSave: z.array(z.string().min(3).max(600)).max(5),
+  contextToSave: z.array(z.object({ text: z.string().min(3).max(600), competitorName: z.string().max(80) })).max(5),
+  profileUpdates: z.array(z.object({ field: z.enum(PROFILE_FIELD_KEYS), value: z.string().max(600) })).max(PROFILE_FIELDS.length),
   recommendations: z.array(z.object({
     title: z.string().min(5).max(140),
     platforms: z.array(z.enum(PLATFORM_VALUES)).max(5),
@@ -42,7 +46,7 @@ type ModelOutput = z.infer<typeof modelSchema>
 
 const SYSTEM_PROMPT = `Sos Conexa, copiloto de recomendaciones para el equipo de MDK. Respondé en español rioplatense, claro y conciso.
 
-ALCANCE: podés leer contexto, tareas, comentarios, datos de plataformas e historial; preguntar; y proponer recomendaciones como borradores. Nunca publiques, apruebes, descartes, programes ni ejecutes nada, y no afirmes que lo hiciste: una persona revisa cada borrador y lo ejecuta con el botón Publicar. No modifiques el formulario original de Contexto del cliente. Si te piden una acción fuera de alcance, explicá que solo redactás borradores y sugerí el paso manual correspondiente.
+ALCANCE: podés leer contexto, tareas, comentarios, datos de plataformas, competencia e historial; preguntar; proponer recomendaciones como borradores; y proponer datos para el formulario Contexto del cliente. Nunca publiques, apruebes, descartes, programes ni ejecutes nada, y no afirmes que lo hiciste: una persona revisa cada borrador y lo ejecuta con el botón Publicar. Los datos del formulario solo se guardan cuando el usuario los confirma, así que no digas que ya quedaron guardados. Si te piden una acción fuera de alcance, explicá que solo redactás borradores y sugerí el paso manual correspondiente.
 
 MODO DE TRABAJO (runMode):
 - "scan": análisis proactivo. Revisá los datos del cliente y proponé hasta ${MAX_RECS_PER_RUN} recomendaciones, ordenadas por impacto esperado. No hagas preguntas salvo que falte algo que bloquee todas las propuestas. contextToSave va vacío.
@@ -72,7 +76,17 @@ ACLARACIONES: cuando falten datos críticos o una recomendación dependa de una 
 
 PLATAFORMAS: las válidas para una propuesta son únicamente las de connectedPlatforms. Si no hay conectadas, podés proponer acciones basadas en contexto empresarial con platforms vacío, sin inventar observaciones de medios.
 
-CONTEXTO PERSISTENTE: contextToSave contiene solo fragmentos textuales que aparezcan literalmente en currentUserMessage y sean datos duraderos del negocio. No guardes preguntas, instrucciones generales ni mensajes del asistente.
+CONTEXTO PERSISTENTE: contextToSave contiene solo fragmentos (text) que aparezcan literalmente en currentUserMessage y sean datos duraderos del negocio. Si el fragmento describe a un competidor, poné su nombre en competitorName; si no, competitorName "". No guardes preguntas, instrucciones generales ni mensajes del asistente.
+
+FORMULARIO DE CONTEXTO (contextAssessment): muestra qué campos del formulario Contexto del cliente están cargados, cuáles faltan y el nivel (debil, intermedio, completo).
+- En modo "chat", si el usuario da un dato que corresponde a un campo del formulario, devolvelo en profileUpdates con el valor limpio (números sin símbolos para target_cpl y target_monthly_sales; en la moneda de la cuenta). Solo datos que el usuario dijo en currentUserMessage; nunca deduzcas ni inventes. El usuario los confirma antes de guardarlos.
+- Si el nivel es "debil" o "intermedio", al final de reply pedí UNO o DOS de los datos de contextAssessment.missing, en el orden en que aparecen, con una pregunta concreta. No repitas una pregunta que el usuario ya respondió en history. Si el usuario pide algo concreto, primero respondé eso.
+- CONTEXTO OBLIGATORIO: si contextGate.blocked es true, Recomendaciones está bloqueado hasta completar los datos base (contextGate.missingCore). Devolvé recommendations vacío, no analices las cuentas y dedicá reply a pedir esos datos de a uno o dos, explicando en una frase que son necesarios para recomendar. Igual devolvé profileUpdates con lo que el usuario haya dicho.
+- En modo "scan", profileUpdates va vacío.
+
+COMPETENCIA (competitorResearch): por competidor trae lo que cargó el equipo, anuncios activos de la Biblioteca de anuncios de Meta y un resumen de búsqueda web, cada uno con su evidenceId. Usalo para detectar ofertas, mensajes o canales que el cliente no está cubriendo. Distinguí siempre la fuente: lo de la web puede estar desactualizado y lo tenés que presentar como "según información pública". Nunca copies anuncios ni marcas de un competidor.
+
+CAMPAÑAS NUEVAS: podés recomendar crear una campaña nueva cuando el contexto, los objetivos, la competencia o los datos lo justifiquen (por ejemplo, una oferta o público que ninguna campaña cubre). Antes de proponerla, verificá que ninguna campaña existente del catálogo ya cubra ese objetivo y público; si existe, preferí ajustarla.
 
 OPERACIÓN EJECUTABLE: Publicar ejecuta exactamente lo que pongas en operation, sin pasar por otro modelo. Por eso:
 - Si la acción principal de la recomendación encaja en una de las operaciones de abajo y la entidad está en entityCatalog, operation es OBLIGATORIA. No la dejes en null para que se prepare al publicar.
@@ -81,12 +95,13 @@ OPERACIÓN EJECUTABLE: Publicar ejecuta exactamente lo que pongas en operation, 
   - Meta: presupuesto diario de una campaña o conjunto que tenga dailyBudget en el catálogo (kind "set_daily_budget", dailyBudget en unidades de la moneda, no centavos, máximo ±${MAX_BUDGET_CHANGE * 100}% del actual).
   - Meta: rango de edad de uno o más conjuntos (kind "set_age_range", level "adset", ageTargets con id y nombre de cada conjunto, ageMin y ageMax entre 18 y 65; 65 significa 65+). Incluí solo los conjuntos que la recomendación menciona. Para encontrar "los de WhatsApp" u otro destino, usá destinationType y el nombre del catálogo.
   - Google Ads (platform "google_ads", level "campaign"): pausar/activar campaña (status ENABLED o PAUSED) o cambiar su presupuesto diario (máximo ±${MAX_BUDGET_CHANGE * 100}%). customerId es la cuenta de la campaña.
+  - Meta: crear una campaña nueva EN PAUSA (kind "create_campaign", level "campaign"). entityId/entityName es el conjunto (adset) modelo del catálogo: la campaña nueva copia su objetivo, optimización, destino y público. Elegí como modelo un conjunto con buen rendimiento y del mismo objetivo/destino que pide la recomendación. newCampaignName y newAdsetName siguen la nomenclatura de las campañas existentes. dailyBudget en unidades de la moneda, como máximo ${NEW_CAMPAIGN_MAX_BUDGET_RATIO} veces el presupuesto diario del modelo (o de su campaña si el conjunto no tiene). ageMin/ageMax opcionales para cambiar la edad del público copiado (null para dejarla igual). adRefs: de 1 a ${MAX_NEW_CAMPAIGN_ADS} anuncios del catálogo, de la misma cuenta, cuyas creatividades se reutilizan (preferí los de mejor rendimiento). No se pueden crear creatividades nuevas: si la idea requiere piezas nuevas, decilo en suggestedActions como paso manual. Nunca se activa sola: aclaralo en suggestedActions.
 - IDs, estado, nombre y valor actual salen siempre de entityCatalog; nunca de memoria ni deducidos. Para presupuestos, calculá el valor nuevo desde el valor actual del catálogo. Si convendría cambiar más del ${MAX_BUDGET_CHANGE * 100}%, proponé el máximo permitido y aclará que se puede repetir tras medir el resultado.
 - Google Ads con budgetShared en true: no propongas cambio de presupuesto (se rechaza). Dejá operation en null y explicá el motivo.
 - Una recomendación, una operación. Excepción: set_age_range admite varios conjuntos. Para cambiar varias campañas distintas, hacé una recomendación por cada una, priorizando dentro del máximo.
 - Si no encaja (creatividades, tracking, CRM, intereses, ubicaciones, pujas, etc.) o falta una entidad en el catálogo: operation null y completá nonExecutableReason con el motivo concreto (por ejemplo "el catálogo no incluye los conjuntos de WhatsApp"). Nunca inventes IDs. Si operation existe, nonExecutableReason es "".
 - El texto y la operación nunca se contradicen. Si editás una tarjeta y cambia la acción (otro rango, otro monto), actualizá operation. En suggestedActions poné primero el cambio que ejecuta Publicar, con valor actual → valor propuesto, y después los pasos manuales de seguimiento.
-- Completá con null o vacío los campos que no use el kind: entityId/entityName "" y ageTargets [] cuando no apliquen; status, dailyBudget, ageMin y ageMax null cuando no apliquen; customerId "" para Meta.
+- Completá con null o vacío los campos que no use el kind: entityId/entityName "" y ageTargets [] cuando no apliquen; status, dailyBudget, ageMin y ageMax null cuando no apliquen; customerId "" para Meta; newCampaignName/newAdsetName "" y adRefs [] salvo en create_campaign.
 - Si el contexto trae validationErrors, corregí solo las recomendaciones indicadas, respetando esos errores.
 
 Toda recomendación es un borrador para revisión humana. No afirmes que se publicó ni que modificaste una plataforma.`
@@ -176,13 +191,28 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   const { supabase, user, client, clientId, runMode } = input
   const message = runMode === 'scan' ? SCAN_MESSAGE : input.message ?? ''
   const { catalog, linkedAccounts } = await buildEntityCatalog(supabase, clientId)
-  const [context, previousMessages, allRecommendations, platformData] = await Promise.all([
+  const [context, previousMessages, allRecommendations, platformData, storedProfile] = await Promise.all([
     getCopilotContext(supabase, clientId, String(client.nombre_del_negocio ?? 'Cliente'), []),
     runMode === 'chat' ? listMessages(supabase, clientId, user.id) : Promise.resolve([]),
     listRecommendations(supabase, clientId),
     readPlatformData(client, user, clientId, linkedAccounts),
+    readClientProfile(clientId).catch(() => null),
   ])
   const connectedPlatforms = platformData.platforms
+  const profile = storedProfile ?? (context.profile as unknown as ClientProfile | null)
+  const assessment = assessContext(profile, context.notes)
+  const missingCore = assessment.fields.filter((field) => field.core && !field.filled).map((field) => field.label)
+  const contextBlocked = missingCore.length > 0
+  if (contextBlocked && (runMode === 'scan' || input.editingRecommendationId)) throw new CopilotError(`Para usar Recomendaciones primero completá el contexto del cliente. Falta: ${missingCore.join(', ')}.`, 412)
+  const competitorNotes = new Map<string, string[]>()
+  for (const note of context.notes) {
+    const parsed = parseCompetitorNote(note.content)
+    if (parsed) competitorNotes.set(parsed.name, [...(competitorNotes.get(parsed.name) ?? []), ...(parsed.detail ? [parsed.detail] : [])])
+  }
+  const shouldResearch = !contextBlocked && competitorNotes.size > 0 && (runMode === 'scan' || COMPETITOR_INTENT.test(message))
+  const competitors = shouldResearch
+    ? await researchCompetitors([...competitorNotes].map(([name, notes]) => ({ name, notes })), typeof profile?.industry === 'string' ? profile.industry : null)
+    : { research: [], sources: [] }
   let editTarget: Recommendation | null = null
   if (input.editingRecommendationId) {
     editTarget = allRecommendations.find((item) => item.id === input.editingRecommendationId && item.status === 'draft') ?? null
@@ -190,7 +220,8 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   }
 
   const sourceItems = [
-    ...(context.profile ? [{ id: 'profile', label: 'Contexto del cliente', excerpt: clip(JSON.stringify(context.profile), MAX_SOURCE_CHARS) }] : []),
+    ...(profile ? [{ id: 'profile', label: 'Contexto del cliente', excerpt: clip(JSON.stringify(profile), MAX_SOURCE_CHARS) }] : []),
+    ...competitors.sources,
     ...context.notes.slice(0, 30).map((note) => ({ id: `context:${note.id}`, label: `Contexto agregado (${note.source})`, excerpt: clip(note.content, 900) })),
     ...context.tasks.map((task) => ({ id: `task:${String(task.id)}`, label: `Tarea · ${clip(task.titulo, 120)}`, excerpt: clip(`${task.estado ?? ''} · ${task.descripcion ?? ''} · prioridad ${task.prioridad ?? 'sin prioridad'}`, MAX_SOURCE_CHARS) })),
     ...context.comments.map((comment) => ({ id: `comment:${String(comment.id)}`, label: `Comentario · ${clip(comment.autor, 80)}`, excerpt: clip(comment.contenido, MAX_SOURCE_CHARS) })),
@@ -203,7 +234,10 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
     runMode,
     client: context.clientName,
     connectedPlatforms,
-    profile: context.profile,
+    profile,
+    contextAssessment: { level: assessment.level, missing: assessment.missing, competitors: assessment.competitors },
+    contextGate: { blocked: contextBlocked, missingCore },
+    competitorResearch: competitors.research,
     storedContext: context.notes.slice(0, 30).map((note) => ({ source: note.source, content: clip(note.content, 900) })),
     tasks: context.tasks.slice(0, 25).map((task) => ({ id: task.id, title: clip(task.titulo, 160), description: clip(task.descripcion, 420), state: task.estado, priority: task.prioridad, dueDate: task.fecha_vencimiento })),
     clientComments: context.comments.slice(0, 25).map((comment) => ({ id: comment.id, author: clip(comment.autor, 80), content: clip(comment.contenido, 420), createdAt: comment.creado_en })),
@@ -225,7 +259,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   let output = await callModel()
   let evaluated = evaluate(output, evidenceById, connectedPlatforms, catalog, linkedAccounts)
   const failing = evaluated.map((item, index) => ({ index, title: item.draft.title, errors: item.errors })).filter((item) => item.errors.length)
-  if (failing.length) {
+  if (failing.length && !contextBlocked) {
     try {
       const retry = await callModel({ validationErrors: failing.map(({ index, title, errors }) => ({ recommendationIndex: index, title, errors })), previousDraftOutput: output.recommendations })
       output = retry
@@ -234,7 +268,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
       console.error('[conexa:copilot] reintento de validación', error instanceof Error ? error.message : error)
     }
   }
-  const drafts = finalize(evaluated)
+  const drafts = contextBlocked ? [] : finalize(evaluated)
 
   const runId = randomUUID()
   let createdRecommendations: Recommendation[] = []
@@ -242,7 +276,16 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   if (editTarget && drafts[0] && !output.needsClarification) editedRecommendation = await editRecommendation(supabase, clientId, editTarget.id, drafts[0])
   else if (!editTarget && !output.needsClarification) createdRecommendations = await createRecommendationDrafts(supabase, clientId, user.id, drafts, { source: runMode, runId })
 
-  const contextToSave = runMode === 'scan' ? [] : output.contextToSave.map((item) => item.trim()).filter((item) => item && message.includes(item))
+  const contextToSave = runMode === 'scan' ? [] : output.contextToSave.flatMap(({ text, competitorName }) => {
+    const clean = text.trim()
+    if (!clean || !message.includes(clean)) return []
+    const name = competitorName.replace(/[:\n]/g, ' ').trim()
+    return [name ? `${COMPETITOR_PREFIX}${name}: ${clean}` : clean]
+  })
+  const profileProposal: ProfileUpdate[] = runMode === 'scan' ? [] : [...new Map(output.profileUpdates
+    .map(({ field, value }) => ({ field, value: value.trim() }))
+    .filter(({ field, value }) => value && String(profile?.[field] ?? '').trim() !== value)
+    .map((item) => [item.field, item])).values()]
   const skippedDuplicates = !editTarget && !output.needsClarification ? drafts.length - createdRecommendations.length : 0
-  return { output, createdRecommendations, editedRecommendation, contextToSave, skippedDuplicates }
+  return { output, createdRecommendations, editedRecommendation, contextToSave, profileProposal, skippedDuplicates }
 }
