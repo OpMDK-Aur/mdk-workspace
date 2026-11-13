@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { copilotApi } from '@/lib/conexa/copilot/api'
+import type { ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
 import type { ClientContextRecord, CopilotChatMessage, Recommendation } from '@/lib/conexa/copilot/types'
 
 export function useCopilot(clientId: string) {
@@ -13,8 +14,16 @@ export function useCopilot(clientId: string) {
     if (!response.ok) throw new Error(data.error ?? 'No se pudo cargar el contexto adicional.')
     return data as { context: ClientContextRecord[] }
   }, { revalidateOnFocus: false })
+  const profile = useSWR(`/api/conexa/copilot/profile?clientId=${encodeURIComponent(clientId)}`, (_url: string) => copilotApi.profile(clientId), { revalidateOnFocus: false })
 
   return {
+    assessment: profile.data?.assessment ?? null,
+    profileError: profile.error as Error | undefined,
+    saveProfile: async (updates: ProfileUpdate[]) => {
+      const result = await copilotApi.saveProfile(clientId, updates)
+      await profile.mutate(result, { revalidate: false })
+      return result
+    },
     recommendations: recommendations.data?.recommendations ?? [],
     messages: messages.data?.messages ?? [],
     contexts: contexts.data?.context ?? [],
@@ -25,12 +34,12 @@ export function useCopilot(clientId: string) {
     mutateContexts: contexts.mutate,
     send: async (message: string, editingRecommendationId?: string) => {
       const result = await copilotApi.send({ clientId, message, editingRecommendationId })
-      await Promise.all([recommendations.mutate(), messages.mutate(), contexts.mutate()])
+      await Promise.all([recommendations.mutate(), messages.mutate(), contexts.mutate(), profile.mutate()])
       return result
     },
     addContext: async (content: string) => {
       await copilotApi.addContext({ clientId, content })
-      await contexts.mutate()
+      await Promise.all([contexts.mutate(), profile.mutate()])
     },
     edit: async (id: string, patch: Partial<Recommendation>) => {
       await copilotApi.edit(clientId, id, patch)
