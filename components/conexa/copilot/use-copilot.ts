@@ -41,10 +41,24 @@ export function useCopilot(clientId: string) {
       await recommendations.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? recommendation : item)) }, { revalidate: false })
       return recommendation
     },
-    publish: async (id: string) => {
-      const { recommendation } = await copilotApi.publish(clientId, id)
+    previewPublish: async (id: string) => {
+      const result = await copilotApi.previewPublish(clientId, id)
+      await recommendations.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? { ...item, ...result.recommendation } : item)) }, { revalidate: false })
+      return result
+    },
+    publish: async (id: string, confirmedPlanHash: string) => {
+      const { recommendation } = await copilotApi.publish(clientId, id, confirmedPlanHash)
       await recommendations.mutate((current) => current && { ...current, recommendations: current.recommendations.map((item) => (item.id === id ? recommendation : item)) }, { revalidate: true })
       return recommendation
+    },
+    markDone: async (id: string) => {
+      await copilotApi.markDone(clientId, id)
+      await recommendations.mutate()
+    },
+    scan: async () => {
+      const result = await copilotApi.scan(clientId)
+      await recommendations.mutate()
+      return result
     },
     discard: async (id: string, reason?: string) => {
       await copilotApi.discard(clientId, id, reason)

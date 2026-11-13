@@ -1,13 +1,18 @@
+import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getMetaAccessToken, META_GRAPH_VERSION } from '@/lib/meta-ads/token'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
+import { MAX_BUDGET_CHANGE, RECENT_EDIT_WINDOW_DAYS } from './config'
 import { CopilotError } from './route-helpers'
-import type { ExecutionResult, RecommendationOperation } from './types'
+import type { ExecutionPlan, PlanStep, PlanStepResult, RecommendationOperation } from './types'
 
 const GOOGLE_ADS_API_VERSION = 'v23'
-const MAX_BUDGET_CHANGE = 0.3
-const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'COP', 'CRC', 'HUF', 'ISK', 'IDR', 'JPY', 'KRW', 'PYG', 'TWD', 'VND'])
+export const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'COP', 'CRC', 'HUF', 'ISK', 'IDR', 'JPY', 'KRW', 'PYG', 'TWD', 'VND'])
 const splitIds = (value: unknown) => String(value ?? '').split(',').map((id) => id.trim()).filter(Boolean)
+
+/** Factor entre unidades de la moneda y las unidades mínimas que usa Meta (centavos, salvo monedas sin decimales). */
+export const metaCurrencyFactor = (currency: string) => (ZERO_DECIMAL_CURRENCIES.has(currency) ? 1 : 100)
+export const GOOGLE_MICROS = 1_000_000
 
 export async function getClientAdAccounts(supabase: SupabaseClient, clientId: string) {
   const [{ data: client, error: clientError }, { data: accounts, error: accountError }] = await Promise.all([
@@ -22,14 +27,17 @@ export async function getClientAdAccounts(supabase: SupabaseClient, clientId: st
   return { meta, google }
 }
 
-function money(amount: number, currency: string) {
+export function money(amount: number, currency: string) {
   try { return new Intl.NumberFormat('es-AR', { style: 'currency', currency, maximumFractionDigits: ZERO_DECIMAL_CURRENCIES.has(currency) ? 0 : 2 }).format(amount) } catch { return `${amount} ${currency}` }
 }
 
-function assertBudgetChange(current: number, next: number) {
-  if (!Number.isFinite(next) || next <= 0) throw new CopilotError('El presupuesto propuesto no es válido.', 422)
-  if (current <= 0) throw new CopilotError('La entidad no tiene un presupuesto diario propio para modificar.', 422)
-  if (Math.abs(next - current) / current > MAX_BUDGET_CHANGE) throw new CopilotError(`El cambio de presupuesto supera el límite de seguridad de ±${MAX_BUDGET_CHANGE * 100}% sobre el valor actual. Pedile al chat que reformule la recomendación.`, 422)
+export const budgetChange = (current: number, next: number) => (current > 0 ? (next - current) / current : null)
+
+function assertBudgetChange(name: string, current: number, next: number, currency: string) {
+  if (!Number.isFinite(next) || next <= 0) throw new CopilotError(`El presupuesto propuesto para «${name}» no es válido.`, 422)
+  if (current <= 0) throw new CopilotError(`«${name}» no tiene un presupuesto diario propio para modificar.`, 422)
+  const change = budgetChange(current, next)!
+  if (Math.abs(change) > MAX_BUDGET_CHANGE + 1e-9) throw new CopilotError(`El cambio de presupuesto de «${name}» (${money(current, currency)} → ${money(next, currency)}, ${Math.round(change * 100)}%) supera el límite de ±${MAX_BUDGET_CHANGE * 100}% sobre el valor actual.`, 422)
 }
 
 export async function metaRequest<T>(path: string, params: Record<string, string>, method: 'GET' | 'POST' = 'GET'): Promise<T> {
@@ -43,52 +51,6 @@ export async function metaRequest<T>(path: string, params: Record<string, string
   const data = await response.json().catch(() => ({}))
   if (!response.ok || data.error) throw new CopilotError(`Meta Ads rechazó la operación: ${data.error?.error_user_msg ?? data.error?.message ?? response.status}`, 502)
   return data as T
-}
-
-const ageLabel = (min: number, max: number) => `${min} a ${max >= 65 ? '65+' : max}`
-
-async function executeMetaAgeRange(operation: Extract<RecommendationOperation, { kind: 'set_age_range' }>, accounts: Set<string>): Promise<ExecutionResult> {
-  if (operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax) throw new CopilotError('El rango de edad propuesto no es válido (debe estar entre 18 y 65+).', 422)
-  const adsets = await Promise.all(operation.adsets.map((adset) => metaRequest<{ id: string; name?: string; account_id?: string; targeting?: Record<string, unknown> & { age_min?: number; age_max?: number } }>(encodeURIComponent(adset.id), { fields: 'id,name,account_id,targeting' })))
-  for (const adset of adsets) {
-    if (!accounts.has(String(adset.account_id ?? '').replace(/^act_/, ''))) throw new CopilotError(`El conjunto «${adset.name ?? adset.id}» no pertenece a una cuenta de Meta vinculada a este cliente.`, 403)
-    if (!adset.targeting) throw new CopilotError(`No se pudo leer la segmentación del conjunto «${adset.name ?? adset.id}».`, 422)
-  }
-  const pending = adsets.filter((adset) => (adset.targeting!.age_min ?? 18) !== operation.ageMin || (adset.targeting!.age_max ?? 65) !== operation.ageMax)
-  if (!pending.length) throw new CopilotError(`Los conjuntos ya tienen la edad ${ageLabel(operation.ageMin, operation.ageMax)}.`, 409)
-
-  const applied: string[] = []
-  for (const adset of pending) {
-    try {
-      await metaRequest(encodeURIComponent(adset.id), { targeting: JSON.stringify({ ...adset.targeting, age_min: operation.ageMin, age_max: operation.ageMax }) }, 'POST')
-      applied.push(adset.name ?? adset.id)
-    } catch (error) {
-      if (!applied.length) throw error
-      throw new CopilotError(`Se cambió la edad en ${applied.map((name) => `«${name}»`).join(', ')}, pero falló en «${adset.name ?? adset.id}»: ${error instanceof Error ? error.message : 'error de Meta'}. Revisá Meta Ads antes de reintentar.`, 502)
-    }
-  }
-  const before = [...new Set(pending.map((adset) => ageLabel(adset.targeting!.age_min ?? 18, adset.targeting!.age_max ?? 65)))].join(' / ')
-  return { platform: 'meta', entityId: pending.map((adset) => adset.id).join(','), entityName: pending.length === 1 ? pending[0].name ?? pending[0].id : `${pending.length} conjuntos`, before: `Edad ${before}`, after: `Edad ${ageLabel(operation.ageMin, operation.ageMax)}`, executedAt: new Date().toISOString() }
-}
-
-async function executeMeta(operation: Extract<RecommendationOperation, { platform: 'meta' }>, accounts: Set<string>): Promise<ExecutionResult> {
-  if (operation.kind === 'set_age_range') return executeMetaAgeRange(operation, accounts)
-  const entity = await metaRequest<{ id: string; name?: string; account_id?: string; status?: string; daily_budget?: string }>(encodeURIComponent(operation.entityId), { fields: operation.level === 'ad' ? 'id,name,account_id,status' : 'id,name,account_id,status,daily_budget' })
-  const accountId = String(entity.account_id ?? '').replace(/^act_/, '')
-  if (!accountId || !accounts.has(accountId)) throw new CopilotError('La entidad de Meta no pertenece a una cuenta vinculada a este cliente.', 403)
-  const name = entity.name ?? operation.entityName
-  if (operation.kind === 'set_status') {
-    if (entity.status === operation.status) throw new CopilotError(`La entidad ya está en estado ${operation.status}.`, 409)
-    await metaRequest(encodeURIComponent(operation.entityId), { status: operation.status }, 'POST')
-    return { platform: 'meta', entityId: operation.entityId, entityName: name, before: `Estado ${entity.status ?? 'desconocido'}`, after: `Estado ${operation.status}`, executedAt: new Date().toISOString() }
-  }
-  const { currency = 'USD' } = await metaRequest<{ currency?: string }>(`act_${accountId}`, { fields: 'currency' })
-  const factor = ZERO_DECIMAL_CURRENCIES.has(currency) ? 1 : 100
-  const currentMinor = Number(entity.daily_budget ?? 0)
-  const nextMinor = Math.round(operation.dailyBudget * factor)
-  assertBudgetChange(currentMinor, nextMinor)
-  await metaRequest(encodeURIComponent(operation.entityId), { daily_budget: String(nextMinor) }, 'POST')
-  return { platform: 'meta', entityId: operation.entityId, entityName: name, before: `${money(currentMinor / factor, currency)} / día`, after: `${money(nextMinor / factor, currency)} / día`, executedAt: new Date().toISOString() }
 }
 
 export async function googleRequest<T>(path: string, body: unknown): Promise<T> {
@@ -107,32 +69,135 @@ export async function googleRequest<T>(path: string, body: unknown): Promise<T> 
   return data as T
 }
 
-async function executeGoogle(operation: Extract<RecommendationOperation, { platform: 'google_ads' }>, accounts: Set<string>): Promise<ExecutionResult> {
+/** Normaliza el ID de entidad de un evento de historial (Google usa resource names). */
+export const changeEventEntityKey = (value: unknown) => String(value ?? '').split('/').pop()!.split('~').pop()!.trim()
+
+export async function loadRecentEdits(supabase: SupabaseClient, clientId: string, days: number) {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const { data, error } = await supabase.from('paid_media_change_events').select('entity_id, occurred_at').eq('client_id', clientId).gte('occurred_at', since).order('occurred_at', { ascending: false }).limit(1000)
+  const edits = new Map<string, string>()
+  if (error) { console.error('[conexa:copilot] historial de cambios', error.message); return edits }
+  for (const row of data ?? []) {
+    const key = changeEventEntityKey(row.entity_id)
+    if (key && !edits.has(key)) edits.set(key, String(row.occurred_at))
+  }
+  return edits
+}
+
+const ageLabel = (min: number, max: number) => `${min} a ${max >= 65 ? '65+' : max}`
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+
+type InternalStep = PlanStep & { apply: () => Promise<void> }
+
+function step(input: Omit<PlanStep, 'alreadyApplied' | 'pctChange' | 'warnings'> & { pctChange?: number | null; warnings?: string[] }, apply: () => Promise<void>): InternalStep {
+  return { ...input, pctChange: input.pctChange ?? null, warnings: input.warnings ?? [], alreadyApplied: input.before === input.after, apply }
+}
+
+async function planMeta(operation: Extract<RecommendationOperation, { platform: 'meta' }>, accounts: Set<string>): Promise<InternalStep[]> {
+  const assertAccount = (accountId: unknown, name: string) => {
+    const id = String(accountId ?? '').replace(/^act_/, '')
+    if (!id || !accounts.has(id)) throw new CopilotError(`«${name}» no pertenece a una cuenta de Meta Ads vinculada a este cliente.`, 403)
+    return id
+  }
+
+  if (operation.kind === 'set_age_range') {
+    if (operation.ageMin < 18 || operation.ageMax > 65 || operation.ageMin > operation.ageMax) throw new CopilotError('El rango de edad propuesto no es válido (debe estar entre 18 y 65+).', 422)
+    const adsets = await Promise.all(operation.adsets.map((adset) => metaRequest<{ id: string; name?: string; account_id?: string; targeting?: Record<string, unknown> & { age_min?: number; age_max?: number; targeting_automation?: { advantage_audience?: number } } }>(encodeURIComponent(adset.id), { fields: 'id,name,account_id,targeting' })))
+    return adsets.map((adset) => {
+      const name = adset.name ?? 'Conjunto sin nombre'
+      const accountId = assertAccount(adset.account_id, name)
+      if (!adset.targeting) throw new CopilotError(`No se pudo leer la segmentación del conjunto «${name}».`, 422)
+      const targeting = adset.targeting
+      const before = `${targeting.age_min ?? 18}-${targeting.age_max ?? 65}`
+      const warnings = targeting.targeting_automation?.advantage_audience === 1 ? ['El conjunto usa público Advantage+: Meta puede tomar el rango de edad como sugerencia y no como límite estricto.'] : []
+      return step({ platform: 'meta', accountId, entityType: 'adset', entityId: adset.id, entityName: name, field: 'age_range', before, after: `${operation.ageMin}-${operation.ageMax}`, beforeLabel: `Edad ${ageLabel(targeting.age_min ?? 18, targeting.age_max ?? 65)}`, afterLabel: `Edad ${ageLabel(operation.ageMin, operation.ageMax)}`, warnings },
+        async () => { await metaRequest(encodeURIComponent(adset.id), { targeting: JSON.stringify({ ...targeting, age_min: operation.ageMin, age_max: operation.ageMax }) }, 'POST') })
+    })
+  }
+
+  const entity = await metaRequest<{ id: string; name?: string; account_id?: string; status?: string; daily_budget?: string }>(encodeURIComponent(operation.entityId), { fields: operation.kind === 'set_daily_budget' ? 'id,name,account_id,status,daily_budget' : 'id,name,account_id,status' })
+  const name = entity.name ?? operation.entityName
+  const accountId = assertAccount(entity.account_id, name)
+  if (operation.kind === 'set_status') {
+    const before = entity.status ?? 'UNKNOWN'
+    return [step({ platform: 'meta', accountId, entityType: operation.level, entityId: operation.entityId, entityName: name, field: 'status', before, after: operation.status, beforeLabel: statusLabel(before), afterLabel: statusLabel(operation.status) },
+      async () => { await metaRequest(encodeURIComponent(operation.entityId), { status: operation.status }, 'POST') })]
+  }
+  const { currency = 'USD' } = await metaRequest<{ currency?: string }>(`act_${accountId}`, { fields: 'currency' })
+  const factor = metaCurrencyFactor(currency)
+  const current = Number(entity.daily_budget ?? 0) / factor
+  const nextMinor = Math.round(operation.dailyBudget * factor)
+  const next = nextMinor / factor
+  assertBudgetChange(name, current, next, currency)
+  return [step({ platform: 'meta', accountId, entityType: operation.level, entityId: operation.entityId, entityName: name, field: 'daily_budget', before: current, after: next, beforeLabel: `${money(current, currency)} / día`, afterLabel: `${money(next, currency)} / día`, pctChange: budgetChange(current, next) },
+    async () => { await metaRequest(encodeURIComponent(operation.entityId), { daily_budget: String(nextMinor) }, 'POST') })]
+}
+
+async function planGoogle(operation: Extract<RecommendationOperation, { platform: 'google_ads' }>, accounts: Set<string>): Promise<InternalStep[]> {
   const customerId = operation.customerId.replace(/-/g, '')
   if (!accounts.has(customerId)) throw new CopilotError('La cuenta de Google Ads no está vinculada a este cliente.', 403)
-  if (!/^\d+$/.test(operation.campaignId)) throw new CopilotError('El ID de campaña de Google Ads no es válido.', 422)
+  if (!/^\d+$/.test(operation.campaignId)) throw new CopilotError('La campaña de Google Ads indicada no es válida.', 422)
   const search = await googleRequest<{ results?: Array<{ customer?: { currencyCode?: string }; campaign?: { resourceName?: string; name?: string; status?: string }; campaignBudget?: { resourceName?: string; amountMicros?: string; explicitlyShared?: boolean } }> }>(`customers/${customerId}/googleAds:search`, {
     query: `SELECT customer.currency_code, campaign.resource_name, campaign.name, campaign.status, campaign_budget.resource_name, campaign_budget.amount_micros, campaign_budget.explicitly_shared FROM campaign WHERE campaign.id = ${operation.campaignId} LIMIT 1`,
   })
   const row = search.results?.[0]
-  if (!row?.campaign?.resourceName) throw new CopilotError('La campaña de Google Ads no existe en la cuenta vinculada.', 404)
+  if (!row?.campaign?.resourceName) throw new CopilotError(`La campaña «${operation.entityName}» no existe en la cuenta de Google Ads vinculada.`, 404)
+  const campaignResource = row.campaign.resourceName
   const name = row.campaign.name ?? operation.entityName
   if (operation.kind === 'set_status') {
-    if (row.campaign.status === operation.status) throw new CopilotError(`La campaña ya está en estado ${operation.status}.`, 409)
-    await googleRequest(`customers/${customerId}/campaigns:mutate`, { operations: [{ update: { resourceName: row.campaign.resourceName, status: operation.status }, updateMask: 'status' }] })
-    return { platform: 'google_ads', entityId: operation.campaignId, entityName: name, before: `Estado ${row.campaign.status ?? 'desconocido'}`, after: `Estado ${operation.status}`, executedAt: new Date().toISOString() }
+    const before = row.campaign.status ?? 'UNKNOWN'
+    return [step({ platform: 'google_ads', accountId: customerId, entityType: 'campaign', entityId: operation.campaignId, entityName: name, field: 'status', before, after: operation.status, beforeLabel: statusLabel(before), afterLabel: statusLabel(operation.status) },
+      async () => { await googleRequest(`customers/${customerId}/campaigns:mutate`, { operations: [{ update: { resourceName: campaignResource, status: operation.status }, updateMask: 'status' }] }) })]
   }
-  if (!row.campaignBudget?.resourceName) throw new CopilotError('La campaña no tiene un presupuesto editable.', 422)
-  if (row.campaignBudget.explicitlyShared) throw new CopilotError('La campaña usa un presupuesto compartido; modificarlo afectaría a otras campañas.', 422)
+  const budgetResource = row.campaignBudget?.resourceName
+  if (!budgetResource) throw new CopilotError(`La campaña «${name}» no tiene un presupuesto editable.`, 422)
+  if (row.campaignBudget?.explicitlyShared) throw new CopilotError(`La campaña «${name}» usa un presupuesto compartido; modificarlo afectaría a otras campañas.`, 422)
   const currency = row.customer?.currencyCode ?? 'USD'
-  const currentMicros = Number(row.campaignBudget.amountMicros ?? 0)
+  const current = Number(row.campaignBudget?.amountMicros ?? 0) / GOOGLE_MICROS
   const nextMicros = Math.round(operation.dailyBudget * 10_000) * 100
-  assertBudgetChange(currentMicros, nextMicros)
-  await googleRequest(`customers/${customerId}/campaignBudgets:mutate`, { operations: [{ update: { resourceName: row.campaignBudget.resourceName, amountMicros: String(nextMicros) }, updateMask: 'amount_micros' }] })
-  return { platform: 'google_ads', entityId: operation.campaignId, entityName: name, before: `${money(currentMicros / 1_000_000, currency)} / día`, after: `${money(nextMicros / 1_000_000, currency)} / día`, executedAt: new Date().toISOString() }
+  const next = nextMicros / GOOGLE_MICROS
+  assertBudgetChange(name, current, next, currency)
+  return [step({ platform: 'google_ads', accountId: customerId, entityType: 'campaign', entityId: operation.campaignId, entityName: name, field: 'daily_budget', before: current, after: next, beforeLabel: `${money(current, currency)} / día`, afterLabel: `${money(next, currency)} / día`, pctChange: budgetChange(current, next) },
+    async () => { await googleRequest(`customers/${customerId}/campaignBudgets:mutate`, { operations: [{ update: { resourceName: budgetResource, amountMicros: String(nextMicros) }, updateMask: 'amount_micros' }] }) })]
 }
 
-export async function executeOperation(supabase: SupabaseClient, clientId: string, operation: RecommendationOperation) {
-  const accounts = await getClientAdAccounts(supabase, clientId)
-  return operation.platform === 'meta' ? executeMeta(operation, accounts.meta) : executeGoogle(operation, accounts.google)
+function statusLabel(status: string) {
+  if (status === 'ACTIVE' || status === 'ENABLED') return 'Activa'
+  if (status === 'PAUSED') return 'Pausada'
+  if (status === 'ARCHIVED' || status === 'REMOVED') return 'Archivada'
+  return status
+}
+
+/** Hash estable de los pasos: cambia si cualquier valor actual o propuesto cambia entre la vista previa y la confirmación. */
+export function planHash(steps: PlanStep[]) {
+  const stable = steps.map(({ platform, accountId, entityType, entityId, field, before, after }) => [platform, accountId, entityType, entityId, field, before, after])
+  return createHash('sha256').update(JSON.stringify(stable)).digest('hex')
+}
+
+/** Lee los valores actuales en la plataforma, valida cuenta vinculada y tope de presupuesto, y arma los pasos sin efectos secundarios. */
+export async function buildPlan(supabase: SupabaseClient, clientId: string, operation: RecommendationOperation) {
+  const [accounts, recentEdits] = await Promise.all([getClientAdAccounts(supabase, clientId), loadRecentEdits(supabase, clientId, RECENT_EDIT_WINDOW_DAYS)])
+  const internal = operation.platform === 'meta' ? await planMeta(operation, accounts.meta) : await planGoogle(operation, accounts.google)
+  for (const item of internal) {
+    const editedAt = recentEdits.get(item.entityId)
+    if (editedAt) item.warnings.push(`«${item.entityName}» tuvo un cambio el ${formatDate(editedAt)}; puede seguir en aprendizaje.`)
+  }
+  const steps: PlanStep[] = internal.map(({ apply: _apply, ...rest }) => rest)
+  const plan: ExecutionPlan = { steps, hash: planHash(steps) }
+  return { plan, internal }
+}
+
+export async function executePlan(internal: InternalStep[]): Promise<PlanStepResult[]> {
+  const results: PlanStepResult[] = []
+  for (const item of internal) {
+    const { apply, ...publicStep } = item
+    if (item.alreadyApplied) { results.push({ ...publicStep, outcome: 'skipped' }); continue }
+    try {
+      await apply()
+      results.push({ ...publicStep, outcome: 'success' })
+    } catch (error) {
+      results.push({ ...publicStep, outcome: 'failed', error: error instanceof Error ? error.message.slice(0, 500) : 'La plataforma no pudo aplicar el cambio.' })
+    }
+  }
+  return results
 }

@@ -1,0 +1,7 @@
+export const MAX_BUDGET_CHANGE = 0.3
+export const MIN_DAYS_OF_DATA = 7
+export const RECENT_EDIT_WINDOW_DAYS = 7
+export const MIN_SPEND_MULTIPLIER_NO_RESULTS = 2
+export const MAX_RECS_PER_RUN = 5
+export const CATALOG_LIMIT_PER_PLATFORM = 40
+export const STUCK_EXECUTION_MINUTES = 10
