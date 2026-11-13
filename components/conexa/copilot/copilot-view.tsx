@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { ArrowDownToLine, BarChart3, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Maximize2, MessageCircle, Minimize2, Search, Send, Tag, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownToLine, ArrowRight, BarChart3, Check, ChevronDown, Clock3, Database, FileEdit, Lightbulb, LoaderCircle, Maximize2, MessageCircle, Minimize2, Search, Send, Sparkles, Tag, Users, X, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useCopilot } from './use-copilot'
-import { describeOperation, PLATFORM_LABEL, RECOMMENDATION_TYPE_LABEL, type Recommendation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
+import { describeOperation, executionLines, PLATFORM_LABEL, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
 
 type Client = {
   id: string
@@ -91,6 +91,8 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   const [publishing, setPublishing] = useState(false)
   const [preparing, setPreparing] = useState(false)
   const [prepareError, setPrepareError] = useState<string | null>(null)
+  const [plan, setPlan] = useState<ExecutionPlan | null>(null)
+  const [scanning, setScanning] = useState(false)
   const drafts = useMemo(() => copilot.recommendations.filter((item) => item.status === 'draft' || item.status === 'executing'), [copilot.recommendations])
   const history = useMemo(() => copilot.recommendations.filter((item) => item.status === 'published' || item.status === 'discarded').sort((a, b) => new Date(b.status === 'published' ? b.published_at ?? b.updated_at : b.discarded_at ?? b.updated_at).getTime() - new Date(a.status === 'published' ? a.published_at ?? a.updated_at : a.discarded_at ?? a.updated_at).getTime()), [copilot.recommendations])
   const filteredDrafts = useMemo(() => {
@@ -153,30 +155,52 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
   }
 
   async function publish() {
-    if (!publishTarget || publishing) return
+    if (!publishTarget || !plan || publishing) return
     setPublishing(true)
+    setPrepareError(null)
     try {
-      const published = await copilot.publish(publishTarget.id)
+      const published = await copilot.publish(publishTarget.id, plan.hash)
       setPublishTarget(null)
+      setPlan(null)
       setMobilePanel('history')
-      const result = published.execution_result
-      toast.success(result ? `Aplicado en ${result.platform === 'meta' ? 'Meta Ads' : 'Google Ads'}: ${result.before} → ${result.after}` : 'Cambio aplicado en la plataforma')
+      toast.success(`Aplicado en la plataforma. ${executionLines(published.execution_result).join(' · ')}`)
     } catch (error) {
       await copilot.mutateRecommendations()
-      toast.error(error instanceof Error ? error.message : 'No se pudo ejecutar la recomendación en la plataforma')
+      setPlan(null)
+      setPrepareError(error instanceof Error ? error.message : 'No se pudo ejecutar la recomendación en la plataforma.')
     } finally { setPublishing(false) }
   }
 
   async function openPublish(item: Recommendation) {
     setPublishTarget(item)
+    setPlan(null)
     setPrepareError(null)
-    if (item.operation) return
     setPreparing(true)
     try {
-      setPublishTarget(await copilot.prepare(item.id))
+      const result = await copilot.previewPublish(item.id)
+      setPublishTarget(result.recommendation)
+      setPlan(result.plan)
     } catch (error) {
-      setPrepareError(error instanceof Error ? error.message : 'No se pudo preparar la acción en la plataforma.')
+      setPrepareError(error instanceof Error ? error.message : 'No se pudo leer el estado actual en la plataforma.')
     } finally { setPreparing(false) }
+  }
+
+  async function scan() {
+    if (scanning) return
+    setScanning(true)
+    try {
+      const result = await copilot.scan()
+      if (result.recommendations.length) toast.success(`${result.recommendations.length} recomendación(es) nueva(s) para revisar`)
+      else toast.message(result.skippedDuplicates ? 'Las propuestas encontradas ya tienen un borrador vigente.' : 'No encontramos recomendaciones nuevas con los datos actuales.', { description: [result.reply, ...result.questions].join(' ').slice(0, 400) })
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudieron generar recomendaciones') } finally { setScanning(false) }
+  }
+
+  async function markDone(item: Recommendation) {
+    try {
+      await copilot.markDone(item.id)
+      setMobilePanel('history')
+      toast.success('Recomendación marcada como hecha')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo marcar como hecha') }
   }
 
   async function discard() {
@@ -191,7 +215,7 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
 
   const panels: Record<Panel, ReactNode> = {
     chat: <ChatPanel clientName={client.nombre_del_negocio ?? 'Cliente'} connectedPlatforms={connectedPlatforms} messages={copilot.messages} contextCount={copilot.contexts.length} busy={busy} input={messageInput} editing={Boolean(editingRecommendationId)} onInput={setMessageInput} onSubmit={sendMessage} onAddManual={() => setManualContextOpen(true)} onClearEditing={() => { setEditingRecommendationId(undefined); setMessageInput('') }} endRef={messagesEndRef} />,
-    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
+    recommendations: <RecommendationsPanel items={filteredDrafts} total={drafts.length} filters={filters} search={search} loading={copilot.isLoading || busy || scanning} scanning={scanning} onScan={scan} onMarkDone={markDone} error={copilot.error?.message} onSearch={setSearch} onFilters={setFilters} onSelect={setSelected} onEdit={setEditTarget} onEditWithChat={focusChat} onPublish={openPublish} onDiscard={(item) => { setDiscardTarget(item); setDiscardReason('') }} />,
     history: <HistoryPanel items={filteredHistory} loading={copilot.isLoading} error={copilot.error?.message} filters={filters} search={historySearch} onSearch={setHistorySearch} onStatus={(value) => setFilters((current) => ({ ...current, status: value }))} onSelect={setSelected} onRestore={async (item) => { try { await copilot.restore(item.id); toast.success('Recomendación restaurada como borrador') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo restaurar') } }} />,
   }
 
@@ -223,11 +247,16 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
         {editTarget && <EditRecommendationDialog item={editTarget} onCancel={() => setEditTarget(null)} onSave={async (patch) => { try { await copilot.edit(editTarget.id, patch); setEditTarget(null); toast.success('Borrador actualizado') } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo editar') } }} />}
       </DialogContent>
     </Dialog>
-    <Dialog open={Boolean(publishTarget)} onOpenChange={(open) => { if (!open && !publishing && !preparing) setPublishTarget(null) }}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription>El cambio se aplicará en la cuenta real del cliente. Antes de enviarlo, Conexa verifica que la entidad pertenezca a una cuenta vinculada y lee el valor actual; los cambios de presupuesto mayores a ±30% se rechazan.</DialogDescription></DialogHeader>
-        {publishTarget && <div className="flex flex-col gap-2 rounded-lg border border-[#e7e7e5] bg-[#fafaf9] p-3"><p className="text-sm font-semibold">{publishTarget.title}</p>{preparing ? <p role="status" className="flex items-center gap-2 rounded-md bg-white px-2.5 py-2 text-xs text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Buscando en la plataforma la campaña o anuncio que corresponde…</p> : publishTarget.operation ? <p className="rounded-md bg-white px-2.5 py-2 text-xs font-medium text-[#a8440c]">{describeOperation(publishTarget.operation)}</p> : null}{prepareError && <p role="alert" className="rounded-md bg-[#fff0ec] px-2.5 py-2 text-xs leading-relaxed text-[#b42318]">{prepareError}</p>}<p className="text-xs text-[#666]">{publishTarget.description}</p></div>}
-        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => setPublishTarget(null)}>{prepareError ? 'Cerrar' : 'Cancelar'}</Button><Button onClick={publish} disabled={publishing || preparing || !publishTarget?.operation} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Ejecutar en plataforma'}</Button></DialogFooter>
+    <Dialog open={Boolean(publishTarget)} onOpenChange={(open) => { if (!open && !publishing && !preparing) { setPublishTarget(null); setPlan(null) } }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription>Se aplica en la cuenta real del cliente exactamente lo que ves abajo, leído recién de la plataforma. Si algo cambia antes de confirmar, se te vuelve a mostrar.</DialogDescription></DialogHeader>
+        {publishTarget && <div className="flex flex-col gap-3">
+          <p className="text-sm font-semibold leading-snug">{publishTarget.title}</p>
+          {preparing && <p role="status" className="flex items-center gap-2 rounded-md bg-[#fafaf9] px-3 py-2.5 text-xs text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Leyendo los valores actuales en la plataforma…</p>}
+          {plan && <PlanSteps steps={plan.steps} />}
+          {prepareError && <p role="alert" className="rounded-md bg-[#fff0ec] px-3 py-2.5 text-xs leading-relaxed text-[#b42318]">{prepareError}</p>}
+        </div>}
+        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => { setPublishTarget(null); setPlan(null) }}>{prepareError ? 'Cerrar' : 'Cancelar'}</Button>{prepareError && !plan && publishTarget && !preparing ? <Button variant="outline" onClick={() => openPublish(publishTarget)}>Volver a leer</Button> : <Button onClick={publish} disabled={publishing || preparing || !plan || plan.steps.every((item) => item.alreadyApplied)} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Confirmar'}</Button>}</DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(discardTarget)} onOpenChange={(open) => { if (!open) setDiscardTarget(null) }}>
@@ -298,8 +327,10 @@ function ChatPanel({ clientName, connectedPlatforms, messages, contextCount, bus
   </div>
 }
 
-function RecommendationsPanel({ items, total, filters, search, loading, error, onSearch, onFilters, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: {
-  items: Recommendation[]; total: number; filters: { platform: string; type: string; priority: string; status: string }; search: string; loading: boolean; error?: string
+function RecommendationsPanel({ items, total, filters, search, loading, scanning, error, onScan, onMarkDone, onSearch, onFilters, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: {
+  items: Recommendation[]; total: number; filters: { platform: string; type: string; priority: string; status: string }; search: string; loading: boolean; scanning: boolean; error?: string
+  onScan: () => void
+  onMarkDone: (item: Recommendation) => void
   onSearch: (value: string) => void
   onFilters: (value: { platform: string; type: string; priority: string; status: string }) => void
   onSelect: (item: Recommendation) => void
@@ -310,7 +341,7 @@ function RecommendationsPanel({ items, total, filters, search, loading, error, o
 }) {
   return <div className="flex min-h-0 flex-1 flex-col bg-[#fafaf9]">
     <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2.5">
-      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">{total} pendientes</span></div>
+      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">{total} pendientes</span><Button type="button" size="sm" onClick={onScan} disabled={scanning} className="ml-auto h-7 bg-[#f97316] px-2.5 text-[10px] text-white hover:bg-[#e7650c]">{scanning ? <><LoaderCircle className="size-3 animate-spin" />Analizando cuentas…</> : <><Sparkles className="size-3" />Generar recomendaciones</>}</Button></div>
       <div className="flex flex-wrap gap-1.5">
         <select aria-label="Filtrar por plataforma" value={filters.platform} onChange={(event) => onFilters({ ...filters, platform: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todas las plataformas</option>{PLATFORM_OPTIONS.map((platform) => <option key={platform} value={platform}>{PLATFORM_LABEL[platform]}</option>)}</select>
         <select aria-label="Filtrar por tipo" value={filters.type} onChange={(event) => onFilters({ ...filters, type: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todos los tipos</option>{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select>
@@ -320,37 +351,39 @@ function RecommendationsPanel({ items, total, filters, search, loading, error, o
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
       {error && <p role="alert" className="mb-3 rounded-md bg-[#fff3ed] px-3 py-2 text-[11px] text-[#9a3412]">{error}</p>}
-      {loading && !error ? <div className="flex flex-col gap-3" aria-label="Generando recomendaciones"><Skeleton className="h-36 w-full bg-[#f0f0ee]" /><Skeleton className="h-36 w-full bg-[#f0f0ee]" /></div> : items.length ? <ul className="flex flex-col gap-3">{items.map((item) => <RecommendationCard key={item.id} item={item} onSelect={() => onSelect(item)} onEdit={() => onEdit(item)} onEditWithChat={() => onEditWithChat(item)} onPublish={() => onPublish(item)} onDiscard={() => onDiscard(item)} />)}</ul> : <div className="mt-8 rounded-xl border border-dashed border-[#dededb] bg-white p-8 text-center"><Lightbulb className="mx-auto size-5 text-[#f97316]" /><p className="mt-3 text-sm font-semibold">No hay recomendaciones pendientes.</p><p className="mt-1 text-xs text-[#777]">Contale al chat sobre el cliente para generar nuevas.</p></div>}
+      {scanning && <p role="status" className="mb-3 flex items-center gap-2 rounded-md bg-white px-3 py-2 text-[11px] text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está revisando los últimos 30 días de las cuentas, el CRM y el contexto. Puede tardar un par de minutos.</p>}
+      {loading && !error ? <div className="flex flex-col gap-3" aria-label="Generando recomendaciones"><Skeleton className="h-36 w-full bg-[#f0f0ee]" /><Skeleton className="h-36 w-full bg-[#f0f0ee]" /></div> : items.length ? <ul className="flex flex-col gap-3">{items.map((item) => <RecommendationCard key={item.id} item={item} onSelect={() => onSelect(item)} onEdit={() => onEdit(item)} onEditWithChat={() => onEditWithChat(item)} onPublish={() => onPublish(item)} onMarkDone={() => onMarkDone(item)} onDiscard={() => onDiscard(item)} />)}</ul> : <div className="mt-8 rounded-xl border border-dashed border-[#dededb] bg-white p-8 text-center"><Lightbulb className="mx-auto size-5 text-[#f97316]" /><p className="mt-3 text-sm font-semibold">No hay recomendaciones pendientes.</p><p className="mt-1 text-xs text-[#777]">Usá «Generar recomendaciones» o contale al chat sobre el cliente.</p></div>}
     </div>
   </div>
 }
 
-function RecommendationCard({ item, onSelect, onEdit, onEditWithChat, onPublish, onDiscard }: { item: Recommendation; onSelect: () => void; onEdit: () => void; onEditWithChat: () => void; onPublish: () => void; onDiscard: () => void }) {
+function RecommendationCard({ item, onSelect, onEdit, onEditWithChat, onPublish, onMarkDone, onDiscard }: { item: Recommendation; onSelect: () => void; onEdit: () => void; onEditWithChat: () => void; onPublish: () => void; onMarkDone: () => void; onDiscard: () => void }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const manualOnly = !item.operation && Boolean(item.non_executable_reason)
   return <li className="rounded-xl border border-[#e5e5e1] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)]">
-    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold leading-snug"><button type="button" onClick={onSelect} className="text-left hover:text-[#c55208]">{item.title}</button></h3><div className="mt-2 flex flex-wrap items-center gap-1.5">{item.platforms.length ? item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="rounded-full bg-[#f2f2f0] px-2 py-1 text-[9px] text-[#555]">Basada en contexto</span>}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[9px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div></div><span className="shrink-0 rounded-full bg-[#fff4e9] px-2 py-1 text-[9px] font-semibold text-[#a8440c]">{STATUS_LABEL[item.status]}</span></div>
+    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold leading-snug"><button type="button" onClick={onSelect} className="text-left hover:text-[#c55208]">{item.title}</button></h3><div className="mt-2 flex flex-wrap items-center gap-1.5">{item.platforms.length ? item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="rounded-full bg-[#f2f2f0] px-2 py-1 text-[9px] text-[#555]">Basada en contexto</span>}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[9px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} />{item.operation && <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f5ec] px-2 py-1 text-[9px] font-semibold text-[#1b6b38]"><Zap className="size-2.5" aria-hidden="true" />Ejecutable</span>}</div></div><span className="shrink-0 rounded-full bg-[#fff4e9] px-2 py-1 text-[9px] font-semibold text-[#a8440c]">{STATUS_LABEL[item.status]}</span></div>
     <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-[#555]">{item.description}</p>
     <button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-[#a8440c]">Fundamento <ChevronDown className={cn('size-3 transition-transform', evidenceOpen && 'rotate-180')} /></button>
     {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-[#fafaf9] p-3"><p className="text-[11px] leading-relaxed text-[#555]">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[10px] leading-relaxed text-[#666]"><span className="font-semibold">{evidence.label}: </span>{evidence.excerpt}</li>)}</ul></div>}
     <div className="mt-3"><p className="text-[10px] font-semibold text-[#555]">Acciones sugeridas</p><ol className="mt-1 list-decimal pl-4 text-[10px] leading-relaxed text-[#666]">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></div>
     <p className="mt-2 text-[10px] text-[#555]"><span className="font-semibold">Impacto esperado:</span> {item.expected_impact}</p>
-    <div className="mt-3 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-[#a8440c]">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-[#5a3a22]">{describeOperation(item.operation)}</span></> : <span className="text-[#777]">Al publicar, Conexa buscará en Meta Ads o Google Ads la entidad que corresponde y te mostrará el cambio exacto antes de ejecutarlo.</span>}</div>
+    <div className="mt-3 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-[#a8440c]">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-[#5a3a22]">{describeOperation(item.operation)}</span></> : manualOnly ? <><span className="font-semibold text-[#5a3a22]">Acción manual:</span> <span className="text-[#666]">{item.non_executable_reason}</span></> : <span className="text-[#777]">Al publicar, Conexa buscará en Meta Ads o Google Ads la entidad que corresponde y te mostrará el cambio exacto antes de ejecutarlo.</span>}</div>
     {item.execution_error && <p role="alert" className="mt-2 rounded-md bg-[#fff0ec] px-3 py-2 text-[10px] leading-relaxed text-[#b42318]">Último intento falló: {item.execution_error}</p>}
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eeeeeb] pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-[#777]">Descartar</Button></div><Button size="sm" onClick={onPublish} disabled={item.status === 'executing'} className="h-8 bg-[#f97316] px-3 text-[10px] text-white hover:bg-[#e7650c]">{item.status === 'executing' ? <><LoaderCircle className="size-3 animate-spin" />Ejecutando…</> : 'Publicar'}</Button></div>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eeeeeb] pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-[#777]">Descartar</Button></div>{manualOnly ? <Button size="sm" variant="outline" onClick={onMarkDone} className="h-8 px-3 text-[10px]"><Check className="size-3" />Marcar como hecha</Button> : <Button size="sm" onClick={onPublish} disabled={item.status === 'executing'} className="h-8 bg-[#f97316] px-3 text-[10px] text-white hover:bg-[#e7650c]">{item.status === 'executing' ? <><LoaderCircle className="size-3 animate-spin" />Ejecutando…</> : 'Publicar'}</Button>}</div>
   </li>
 }
 
 function HistoryPanel({ items, loading, error, filters, search, onSearch, onStatus, onSelect, onRestore }: { items: Recommendation[]; loading: boolean; error?: string; filters: { status: string }; search: string; onSearch: (value: string) => void; onStatus: (value: string) => void; onSelect: (item: Recommendation) => void; onRestore: (item: Recommendation) => void }) {
   return <div className="flex min-h-0 flex-1 flex-col bg-white">
     <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] px-3 py-2.5"><div className="flex items-center gap-2 text-xs font-semibold"><Clock3 className="size-3.5 text-[#f97316]" />Recomendaciones cerradas</div><select aria-label="Filtrar histórico por estado" value={filters.status} onChange={(event) => onStatus(event.target.value)} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Publicadas y descartadas</option><option value="published">Publicadas</option><option value="discarded">Descartadas</option></select><div className="flex items-center gap-1 rounded-md border border-[#e5e5e3] px-2"><Search className="size-3.5 text-[#888]" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar en histórico" placeholder="Buscar en histórico…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div></div>
-    <div className="min-h-0 flex-1 overflow-y-auto">{error ? <p role="alert" className="m-3 rounded-md bg-[#fff3ed] p-3 text-[10px] text-[#9a3412]">{error}</p> : loading ? <p className="p-4 text-xs text-[#777]">Cargando histórico…</p> : items.length ? <ul className="divide-y divide-[#eeeeeb]">{items.map((item) => <li key={item.id} className="px-3 py-3"><button type="button" onClick={() => onSelect(item)} className="block w-full text-left"><span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', item.status === 'published' ? 'bg-[#e7f5ec] text-[#1b6b38]' : 'bg-[#f1f1ef] text-[#666]')}>{STATUS_LABEL[item.status]}</span><span className="mt-2 block text-xs font-semibold leading-relaxed">{item.title}</span><span className="mt-1 block text-[10px] text-[#777]">{item.platforms.map((platform) => PLATFORM_LABEL[platform]).join(' · ') || 'Basada en contexto'}</span>{item.execution_result && <span className="mt-1.5 block rounded-md bg-[#f4faf6] px-2 py-1.5 text-[10px] leading-relaxed text-[#1b6b38]">Aplicado en {item.execution_result.platform === 'meta' ? 'Meta Ads' : 'Google Ads'} · {item.execution_result.entityName}: {item.execution_result.before} → {item.execution_result.after}</span>}<span className="mt-1 block text-[9px] text-[#999]">{new Date(item.status === 'published' ? item.published_at ?? item.updated_at : item.discarded_at ?? item.updated_at).toLocaleString('es-AR')} · {item.status === 'published' ? item.published_by_name ?? 'Usuario MDK' : item.discarded_by_name ?? 'Usuario MDK'}</span></button>{item.status === 'discarded' && <Button type="button" variant="outline" size="sm" onClick={() => onRestore(item)} className="mt-2 h-7 px-2 text-[10px]">Restaurar como borrador</Button>}</li>)}</ul> : <div className="px-5 py-12 text-center"><Clock3 className="mx-auto size-5 text-[#b0b0aa]" /><p className="mt-2 text-xs font-medium">Todavía no hay recomendaciones publicadas o descartadas.</p></div>}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto">{error ? <p role="alert" className="m-3 rounded-md bg-[#fff3ed] p-3 text-[10px] text-[#9a3412]">{error}</p> : loading ? <p className="p-4 text-xs text-[#777]">Cargando histórico…</p> : items.length ? <ul className="divide-y divide-[#eeeeeb]">{items.map((item) => <li key={item.id} className="px-3 py-3"><button type="button" onClick={() => onSelect(item)} className="block w-full text-left"><span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', item.status === 'published' ? 'bg-[#e7f5ec] text-[#1b6b38]' : 'bg-[#f1f1ef] text-[#666]')}>{STATUS_LABEL[item.status]}</span><span className="mt-2 block text-xs font-semibold leading-relaxed">{item.title}</span><span className="mt-1 block text-[10px] text-[#777]">{item.platforms.map((platform) => PLATFORM_LABEL[platform]).join(' · ') || 'Basada en contexto'}</span><ExecutionSummary item={item} compact /><span className="mt-1 block text-[9px] text-[#999]">{new Date(item.status === 'published' ? item.published_at ?? item.updated_at : item.discarded_at ?? item.updated_at).toLocaleString('es-AR')} · {item.status === 'published' ? item.published_by_name ?? 'Usuario MDK' : item.discarded_by_name ?? 'Usuario MDK'}</span></button>{item.status === 'discarded' && <Button type="button" variant="outline" size="sm" onClick={() => onRestore(item)} className="mt-2 h-7 px-2 text-[10px]">Restaurar como borrador</Button>}</li>)}</ul> : <div className="px-5 py-12 text-center"><Clock3 className="mx-auto size-5 text-[#b0b0aa]" /><p className="mt-2 text-xs font-medium">Todavía no hay recomendaciones publicadas o descartadas.</p></div>}</div>
   </div>
 }
 
 function RecommendationDetail({ item, readonly, onRestore }: { item: Recommendation; readonly: boolean; onRestore?: () => void }) {
   return <>
     <DialogHeader><DialogTitle>{item.title}</DialogTitle><DialogDescription>{readonly ? `${STATUS_LABEL[item.status]} · vista de solo lectura` : 'Detalle de la recomendación'}</DialogDescription></DialogHeader>
-    <div className="flex flex-col gap-3 text-sm"><div className="flex flex-wrap gap-1.5">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div><p className="whitespace-pre-wrap text-xs leading-relaxed">{item.description}</p><section><h3 className="mb-1 text-xs font-semibold">Fundamento</h3><p className="text-xs leading-relaxed text-[#666]">{item.rationale}</p><ul className="mt-2 flex flex-col gap-2">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[11px] leading-relaxed"><b>{evidence.label}: </b>{evidence.excerpt}</li>)}</ul></section><section><h3 className="mb-1 text-xs font-semibold">Acciones sugeridas</h3><ol className="list-decimal pl-5 text-xs leading-relaxed">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></section><p className="text-xs"><b>Impacto esperado:</b> {item.expected_impact}</p>{item.operation && <p className="rounded-md bg-[#fff8f2] p-3 text-xs"><b>Acción en {PLATFORM_LABEL[item.operation.platform]}:</b> {describeOperation(item.operation)}</p>}{item.execution_result && <p className="rounded-md bg-[#f4faf6] p-3 text-xs text-[#1b6b38]"><b>Ejecutado el {new Date(item.execution_result.executedAt).toLocaleString('es-AR')}:</b> {item.execution_result.entityName} · {item.execution_result.before} → {item.execution_result.after}</p>}{item.discard_reason && <p className="rounded-md bg-[#f5f5f4] p-3 text-xs"><b>Motivo del descarte:</b> {item.discard_reason}</p>}</div>
+    <div className="flex flex-col gap-3 text-sm"><div className="flex flex-wrap gap-1.5">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div><p className="whitespace-pre-wrap text-xs leading-relaxed">{item.description}</p><section><h3 className="mb-1 text-xs font-semibold">Fundamento</h3><p className="text-xs leading-relaxed text-[#666]">{item.rationale}</p><ul className="mt-2 flex flex-col gap-2">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[11px] leading-relaxed"><b>{evidence.label}: </b>{evidence.excerpt}</li>)}</ul></section><section><h3 className="mb-1 text-xs font-semibold">Acciones sugeridas</h3><ol className="list-decimal pl-5 text-xs leading-relaxed">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></section><p className="text-xs"><b>Impacto esperado:</b> {item.expected_impact}</p>{item.operation && <p className="rounded-md bg-[#fff8f2] p-3 text-xs"><b>Acción en {PLATFORM_LABEL[item.operation.platform]}:</b> {describeOperation(item.operation)}</p>}{!item.operation && item.non_executable_reason && <p className="rounded-md bg-[#fafaf9] p-3 text-xs"><b>Acción manual:</b> {item.non_executable_reason}</p>}{item.execution_result && <div className="rounded-md bg-[#f4faf6] p-3 text-xs text-[#1b6b38]"><p className="font-semibold">Ejecutado el {new Date(item.execution_result.executedAt).toLocaleString('es-AR')}</p><ExecutionSummary item={item} /></div>}{item.discard_reason && <p className="rounded-md bg-[#f5f5f4] p-3 text-xs"><b>Motivo del descarte:</b> {item.discard_reason}</p>}</div>
     {onRestore && <DialogFooter><Button onClick={onRestore}>Restaurar como borrador</Button></DialogFooter>}
   </>
 }
@@ -373,8 +406,39 @@ function EditRecommendationDialog({ item, onCancel, onSave }: { item: Recommenda
     <label className="flex flex-col gap-1 text-xs font-medium">Fundamento<Textarea value={draft.rationale} maxLength={1000} onChange={(event) => setDraft({ ...draft, rationale: event.target.value })} /></label>
     <label className="flex flex-col gap-1 text-xs font-medium">Acciones sugeridas (una por línea)<Textarea value={actionText} onChange={(event) => setActionText(event.target.value)} /></label>
     <label className="flex flex-col gap-1 text-xs font-medium">Impacto esperado<Input value={draft.expected_impact} maxLength={400} onChange={(event) => setDraft({ ...draft, expected_impact: event.target.value })} /></label>
+    {draft.operation && <OperationFields operation={draft.operation} onChange={(operation) => setDraft({ ...draft, operation })} />}
     <DialogFooter><Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cambios'}</Button></DialogFooter>
   </form>
+}
+
+function OperationFields({ operation, onChange }: { operation: RecommendationOperation; onChange: (operation: RecommendationOperation) => void }) {
+  const numberValue = (value: string) => (value === '' ? Number.NaN : Number(value))
+  return <fieldset className="flex flex-col gap-2 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] p-3">
+    <legend className="px-1 text-xs font-semibold text-[#a8440c]">Acción que ejecuta Publicar</legend>
+    <p className="text-[11px] text-[#5a3a22]">{describeOperation(operation)}</p>
+    {operation.kind === 'set_status' && <label className="flex flex-col gap-1 text-xs font-medium">Estado<select value={operation.status} onChange={(event) => onChange(operation.platform === 'meta' ? { ...operation, status: event.target.value as 'ACTIVE' | 'PAUSED' } : { ...operation, status: event.target.value as 'ENABLED' | 'PAUSED' })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs"><option value={operation.platform === 'meta' ? 'ACTIVE' : 'ENABLED'}>Activar</option><option value="PAUSED">Pausar</option></select></label>}
+    {operation.kind === 'set_daily_budget' && <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario nuevo (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>}
+    {operation.kind === 'set_age_range' && <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Edad mínima<Input type="number" min={18} max={65} value={Number.isNaN(operation.ageMin) ? '' : operation.ageMin} onChange={(event) => onChange({ ...operation, ageMin: numberValue(event.target.value) })} /></label><label className="flex flex-col gap-1 text-xs font-medium">Edad máxima (65 = 65+)<Input type="number" min={18} max={65} value={Number.isNaN(operation.ageMax) ? '' : operation.ageMax} onChange={(event) => onChange({ ...operation, ageMax: numberValue(event.target.value) })} /></label></div>}
+    <p className="text-[10px] leading-relaxed text-[#777]">Al guardar se valida contra las cuentas vinculadas y el tope de ±30% de presupuesto.</p>
+  </fieldset>
+}
+
+function PlanSteps({ steps }: { steps: PlanStep[] }) {
+  return <ul className="flex flex-col gap-2">{steps.map((step) => <li key={`${step.entityId}-${step.field}`} className={cn('rounded-lg border p-3', step.alreadyApplied ? 'border-[#e7e7e5] bg-[#fafaf9] opacity-70' : 'border-[#f3dcc9] bg-[#fff8f2]')}>
+    <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{step.entityName}</p><span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[9px] font-medium text-[#666]">{PLATFORM_LABEL[step.platform]} · {step.entityType === 'campaign' ? 'Campaña' : step.entityType === 'adset' ? 'Conjunto' : 'Anuncio'}</span></div>
+    {step.alreadyApplied ? <p className="mt-1.5 text-[11px] text-[#666]">Ya aplicado ({step.afterLabel}); se omite.</p> : <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]"><span className="text-[#666]">{step.beforeLabel}</span><ArrowRight className="size-3 text-[#a8440c]" aria-label="pasa a" /><span className="font-semibold text-[#a8440c]">{step.afterLabel}</span>{step.pctChange !== null && <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-semibold text-[#5a3a22]">{step.pctChange > 0 ? '+' : ''}{Math.round(step.pctChange * 100)}%</span>}</p>}
+    {step.warnings.map((warning) => <p key={warning} className="mt-1.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-[#8a541e]"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{warning}</p>)}
+  </li>)}</ul>
+}
+
+/** Antes → después por entidad desde las decisiones registradas, con respaldo en execution_result para filas anteriores. */
+function ExecutionSummary({ item, compact = false }: { item: Recommendation; compact?: boolean }) {
+  const decisions = (item.decisions ?? []).filter((decision: DecisionRecord) => decision.action === 'publish')
+  const lines = decisions.length
+    ? decisions.map((decision) => ({ key: decision.id, text: `${decision.payload?.step?.entityName ?? 'Entidad'}: ${decision.value_before?.label ?? String(decision.value_before?.value ?? '')} → ${decision.value_after?.label ?? String(decision.value_after?.value ?? '')}`, failed: decision.outcome === 'failed', who: decision.user_name }))
+    : executionLines(item.execution_result).map((text, index) => ({ key: String(index), text, failed: text.endsWith('(falló)'), who: null as string | null | undefined }))
+  if (!lines.length) return null
+  return <span className={cn('flex flex-col gap-1', compact ? 'mt-1.5 rounded-md bg-[#f4faf6] px-2 py-1.5 text-[10px] leading-relaxed text-[#1b6b38]' : 'mt-1 text-xs')}>{lines.map((line) => <span key={line.key} className={cn('block', line.failed && 'text-[#b42318]')}>{line.text}{line.failed && decisions.length ? ' (falló)' : ''}{!compact && line.who ? ` · ${line.who}` : ''}</span>)}</span>
 }
 
 function PlatformBadge({ platform }: { platform: RecommendationPlatform }) {
