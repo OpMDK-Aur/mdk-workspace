@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CopilotError } from './route-helpers'
 import { executeOperation } from './executors'
+import { prepareOperation } from './operations'
 import type { ClientContextRecord, CopilotChatMessage, CopilotContext, ExecutionResult, Recommendation, RecommendationDraft, RecommendationStatus } from './types'
 
 const REC_TABLE = 'conexa_copilot_recommendations'
@@ -80,6 +81,19 @@ export async function editRecommendation(supabase: SupabaseClient, clientId: str
   const { data, error } = await supabase.from(REC_TABLE).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
   if (error) dbError(error)
   if (!data) throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
+  return data as unknown as Recommendation
+}
+
+export async function prepareRecommendationOperation(supabase: SupabaseClient, clientId: string, id: string) {
+  const { data: current, error: readError } = await supabase.from(REC_TABLE).select('*').eq('id', id).eq('client_id', clientId).maybeSingle()
+  if (readError) dbError(readError)
+  const recommendation = current as unknown as Recommendation | null
+  if (!recommendation || recommendation.status !== 'draft') throw new CopilotError('La recomendación ya no está en borrador o no pertenece a este cliente.', 409)
+  if (recommendation.operation) return recommendation
+  const operation = await prepareOperation(supabase, clientId, recommendation)
+  const { data, error } = await supabase.from(REC_TABLE).update({ operation, execution_error: null }).eq('id', id).eq('client_id', clientId).eq('status', 'draft').select('*').maybeSingle()
+  if (error) dbError(error)
+  if (!data) throw new CopilotError('La recomendación cambió mientras se preparaba la acción. Actualizá la vista.', 409)
   return data as unknown as Recommendation
 }
 

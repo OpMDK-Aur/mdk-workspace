@@ -32,7 +32,7 @@ function assertBudgetChange(current: number, next: number) {
   if (Math.abs(next - current) / current > MAX_BUDGET_CHANGE) throw new CopilotError(`El cambio de presupuesto supera el límite de seguridad de ±${MAX_BUDGET_CHANGE * 100}% sobre el valor actual. Pedile al chat que reformule la recomendación.`, 422)
 }
 
-async function metaRequest<T>(path: string, params: Record<string, string>, method: 'GET' | 'POST' = 'GET'): Promise<T> {
+export async function metaRequest<T>(path: string, params: Record<string, string>, method: 'GET' | 'POST' = 'GET'): Promise<T> {
   const token = await getMetaAccessToken()
   if (!token) throw new CopilotError('No hay una conexión activa de Meta Ads.', 409)
   const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${path}`)
@@ -64,7 +64,7 @@ async function executeMeta(operation: Extract<RecommendationOperation, { platfor
   return { platform: 'meta', entityId: operation.entityId, entityName: name, before: `${money(currentMinor / factor, currency)} / día`, after: `${money(nextMinor / factor, currency)} / día`, executedAt: new Date().toISOString() }
 }
 
-async function googleRequest<T>(path: string, body: unknown): Promise<T> {
+export async function googleRequest<T>(path: string, body: unknown): Promise<T> {
   const { accessToken, error } = await getGoogleAdsAccessToken()
   if (!accessToken) throw new CopilotError(error ?? 'No hay una conexión activa de Google Ads.', 409)
   const developerToken = getGoogleAdsDeveloperToken()
