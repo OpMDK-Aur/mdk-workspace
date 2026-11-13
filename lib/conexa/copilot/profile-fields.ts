@@ -13,3 +13,6 @@ export type ProfileFieldKey = (typeof PROFILE_FIELDS)[number]['key']
 export const PROFILE_FIELD_KEYS = PROFILE_FIELDS.map((field) => field.key) as [ProfileFieldKey, ...ProfileFieldKey[]]
 export const PROFILE_FIELD_LABEL = Object.fromEntries(PROFILE_FIELDS.map((field) => [field.key, field.label])) as Record<ProfileFieldKey, string>
 export const COMPETITOR_PREFIX = 'Competencia · '
+/** Los competidores que el usuario quita quedan registrados para que Conexa no los vuelva a sugerir. */
+export const DISCARDED_COMPETITOR_PREFIX = 'Competencia descartada · '
+export const SUGGESTED_COMPETITOR_MARK = 'Sugerido por Conexa'
