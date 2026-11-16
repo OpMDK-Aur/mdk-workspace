@@ -39,6 +39,7 @@ import {
   ChevronDown,
   Bell,
   Home,
+  Sparkles,
   PanelLeftClose,
   PanelLeft,
   ChevronRight,
@@ -83,6 +84,8 @@ interface NavSection {
   items: NavItem[]
   moduleId?: string // Section-level module requirement
 }
+
+const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles }
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
@@ -426,6 +429,7 @@ export function Sidebar({
             <div className="p-2 space-y-4">
               {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
+                {renderNavItem(conexaItem, true)}
                 {mainItems.map(item => renderNavItem(item, true))}
                 {tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
@@ -577,6 +581,7 @@ export function Sidebar({
               <div className="p-4 space-y-4">
                 {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
+                  {renderNavItem(conexaItem)}
                   {/* Tareas as collapsible parent */}
                   <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
                     <div className="flex items-center">
