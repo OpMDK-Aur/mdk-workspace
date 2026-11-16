@@ -74,7 +74,7 @@ const baseNav: Array<{ label: string; icon: typeof LayoutDashboard | null; badge
 
 export const COPILOT_VIEW = 'Recomendaciones'
 
-export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: string } = {}) {
+export function ConexaWorkspace({ initialView = 'Inicio', embedded = false }: { initialView?: string; embedded?: boolean } = {}) {
   const [clients, setClients] = useState<Client[]>([])
   const [clientsLoading, setClientsLoading] = useState(true)
   const [clientsError, setClientsError] = useState<string | null>(null)
@@ -241,7 +241,7 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
     }
   }, [active, dataUpdatedAt, metricsLoading, requestDashboardRefresh])
 
-  return <div className="conexa-brand flex h-screen w-full overflow-hidden bg-white text-[#101010]">
+  return <div className={cn('conexa-brand flex w-full overflow-hidden bg-white text-[#101010]', embedded ? 'h-full' : 'h-screen')}>
     <aside className={cn('flex shrink-0 flex-col border-r border-[#e6e6e3] bg-white transition-[width] duration-200', sidebarOpen ? 'w-[158px]' : 'w-[44px]')}>
       <div className={cn('flex h-[60px] shrink-0 items-center gap-2 border-b border-[#f0f0ee] px-[18px]', !sidebarOpen && 'justify-center px-0')}>
         <span className="flex size-[16px] shrink-0 items-center justify-center rounded-[5px] bg-[#5b5fe8] text-[10px] text-white">✦</span>
@@ -1029,7 +1029,7 @@ function ConexaChat({ client, onNavigate, onReportCreated, contextStatus, select
       .then((result) => { if (result?.report) onReportCreated(result.report, localReport.id) })
       .catch(() => {})
   }
-  return <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f4f1] p-4 text-[#141414]">
+  return <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f4f1] p-4 text-[#141414]">
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-[#dcded8] bg-[#ffffff] px-4 py-2.5 text-[#141414] sm:px-5">
       <h1 className="text-[15px] font-bold">Chat / Análisis</h1>
       <div className="flex flex-wrap items-center justify-end gap-2">
