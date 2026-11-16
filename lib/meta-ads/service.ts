@@ -14,7 +14,13 @@ export interface MetaAccountMetricsInput {
   dateTo: string
   onlyActiveCampaigns?: boolean
   includeAdsetCatalog?: boolean
+  /** Restringe todas las métricas a estos conjuntos (filtro por fanpage). Un array vacío significa "ningún conjunto coincide". */
+  adsetIds?: string[]
+  /** Restringe las métricas a la entrega en estas regiones (breakdown `region` de Meta). */
+  regions?: string[]
 }
+
+type InsightFilters = { adsetIds?: string[]; regions?: string[] }
 
 export type MetaErrorCategory =
   | 'AUTHENTICATION_ERROR'
@@ -218,7 +224,40 @@ async function fetchJson(url: string) {
   return payload as MetaApiErrorPayload & { data?: MetaInsightRow[]; paging?: { next?: string } }
 }
 
-async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, level: 'campaign' | 'adset' | 'ad' = 'campaign') {
+function insightFilterParams(filters: InsightFilters) {
+  const params: Record<string, string> = {}
+  if (filters.adsetIds?.length) params.filtering = JSON.stringify([{ field: 'adset.id', operator: 'IN', value: filters.adsetIds }])
+  if (filters.regions?.length) params.breakdowns = 'region'
+  return params
+}
+
+const regionMatches = (row: MetaInsightRow & { region?: string }, regions?: string[]) => !regions?.length || regions.includes(String(row.region ?? '').trim())
+
+// Con breakdown por región, Meta devuelve una fila por entidad y región: se suman para volver a una fila por entidad.
+function mergeRegionRows(rows: MetaInsightRow[], idKey: 'campaign_id' | 'adset_id' | 'ad_id') {
+  const merged = new Map<string, MetaInsightRow & Record<string, unknown>>()
+  for (const raw of rows) {
+    const row = raw as MetaInsightRow & Record<string, unknown>
+    const id = String(row[idKey] ?? '')
+    const current = merged.get(id)
+    if (!current) { merged.set(id, { ...row, actions: (row.actions ?? []).map((action) => ({ ...action })) }); continue }
+    for (const key of ['impressions', 'reach', 'clicks', 'inline_link_clicks', 'spend'] as const) current[key] = String(toNumber(current[key] as string | undefined) + toNumber(row[key] as string | undefined))
+    const actions = current.actions ?? []
+    for (const action of row.actions ?? []) {
+      const existing = actions.find((item) => item.action_type === action.action_type)
+      if (existing) existing.value = String(toNumber(existing.value) + toNumber(action.value))
+      else actions.push({ ...action })
+    }
+    current.actions = actions
+  }
+  return [...merged.values()].map((row) => {
+    const impressions = toNumber(row.impressions); const clicks = toNumber(row.clicks); const spend = toNumber(row.spend); const reach = toNumber(row.reach)
+    return { ...row, ctr: String(impressions ? (clicks / impressions) * 100 : 0), cpc: String(clicks ? spend / clicks : 0), frequency: String(reach ? impressions / reach : 0) }
+  })
+}
+
+async function fetchInsightRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, level: 'campaign' | 'adset' | 'ad' = 'campaign', filters: InsightFilters = {}) {
+  if (filters.adsetIds && filters.adsetIds.length === 0) return []
   const identity = level === 'campaign' ? 'campaign_id,campaign_name,objective' : level === 'adset' ? 'campaign_id,campaign_name,adset_id,adset_name' : 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name'
   const fields = `${identity},impressions,reach,frequency,clicks,inline_link_clicks,spend,ctr,cpc,actions`
   let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
@@ -227,19 +266,67 @@ async function fetchInsightRows(accountId: string, accessToken: string, dateFrom
     fields,
     time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
     limit: '500',
+    ...insightFilterParams(filters),
   })}`
   const rows: MetaInsightRow[] = []
   while (url) {
     const payload = await fetchJson(url)
-    rows.push(...(payload.data ?? []))
+    rows.push(...(payload.data ?? []).filter((row) => regionMatches(row, filters.regions)))
     url = payload.paging?.next ?? null
   }
-  return rows
+  return filters.regions?.length ? mergeRegionRows(rows, level === 'campaign' ? 'campaign_id' : level === 'adset' ? 'adset_id' : 'ad_id') : rows
+}
+
+/** Fanpage de cada conjunto de anuncios (promoted_object o la página del primer creativo). */
+export async function getMetaPageAdsets(accountIdInput: string) {
+  const accountId = normalizeMetaAccountId(accountIdInput)
+  const accessToken = await getMetaAccessToken()
+  if (!accessToken || !/^\d{1,20}$/.test(accountId)) return { pages: [] as Array<{ id: string; name: string }>, adsetIdsByPage: new Map<string, string[]>() }
+  let url: string | null = `${META_BASE_URL}/act_${accountId}/adsets?${new URLSearchParams({ access_token: accessToken, fields: 'id,promoted_object,ads.limit(1){creative{effective_object_story_id,object_story_spec}}', limit: '200' })}`
+  const adsetIdsByPage = new Map<string, string[]>()
+  for (let page = 0; url && page < 30; page++) {
+    const payload = await fetchJson(url)
+    for (const raw of (payload.data ?? []) as unknown as CatalogRaw[]) {
+      const pageId = raw.id ? catalogPageId(raw) : undefined
+      if (!pageId || !raw.id) continue
+      adsetIdsByPage.set(pageId, [...(adsetIdsByPage.get(pageId) ?? []), raw.id])
+    }
+    url = payload.paging?.next ?? null
+  }
+  const ids = [...adsetIdsByPage.keys()]
+  const names = new Map<string, string>()
+  for (let index = 0; index < ids.length; index += 50) {
+    const batch = ids.slice(index, index + 50)
+    try {
+      const payload = await fetchJson(`${META_BASE_URL}/?${new URLSearchParams({ access_token: accessToken, ids: batch.join(','), fields: 'name' })}`) as unknown as Record<string, { name?: string }>
+      for (const id of batch) if (payload[id]?.name) names.set(id, payload[id].name as string)
+    } catch { /* Sin permiso sobre la página se muestra su ID. */ }
+  }
+  return { pages: ids.map((id) => ({ id, name: names.get(id) ?? `Página ${id}` })), adsetIdsByPage }
+}
+
+/** Regiones con entrega en el período, ordenadas por inversión. */
+export async function getMetaDeliveryRegions(accountIdInput: string, dateFrom: string, dateTo: string) {
+  const accountId = normalizeMetaAccountId(accountIdInput)
+  const accessToken = await getMetaAccessToken()
+  if (!accessToken || !/^\d{1,20}$/.test(accountId)) return []
+  let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({ access_token: accessToken, level: 'account', breakdowns: 'region', fields: 'spend', time_range: JSON.stringify({ since: dateFrom, until: dateTo }), limit: '500' })}`
+  const spendByRegion = new Map<string, number>()
+  for (let page = 0; url && page < 10; page++) {
+    const payload = await fetchJson(url)
+    for (const row of (payload.data ?? []) as Array<MetaInsightRow & { region?: string }>) {
+      const region = String(row.region ?? '').trim()
+      if (region && region !== 'Unknown') spendByRegion.set(region, (spendByRegion.get(region) ?? 0) + toNumber(row.spend))
+    }
+    url = payload.paging?.next ?? null
+  }
+  return [...spendByRegion.entries()].sort((a, b) => b[1] - a[1]).map(([region]) => region)
 }
 
 export type MetaDailyPoint = { date: string; spend: number; results: number }
 
-async function fetchDailyRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string) {
+async function fetchDailyRows(accountId: string, accessToken: string, dateFrom: string, dateTo: string, filters: InsightFilters = {}) {
+  if (filters.adsetIds && filters.adsetIds.length === 0) return []
   let url: string | null = `${META_BASE_URL}/act_${accountId}/insights?${new URLSearchParams({
     access_token: accessToken,
     level: 'campaign',
@@ -247,11 +334,12 @@ async function fetchDailyRows(accountId: string, accessToken: string, dateFrom: 
     time_range: JSON.stringify({ since: dateFrom, until: dateTo }),
     time_increment: '1',
     limit: '500',
+    ...insightFilterParams(filters),
   })}`
   const rows: Array<MetaInsightRow & { date_start?: string }> = []
   while (url) {
     const payload = await fetchJson(url)
-    rows.push(...(payload.data ?? []))
+    rows.push(...(payload.data ?? []).filter((row) => regionMatches(row, filters.regions)))
     url = payload.paging?.next ?? null
   }
   return rows
@@ -542,14 +630,15 @@ export async function getMetaAccountMetrics(input: MetaAccountMetricsInput): Pro
   const accessToken = await getMetaAccessToken()
   if (!accessToken) throw createMetaError('META_ADS_ACCESS_TOKEN no está configurado.', 'AUTHENTICATION_ERROR')
 
-  const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'campaign')
-  const adsetsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'adset')
-  const adsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'ad')
+  const filters: InsightFilters = { adsetIds: input.adsetIds, regions: input.regions }
+  const rowsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'campaign', filters)
+  const adsetsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'adset', filters)
+  const adsPromise = fetchInsightRows(accountId, accessToken, input.dateFrom, input.dateTo, 'ad', filters)
   const activeIdsPromise = input.onlyActiveCampaigns ? fetchActiveCampaignIds(accountId, accessToken) : Promise.resolve<Set<string> | null>(null)
   const catalogPromise = input.includeAdsetCatalog
     ? fetchAdsetCatalog(accountId, accessToken).catch(() => undefined)
     : Promise.resolve(undefined)
-  const dailyPromise = fetchDailyRows(accountId, accessToken, input.dateFrom, input.dateTo).catch(() => null)
+  const dailyPromise = fetchDailyRows(accountId, accessToken, input.dateFrom, input.dateTo, filters).catch(() => null)
   const [rows, adsetRows, adRows, activeIds, adsetCatalog, dailyRows] = await Promise.all([rowsPromise, adsetsPromise, adsPromise, activeIdsPromise, catalogPromise, dailyPromise])
   const daily = dailyRows ? buildDailySeries(dailyRows, input.dateFrom, input.dateTo, activeIds) : undefined
   const campaigns = rows.filter((row) => !activeIds || activeIds.has(row.campaign_id || '')).map((row) => {
