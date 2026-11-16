@@ -1,5 +1,6 @@
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { createCrmClient } from '@/lib/supabase/crm'
+import { fetchGhlContactsInRange, fetchGhlOpportunities, fetchGhlPipelines, fetchGhlUsers, type GhlContact, type GhlCreds } from '@/lib/revops/ghl-client'
 
 // El CRM externo de Aurelia identifica a cada cliente con su propio UUID de
 // cuenta/location (columna `client_id` en sus tablas remotas), que NO es
@@ -136,16 +137,86 @@ function passesOpportunityFilters(opportunity: OpportunityRecord, filters: Requi
   return true
 }
 
-export async function getCrmAcquisitionReport(clientId: string, dateFrom: string, dateTo: string, filters: CrmAcquisitionFilters = {}): Promise<CrmAcquisitionReport> {
-  const crmAccountIds = await resolveCrmAccountIds(clientId)
-  if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
+// GoHighLevel guarda la atribución del contacto en attributionSource /
+// attributions[] con claves en camelCase (utmSource, utmCampaign, sessionSource,
+// medium, gclid, fbclid, ctwaClid…). La traducimos a las mismas etiquetas que
+// usa el CRM de Aurelia ("Google · …", "Meta Formulario · …", "Meta WhatsApp · …").
+function campaignFromGhlContact(contact: GhlContact): string | null {
+  const read = (...keys: string[]) => {
+    for (const attribution of contact.attributions) {
+      const found = referralValue(attribution, ...keys)
+      if (found) return found
+    }
+    return null
+  }
+  const lower = (input: string | null) => input?.toLowerCase().trim() ?? ''
+  const source = lower(read('utmSource', 'utm_source', 'sessionSource', 'utmSessionSource', 'source'))
+  const medium = lower(read('medium', 'utmMedium', 'utm_medium'))
+  const contactSource = lower(contact.source)
+  const campaign = read('utmCampaign', 'utm_campaign', 'campaign', 'campaignName', 'utmContent', 'utm_content', 'adName', 'adSetName')
+  const isGoogle = source.includes('google') || medium.includes('google') || contactSource.includes('google') || Boolean(read('gclid', 'gbraid', 'wbraid', 'gadCampaignId'))
+  const isWhatsApp = Boolean(read('ctwaClid', 'ctwa_clid')) || medium.includes('whatsapp') || contactSource.includes('whatsapp')
+  const isMeta = isWhatsApp || ['facebook', 'instagram', 'meta', 'fb', 'ig'].some((name) => source.includes(name) || contactSource.includes(name)) || Boolean(read('fbclid', 'fbc')) || medium.includes('facebook')
+  const isPaid = Boolean(campaign || read('adId', 'ad_id', 'campaignId', 'campaign_id', 'adSetId', 'gclid', 'fbclid', 'ctwaClid')) || ['cpc', 'ppc', 'paid', 'ads', 'ad'].some((name) => medium.includes(name)) || contactSource.includes('lead ads') || contactSource.includes('form')
+  if (!isPaid) return null
+  if (isGoogle) return `Google · ${campaign ?? 'Google Ads'}`
+  if (isMeta) return `${isWhatsApp ? 'Meta WhatsApp' : 'Meta Formulario'} · ${campaign ?? 'Meta Ads'}`
+  return campaign
+}
 
+const GHL_STATUS_WON = new Set(['won'])
+
+async function getGhlAcquisitionReport(creds: GhlCreds, start: string, end: string, filters: Required<CrmAcquisitionFilters>): Promise<CrmAcquisitionReport> {
+  const startMs = new Date(start).getTime()
+  const endMs = new Date(end).getTime()
+  const [contacts, opportunities, users, pipelines] = await Promise.all([
+    fetchGhlContactsInRange(creds, start, end),
+    fetchGhlOpportunities(creds),
+    fetchGhlUsers(creds).catch(() => []),
+    fetchGhlPipelines(creds).catch(() => []),
+  ])
+  const vendorNameById = new Map(users.map((user) => [user.id, user.name]))
+  const pipelineNameById = new Map(pipelines.map((pipeline) => [pipeline.id, pipeline.name]))
+
+  const contactRecords = new Map<string, ContactRecord>()
+  for (const contact of contacts) {
+    const campaign = campaignFromGhlContact(contact)
+    if (!contact.id || !campaign) continue
+    contactRecords.set(contact.id, { contactId: contact.id, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign })
+  }
+  const opportunityRecords: OpportunityRecord[] = opportunities
+    .filter((row) => { const created = new Date(row.createdAt).getTime(); return row.contactId && created >= startMs && created < endMs })
+    .map((row) => ({
+      contactId: row.contactId!,
+      vendorName: (row.assignedTo && vendorNameById.get(row.assignedTo)) || UNASSIGNED_VENDOR,
+      // GHL no tiene equipos de venta: usamos el pipeline, que es como cada cuenta separa sus procesos comerciales.
+      teamName: pipelineNameById.get(row.pipelineId) ?? UNASSIGNED_TEAM,
+      statusLabel: statusLabel(row.status),
+      isWon: GHL_STATUS_WON.has(String(row.status).toLowerCase()),
+    }))
+  return aggregateReport([...contactRecords.keys()], contactRecords, opportunityRecords, filters, [])
+}
+
+export async function getCrmAcquisitionReport(clientId: string, dateFrom: string, dateTo: string, filters: CrmAcquisitionFilters = {}): Promise<CrmAcquisitionReport> {
   const normalizedFilters: Required<CrmAcquisitionFilters> = { sources: filters.sources ?? [], campaigns: filters.campaigns ?? [], tags: filters.tags ?? [], vendors: filters.vendors ?? [], channels: filters.channels ?? [], teams: filters.teams ?? [], statuses: filters.statuses ?? [] }
-  const crm = createCrmClient()
   const start = new Date(`${dateFrom}T00:00:00-03:00`).toISOString()
   const endExclusive = new Date(`${dateTo}T00:00:00-03:00`)
   endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
   const end = endExclusive.toISOString()
+
+  const { data: crmClient } = await createAdminClient().from('clientes').select('crm_type, ghl_location_id, ghl_token').eq('id', clientId).maybeSingle()
+  if (crmClient?.crm_type === 'ghl') {
+    if (!crmClient.ghl_location_id || !crmClient.ghl_token) return { available: false, message: 'El cliente usa GoHighLevel pero no tiene la location o el token configurados en Plataformas.' }
+    try {
+      return await getGhlAcquisitionReport({ locationId: crmClient.ghl_location_id, token: crmClient.ghl_token }, start, end, normalizedFilters)
+    } catch (error) {
+      return { available: false, message: error instanceof Error ? `No se pudo consultar GoHighLevel: ${error.message}` : 'No se pudo consultar GoHighLevel.' }
+    }
+  }
+
+  const crmAccountIds = await resolveCrmAccountIds(clientId)
+  if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
+  const crm = createCrmClient()
 
   try {
     // 1. Contactos y oportunidades creados en el período, con tope de
@@ -234,16 +305,25 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
       isWon: isWonStatus(row.status),
     }))
 
+    return aggregateReport(attributedContactIds, contactRecords, opportunityRecords, normalizedFilters, ['Equipo Comercial', 'Equipo Paid Media'])
+  } catch (error) {
+    return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar el CRM.' }
+  }
+}
+
+/** Arma el reporte con la misma forma para Aurelia y GoHighLevel, así la vista CRM muestra lo mismo sin importar el origen. */
+function aggregateReport(attributedContactIds: string[], contactRecords: Map<string, ContactRecord>, opportunityRecords: OpportunityRecord[], normalizedFilters: Required<CrmAcquisitionFilters>, teamFallback: string[]): CrmAcquisitionReport {
     // 4. Opciones de filtro: se calculan sobre el universo completo del
     // período (sin aplicar los filtros ya seleccionados) para que el
     // usuario siempre pueda ampliar la selección.
+    const assignedTeams = [...new Set(opportunityRecords.map((row) => row.teamName).filter((name) => name !== UNASSIGNED_TEAM))].sort()
     const filterOptions = {
       sources: ['Google', 'Meta WhatsApp', 'Meta Formulario'],
       campaigns: [...new Set(attributedContactIds.map((id) => contactRecords.get(id)?.campaign ?? UNASSIGNED_CAMPAIGN))].sort(),
       tags: [...new Set(attributedContactIds.flatMap((id) => contactRecords.get(id)?.tagNames.length ? contactRecords.get(id)!.tagNames : [UNASSIGNED_TAG]))].sort(),
       channels: [...new Set(attributedContactIds.map((id) => contactRecords.get(id)?.channelName ?? UNASSIGNED_CHANNEL))].sort(),
       vendors: [...new Set(opportunityRecords.map((row) => row.vendorName))].sort(),
-      teams: [...new Set(opportunityRecords.map((row) => row.teamName).filter((name) => name !== UNASSIGNED_TEAM))].sort().length ? [...new Set(opportunityRecords.map((row) => row.teamName).filter((name) => name !== UNASSIGNED_TEAM))].sort() : ['Equipo Comercial', 'Equipo Paid Media'],
+      teams: assignedTeams.length ? assignedTeams : teamFallback,
       statuses: [...new Set(opportunityRecords.map((row) => row.statusLabel))].sort(),
     }
 
@@ -299,7 +379,4 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
       teamRows: toRows(teamGroups),
       tagRows: toRows(tagGroups),
     }
-  } catch (error) {
-    return { available: false, message: error instanceof Error ? error.message : 'No se pudo consultar el CRM.' }
-  }
 }
