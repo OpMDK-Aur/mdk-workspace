@@ -89,14 +89,14 @@ export async function updateSession(request: NextRequest) {
 
   if (isAuthPath && user) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    url.pathname = '/dashboard/conexa'
     return NextResponse.redirect(url)
   }
 
   // Redirect root to dashboard if logged in, otherwise to login
   if (request.nextUrl.pathname === '/') {
     const url = request.nextUrl.clone()
-    url.pathname = user ? '/dashboard' : '/auth/login'
+    url.pathname = user ? '/dashboard/conexa' : '/auth/login'
     return NextResponse.redirect(url)
   }
 
