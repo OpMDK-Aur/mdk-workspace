@@ -9,11 +9,13 @@ export const maxDuration = 60
 
 import { dateRange } from '@/lib/conexa/period-range'
 
+const cleanList = (values: unknown, pattern?: RegExp) => Array.isArray(values) ? [...new Set(values.map((value) => String(value).trim()).filter((value) => value && value.length <= 120 && (!pattern || pattern.test(value))))].slice(0, 50) : undefined
+
 export async function POST(request: Request) {
   const supabase = await createClient()
   const admin = createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const body = await request.json() as { clientId?: string; period?: string; customRange?: { from?: string; to?: string }; selectedAccounts?: Record<string, string[]>; crmFilters?: CrmAcquisitionFilters }
+  const body = await request.json() as { clientId?: string; period?: string; customRange?: { from?: string; to?: string }; selectedAccounts?: Record<string, string[]>; crmFilters?: CrmAcquisitionFilters; metaFilters?: { pageIds?: string[]; regions?: string[] } }
   if (!body.clientId) return NextResponse.json({ error: 'Falta el cliente seleccionado.' }, { status: 400 })
   const range = dateRange(body.period ?? 'Últimos 30 días', body.customRange)
   const [{ data: client }, { data: accounts }] = await Promise.all([
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
   const selectedMetaKeys = selectedMeta?.flatMap((value) => splitIds(String(value))).map(metaKey)
   const accountIds = (selectedMetaKeys === undefined || selectedMetaKeys.length === 0 ? metaIds : metaIds.filter((id) => selectedMetaKeys.includes(metaKey(id)))).join(',')
   const customerIds = [...new Set(selectedGoogle === undefined ? googleIds : googleIds.filter((id) => selectedGoogle.includes(id)))].join(',')
-  const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined }
+  const context: ExecutionContext = { userId: user?.id ?? 'conexa-prototype', userEmail: user?.email ?? undefined, clientId: body.clientId, metaAccountId: accountIds || client?.meta_ads_account_id || undefined, googleCustomerId: customerIds || client?.google_ads_customer_id || undefined, analyticsPropertyId: client?.analytics_property_id || undefined, metaPageIds: cleanList(body.metaFilters?.pageIds, /^\d{1,30}$/), metaRegions: cleanList(body.metaFilters?.regions) }
   const tools = getToolDefinitions(['get_meta_metrics', 'get_google_metrics', 'get_google_analytics_report', 'get_google_tag_manager_report', 'crm_contacts', 'crm_opportunities', 'crm_sales_attribution', 'get_client_memory'])
   const byKey = new Map(tools.map((tool) => [tool.key, tool]))
   const run = (key: string, input: Record<string, string> = {}) => byKey.get(key)?.execute({ ...range, ...input }, context).catch((error) => ({ available: false, message: error instanceof Error ? error.message : `Falló la tool ${key}.` })) ?? Promise.resolve({ available: false, message: `Tool ${key} no disponible.` })
