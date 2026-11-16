@@ -31,6 +31,7 @@ import { DashboardOverview } from '@/components/conexa/dashboard-overview'
 import { DashboardWorkspace } from '@/components/ai/conexa/dashboard-workspace'
 import { useDismiss } from '@/components/ai/conexa/use-dismiss'
 import { DashboardFilterBar, EMPTY_DASHBOARD_FILTERS, accountSelection, type DashboardFilters } from '@/components/ai/conexa/dashboard-filters'
+import { ClientMenuList } from '@/components/ai/conexa/client-menu-list'
 import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 
 const CONTEXT_VIEW = 'Contexto del cliente'
@@ -41,7 +42,17 @@ const fetchClientMemory = (url: string) => fetch(url).then((response) => (respon
 const isContextComplete = (memory: ClientMemory | null | undefined) => Boolean(memory?.profile.industry && memory.profile.commercial_objective && memory.profile.product_type)
 
 type ClientAccount = { id_cuenta: string | null; nombre_cuenta: string | null; plataforma: string | null; activo?: boolean | null }
-type Client = { id: string; nombre_del_negocio: string; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
+type Client = { id: string; nombre_del_negocio: string; activo?: boolean | null; meta_ads_account_id?: string | null; google_ads_customer_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_ids?: string[] | null; analytics_property_id?: string | null; tag_manager_container_id?: string | null; crm_type?: string | null; cuentas_publicitarias?: ClientAccount[] | null }
+
+/** Conexa solo trabaja con clientes que tengan al menos una plataforma conectada. */
+function hasConnectedAccount(client: Client) {
+  return Boolean(
+    client.meta_ads_account_id || client.meta_ads_account_ids?.length || client.google_ads_customer_id || client.google_ads_customer_ids?.length ||
+    client.analytics_property_id || client.tag_manager_container_id || client.crm_type || client.cuentas_publicitarias?.some((account) => account.activo !== false),
+  )
+}
+
+const CLIENT_COLUMNS = 'id, nombre_del_negocio, activo, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)'
 
 type Platform = { name: string; key: string; icon: typeof BarChart3; color: string; iconUrl: string | null; connected: boolean; detail: string }
 type ConexaData = { accounts: Record<string, unknown>[]; metrics: Record<string, unknown>[]; reports: Record<string, unknown>[]; profile: Record<string, unknown> | null; memory: Record<string, unknown>[]; platformMetrics: Record<string, { label: string; value: number }[]>; platformData: Record<string, unknown> }
@@ -134,13 +145,11 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
   useEffect(() => {
     const supabase = createClient()
     void supabase.auth.getUser().then(({ data: authData }) => setDashboardUserId(authData.user?.id ?? null))
-  supabase.from('clientes').select('id, nombre_del_negocio, meta_ads_account_id, google_ads_customer_id, meta_ads_account_ids, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, crm_type, cuentas_publicitarias(id_cuenta, nombre_cuenta, plataforma, activo)').order('nombre_del_negocio').then(({ data, error }) => {
+  supabase.from('clientes').select(CLIENT_COLUMNS).order('nombre_del_negocio').then(({ data, error }) => {
   if (error) { setClientsError('No se pudieron cargar los clientes'); return }
-  const normalizeName = (name: string | null | undefined) => (name ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-  const allowedClients = new Set(['ICS Salud', 'VN Global', 'Soy Aurelia', 'Belkiare', 'Módulos Argentinos', 'SVG entertainment', 'ADT', 'Pire Rayen'].map(normalizeName))
-  const rows = ((data ?? []) as Client[]).filter((item) => allowedClients.has(normalizeName(item.nombre_del_negocio)))
+  const rows = (data ?? []) as Client[]
   setClients(rows)
-      const initialClient = rows.sort((a, b) => Number(Boolean(b.meta_ads_account_id || b.meta_ads_account_ids?.length || b.google_ads_customer_id || b.google_ads_customer_ids?.length || b.analytics_property_id || b.tag_manager_container_id || b.crm_type)) - Number(Boolean(a.meta_ads_account_id || a.meta_ads_account_ids?.length || a.google_ads_customer_id || a.google_ads_customer_ids?.length || a.analytics_property_id || a.tag_manager_container_id || a.crm_type)))[0] ?? null
+      const initialClient = rows.find((row) => row.activo !== false && hasConnectedAccount(row)) ?? null
       if (initialClient) void startClientVisit(initialClient)
       else setClient(null)
   }).finally(() => setClientsLoading(false))
@@ -213,6 +222,10 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
   useEffect(() => { setSelectedAccounts({}); setSelectedPages([]); setDashboardFilters(EMPTY_DASHBOARD_FILTERS) }, [client?.id])
 
   const openConnections = () => window.location.assign('/dashboard/platform')
+  const reloadClient = async (clientId: string) => {
+    const { data: row } = await createClient().from('clientes').select(CLIENT_COLUMNS).eq('id', clientId).maybeSingle()
+    if (row) setClients((current) => current.map((item) => item.id === clientId ? row as Client : item))
+  }
   const requestDashboardRefresh = useCallback(() => setDashboardRefreshKey((current) => current + 1), [])
   useEffect(() => {
     if (active !== DASHBOARD_VIEW) return
@@ -250,7 +263,7 @@ export function ConexaWorkspace({ initialView = 'Inicio' }: { initialView?: stri
 
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="[&>div:nth-child(2)]:hidden flex h-[41px] shrink-0 items-center gap-2.5 border-b border-[#dededb] bg-white px-[16px]">
-        <div ref={clientMenuRef} className="relative"><button type="button" onClick={() => setClientMenu((value) => !value)} aria-expanded={clientMenu} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium">{client?.nombre_del_negocio ?? 'Seleccionar cliente'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{clientMenu && <div className="absolute left-0 top-10 z-30 w-[250px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg"><input autoFocus value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Buscar cliente..." aria-label="Buscar cliente" className="mb-1.5 w-full rounded-md border border-[#e6e6e3] bg-[#fafaf8] px-2.5 py-2 text-[12px] outline-none focus:border-[#5b5fe8]" /><div className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain pr-0.5">{clientsLoading ? <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">Cargando clientes...</p> : clientsError ? <p className="px-2.5 py-3 text-[12px] text-[#b42318]">{clientsError}</p> : (() => { const query = clientSearch.trim().toLowerCase(); const visibleClients = clients.filter((item) => String(item.nombre_del_negocio ?? '').toLowerCase().includes(query)); return visibleClients.length ? visibleClients.map((item) => <button type="button" key={item.id} onClick={() => { void startClientVisit(item) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item.nombre_del_negocio ?? 'Cliente sin nombre'}</button>) : <p className="px-2.5 py-3 text-[12px] text-[#9a9a9a]">No se encontraron clientes</p> })()}</div></div>}</div>
+        <div ref={clientMenuRef} className="relative"><button type="button" onClick={() => setClientMenu((value) => !value)} aria-expanded={clientMenu} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium">{client?.nombre_del_negocio ?? 'Seleccionar cliente'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{clientMenu && <div className="absolute left-0 top-10 z-30 w-[280px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg"><ClientMenuList clients={clients} loading={clientsLoading} error={clientsError} search={clientSearch} onSearchChange={setClientSearch} isConnected={hasConnectedAccount} onSelect={(item) => { void startClientVisit(item) }} onSynced={reloadClient} onConnect={() => { setClientMenu(false); openConnections() }} /></div>}</div>
         <div className="relative"><button type="button" onClick={() => setPeriodMenu((value) => !value)} className="flex items-center gap-1.5 rounded-lg border border-[#e6e6e3] px-3 py-1.5 text-[13px] font-medium text-[#5c5c5c]">{period || 'Seleccionar período'} <ChevronDown className="size-3 text-[#9a9a9a]" /></button>{metricsLoading && <LoaderCircle className="ml-1.5 size-3.5 animate-spin text-[#5b5fe8]" aria-label="Actualizando métricas" />}{periodMenu && <div className="absolute left-0 top-10 z-20 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">{['Hoy', 'Ayer', 'Últimos 7 días', 'Últimos 30 días', 'Este mes', 'Mes anterior'].map((item) => <button type="button" key={item} onClick={() => { setPeriod(item); setPeriodMenu(false) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]">{item}</button>)}<button type="button" onClick={() => setPeriod('Personalizado')} className={cn('block w-full rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-[#f5f5f5]', period === 'Personalizado' && 'bg-[#f5f5f3]')}>Personalizado</button>{period === 'Personalizado' && <div className="mt-1 border-t border-[#eee] px-2.5 py-2.5"><p className="mb-2 text-[11px] font-semibold text-[#555]">Elegí un rango</p><label className="mb-2 block text-[10px] text-[#888]">Desde<input type="date" value={customRange.from} onChange={(event) => setCustomRange((range) => ({ ...range, from: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><label className="block text-[10px] text-[#888]">Hasta<input type="date" value={customRange.to} onChange={(event) => setCustomRange((range) => ({ ...range, to: event.target.value }))} className="mt-1 block w-full rounded-md border border-[#e6e6e3] px-2 py-1.5 text-[11px]" /></label><button type="button" disabled={!customRange.from || !customRange.to} onClick={() => setPeriodMenu(false)} className="mt-3 w-full rounded-md bg-[#5b5fe8] px-2 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Aplicar rango</button></div>}</div>}</div>
         {active !== DASHBOARD_VIEW && <span className="ml-1.5 flex items-center gap-1.5 text-xs text-[#9a9a9a]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" /> Actualizado hace 8 min</span>}<div className="flex-1" /><CircleHelp className="size-4 text-[#9a9a9a]" /><div className="flex size-6 items-center justify-center rounded-full bg-[#141414] text-[10px] font-semibold text-white">AP</div>
       </header>
