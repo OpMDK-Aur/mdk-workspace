@@ -36,6 +36,9 @@ export interface ExecutionContext {
   clientId?: string
   accountId?: string
   metaAccountId?: string
+  /** Filtros del tablero: limitan Meta Ads a estas fanpages y regiones de entrega. */
+  metaPageIds?: string[]
+  metaRegions?: string[]
   googleCustomerId?: string
   analyticsPropertyId?: string
   model?: string
