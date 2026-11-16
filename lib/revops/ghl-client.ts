@@ -252,6 +252,69 @@ export async function fetchGhlConversationMessages(creds: GhlCreds, conversation
     .sort((a: GhlMessage, b: GhlMessage) => new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime())
 }
 
+// ── Contactos creados en un período (con atribución y etiquetas) ─────────
+
+export interface GhlContact {
+  id: string
+  source: string | null
+  tags: string[]
+  dateAdded: string | null
+  /** attributionSource, lastAttributionSource y attributions[] tal como los devuelve GHL; se interpretan en lib/crm/service. */
+  attributions: Record<string, unknown>[]
+}
+
+function toGhlContact(raw: any): GhlContact {
+  const attributions = [raw.attributionSource, ...(Array.isArray(raw.attributions) ? raw.attributions : []), raw.lastAttributionSource].filter((item) => item && typeof item === 'object')
+  return { id: raw.id ?? '', source: raw.source ?? null, tags: Array.isArray(raw.tags) ? raw.tags.filter((tag: unknown) => typeof tag === 'string') : [], dateAdded: raw.dateAdded ?? null, attributions }
+}
+
+const dateAddedMs = (value: string | number | null) => {
+  if (value === null || value === undefined) return NaN
+  if (typeof value === 'number' || /^\d+$/.test(String(value))) { const num = Number(value); return num > 1e12 ? num : num * 1000 }
+  return new Date(value).getTime()
+}
+
+/**
+ * Contactos con dateAdded en [startIso, endIso). Usa la búsqueda con filtro de fecha; si la cuenta no la
+ * habilita, recorre el listado clásico completo (hasta 10.000 contactos) y filtra por fecha.
+ */
+export async function fetchGhlContactsInRange(creds: GhlCreds, startIso: string, endIso: string, maxContacts = 5000): Promise<GhlContact[]> {
+  const startMs = new Date(startIso).getTime()
+  const endMs = new Date(endIso).getTime()
+  const inRange = (contact: GhlContact) => { const added = dateAddedMs(contact.dateAdded); return added >= startMs && added < endMs }
+  const PAGE_SIZE = 100
+  const found: GhlContact[] = []
+
+  let searchWorked = true
+  for (let page = 1; found.length < maxContacts; page++) {
+    if (page > 1) await delay(200)
+    const res = await fetchWithRetry(`${GHL_BASE}/contacts/search`, {
+      method: 'POST',
+      headers: authHeaders(creds.token, VERSION_2021_07_28),
+      body: JSON.stringify({ locationId: creds.locationId, page, pageLimit: PAGE_SIZE, filters: [{ field: 'dateAdded', operator: 'range', value: { gte: startIso, lt: endIso } }], sort: [{ field: 'dateAdded', direction: 'desc' }] }),
+      cache: 'no-store',
+    })
+    if (!res.ok) { if (page === 1) searchWorked = false; break }
+    const items = ((await res.json()).contacts ?? []).map(toGhlContact)
+    found.push(...items.filter(inRange))
+    if (items.length < PAGE_SIZE) break
+  }
+  if (searchWorked) return found.slice(0, maxContacts)
+
+  let url: string | null = `${GHL_BASE}/contacts/?locationId=${encodeURIComponent(creds.locationId)}&limit=${PAGE_SIZE}`
+  for (let page = 0; url && page < 100 && found.length < maxContacts; page++) {
+    if (page > 0) await delay(200)
+    const res = await fetchWithRetry(url, { method: 'GET', headers: authHeaders(creds.token, VERSION_2021_07_28), cache: 'no-store' })
+    if (!res.ok) { if (page === 0) throw new Error(`GHL contacts HTTP ${res.status}`); break }
+    const json = await res.json()
+    const items: GhlContact[] = (json.contacts ?? []).map(toGhlContact)
+    found.push(...items.filter(inRange))
+    if (items.length < PAGE_SIZE) break
+    url = json.meta?.nextPageUrl ?? null
+  }
+  return found.slice(0, maxContacts)
+}
+
 // ── Usuarios (para resolver assignedTo → nombre de vendedor) ──────────────
 
 export interface GhlUser {
