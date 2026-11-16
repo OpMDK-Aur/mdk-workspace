@@ -55,12 +55,12 @@ export function DashboardFilterBar({ clientId, period, customRange, periodSelect
   useEffect(() => { setAdded([]); setEditing(null) }, [clientId])
   useEffect(() => {
     if (!editing && !addOpen) return
-    const close = (event: MouseEvent | KeyboardEvent) => {
+    const close = (event: PointerEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent ? event.key === 'Escape' : !barRef.current?.contains(event.target as Node)) { setEditing(null); setAddOpen(false) }
     }
-    document.addEventListener('mousedown', close)
+    document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', close)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close) }
   }, [editing, addOpen])
 
   const options = useMemo<Record<DashboardFilterDimension, Option[]>>(() => ({
@@ -84,7 +84,7 @@ export function DashboardFilterBar({ clientId, period, customRange, periodSelect
 
   return (
     <div ref={barRef} className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2" role="toolbar" aria-label="Filtros del tablero">
-      {periodSelector}
+      <div onPointerDownCapture={() => { setEditing(null); setAddOpen(false) }}>{periodSelector}</div>
       {visible.map(({ key, label, hint }) => (
         <div key={key} className="relative">
           <div className={cn('flex items-center rounded-lg border text-[11px]', filters[key].length ? 'border-[#fbc59b] bg-[#fff5ec] text-[#7a3d0f]' : 'border-[#e6e6e3] bg-white text-[#5c5c5c]')}>
