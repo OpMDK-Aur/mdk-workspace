@@ -107,7 +107,7 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push('/dashboard/tasks')
+      router.push('/dashboard/conexa')
       router.refresh()
     }
   }
