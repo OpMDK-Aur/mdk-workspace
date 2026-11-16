@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { ExecutionContext, ToolDefinition } from '../types'
 import { getGoogleAccountMetrics, defaultGoogleDateRange, normalizeCustomerId, splitCustomerIds } from '@/lib/google-ads/service'
-import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, normalizeMetaAccountId } from '@/lib/meta-ads/service'
+import { defaultMetaDateRange, getMetaAccountMetrics, getMetaErrorDetails, getMetaPageAdsets, normalizeMetaAccountId } from '@/lib/meta-ads/service'
 import { buildCampaignComparisons, compareMetric, upsertChangeHistory, upsertPaidMediaSnapshot, SpecialistOutputSchema, type IndustryBenchmark } from '@/lib/ai/contracts/performance-analyst'
 import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
@@ -588,7 +588,11 @@ const getMetaMetrics: ToolDefinition = {
       const batch = selected.slice(index, index + 3)
       const batchResults = await Promise.all(batch.map(async (account) => {
         try {
-          const metrics = await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false, includeAdsetCatalog: true })
+          // Filtro por fanpage del tablero: se traduce a los conjuntos que promocionan esas páginas en esta cuenta.
+          const adsetIds = context.metaPageIds?.length
+            ? await getMetaPageAdsets(account.id_cuenta).then(({ adsetIdsByPage }) => context.metaPageIds!.flatMap((pageId) => adsetIdsByPage.get(pageId) ?? []))
+            : undefined
+          const metrics = await getMetaAccountMetrics({ accountId: account.id_cuenta, accountName: account.nombre_cuenta, moneda: account.moneda, zonaHoraria: account.zona_horaria, dateFrom: dateFrom!, dateTo: dateTo!, onlyActiveCampaigns: false, includeAdsetCatalog: true, adsetIds, regions: context.metaRegions?.length ? context.metaRegions : undefined })
           addMetaSnapshot(context, account, metrics)
           return { account, metrics }
         } catch (cause) {
