@@ -1,6 +1,7 @@
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { createCrmClient } from '@/lib/supabase/crm'
-import { fetchGhlContactsInRange, fetchGhlOpportunities, fetchGhlPipelines, fetchGhlUsers, type GhlContact, type GhlCreds } from '@/lib/revops/ghl-client'
+import { fetchGhlPipelines, fetchGhlUsers, type GhlContact, type GhlCreds } from '@/lib/revops/ghl-client'
+import { getGhlContactsInRange, getGhlOpportunities } from '@/lib/crm/ghl-live'
 
 // El CRM externo de Aurelia identifica a cada cliente con su propio UUID de
 // cuenta/location (columna `client_id` en sus tablas remotas), que NO es
@@ -170,8 +171,8 @@ async function getGhlAcquisitionReport(creds: GhlCreds, start: string, end: stri
   const startMs = new Date(start).getTime()
   const endMs = new Date(end).getTime()
   const [contacts, opportunities, users, pipelines] = await Promise.all([
-    fetchGhlContactsInRange(creds, start, end),
-    fetchGhlOpportunities(creds),
+    getGhlContactsInRange(creds, start, end),
+    getGhlOpportunities(creds),
     fetchGhlUsers(creds).catch(() => []),
     fetchGhlPipelines(creds).catch(() => []),
   ])
@@ -179,10 +180,12 @@ async function getGhlAcquisitionReport(creds: GhlCreds, start: string, end: stri
   const pipelineNameById = new Map(pipelines.map((pipeline) => [pipeline.id, pipeline.name]))
 
   const contactRecords = new Map<string, ContactRecord>()
+  // En GHL muchas cuentas no completan la atribución (contactos de WhatsApp, importados, formularios
+  // propios), así que se cuentan todos los contactos del período y los no atribuidos quedan como
+  // "Sin campaña asignada" en lugar de descartarlos.
   for (const contact of contacts) {
-    const campaign = campaignFromGhlContact(contact)
-    if (!contact.id || !campaign) continue
-    contactRecords.set(contact.id, { contactId: contact.id, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign })
+    if (!contact.id) continue
+    contactRecords.set(contact.id, { contactId: contact.id, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign: campaignFromGhlContact(contact) })
   }
   const opportunityRecords: OpportunityRecord[] = opportunities
     .filter((row) => { const created = new Date(row.createdAt).getTime(); return row.contactId && created >= startMs && created < endMs })
