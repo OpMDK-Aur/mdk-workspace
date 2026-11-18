@@ -11,6 +11,8 @@ import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyti
 import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { ghlContactsResult, ghlOpportunitiesResult, ghlSalesResult, resolveGhlCreds } from '@/lib/crm/ghl-live'
+import type { GhlCreds } from '@/lib/revops/ghl-client'
 import { buildClaudeDesignBrief, normalizeReportPlan, type ReportPlan } from '@/lib/ai/claude-design-prompts'
 
 const noInput = z.object({})
@@ -32,6 +34,25 @@ async function resolveCrmAccountIds(clientId: string): Promise<string[]> {
   const primaryId = clienteRow?.crm_location_id ?? clienteRow?.ghl_location_id ?? null
   const extraIds = (extraAccounts ?? []).map((row: { crm_account_id: string }) => row.crm_account_id)
   return [...new Set([primaryId, ...extraIds].filter(Boolean) as string[])]
+}
+
+/**
+ * Los clientes con crm_type = 'ghl' no están en el CRM de Aurelia: si se consultaran ahí con el
+ * ghl_location_id, el resultado vendría vacío o casi vacío. Para ellos se lee GoHighLevel en vivo.
+ * Devuelve null cuando el cliente no usa GHL y la tool debe seguir con Aurelia.
+ */
+async function runGhlCrmTool(context: ExecutionContext, toolKey: string, load: (creds: GhlCreds) => Promise<{ totals: Record<string, unknown> }>, label: (totals: Record<string, unknown>) => string) {
+  const ghl = await resolveGhlCreds(context.clientId!)
+  if (!ghl) return null
+  if ('error' in ghl) return { available: false, message: ghl.error }
+  try {
+    const result = await load(ghl.creds)
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey, status: 'completed', label: label(result.totals) })
+    return result
+  } catch (error) {
+    context.emitActivity?.({ agentSlug: 'supervisor', toolKey, status: 'error', label: 'No se pudo consultar GoHighLevel' })
+    return { available: false, message: error instanceof Error ? `No se pudo consultar GoHighLevel: ${error.message}` : 'No se pudo consultar GoHighLevel.' }
+  }
 }
 
 /**
@@ -947,6 +968,8 @@ const crmOpportunities: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), status: z.string().optional() }),
   async execute(input: { dateFrom: string; dateTo: string; status?: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const ghlResult = await runGhlCrmTool(context, 'crm_opportunities', (creds) => ghlOpportunitiesResult(creds, input.dateFrom, input.dateTo, input.status), (totals) => `${totals.opportunities} oportunidades consultadas`)
+    if (ghlResult) return ghlResult
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
     if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
@@ -989,6 +1012,8 @@ const crmContacts: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const ghlResult = await runGhlCrmTool(context, 'crm_contacts', (creds) => ghlContactsResult(creds, input.dateFrom, input.dateTo), (totals) => `${totals.contacts} contactos consultados`)
+    if (ghlResult) return ghlResult
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
     if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
@@ -1113,6 +1138,8 @@ const crmSalesAttribution: ToolDefinition = {
   inputSchema: z.object({ dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
   async execute(input: { dateFrom: string; dateTo: string }, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    const ghlResult = await runGhlCrmTool(context, 'crm_sales_attribution', (creds) => ghlSalesResult(creds, input.dateFrom, input.dateTo), (totals) => `${totals.won_sales} ventas ganadas analizadas`)
+    if (ghlResult) return ghlResult
     const crmAccountIds = await resolveCrmAccountIds(context.clientId)
     if (crmAccountIds.length === 0) return { available: false, message: 'El cliente activo no tiene ninguna cuenta de CRM vinculada.' }
     const crm = createCrmClient()
