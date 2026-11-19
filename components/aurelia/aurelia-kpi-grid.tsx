@@ -40,12 +40,14 @@ export function AureliaKpiGrid({ current, previous, snapshot, currency, periodLa
   const money = (value: number) => formatMoney(value, currency)
   const vsPrevious = 'vs. período anterior'
   return (
-    <section aria-label="Indicadores" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <section aria-label="Indicadores" className="grid grid-cols-2 gap-4 xl:grid-cols-5">
       <KpiCard emphasis label="MRR actual" value={money(snapshot.mrr)} hint={`${count(snapshot.pagando)} cuentas pagando`} onSelect={() => onSelect('mrr')} />
       <KpiCard label={`Altas · ${periodLabel}`} value={count(current.altas)} hint={vsPrevious} trend={{ delta: current.altas - previous.altas, goodWhenUp: true, format: count }} onSelect={() => onSelect('altas')} />
+      <KpiCard label={`Activaciones · ${periodLabel}`} value={count(current.activaciones)} hint="empezaron a pagar" trend={{ delta: current.activaciones - previous.activaciones, goodWhenUp: true, format: count }} onSelect={() => onSelect('activaciones')} />
       <KpiCard label={`Bajas · ${periodLabel}`} value={count(current.bajas)} hint={vsPrevious} trend={{ delta: current.bajas - previous.bajas, goodWhenUp: false, format: count }} onSelect={() => onSelect('bajas')} />
       <KpiCard label="Altas netas" value={`${current.netas > 0 ? '+' : ''}${count(current.netas)}`} hint={vsPrevious} trend={{ delta: current.netas - previous.netas, goodWhenUp: true, format: count }} onSelect={() => onSelect('netas')} />
-      <KpiCard label="Clientes activos" value={count(snapshot.activos)} hint={`${count(snapshot.pagoPendiente)} con pago pendiente`} onSelect={() => onSelect('activos')} />
+      <KpiCard label="Clientes activos" value={count(snapshot.activos)} hint="suscripción al día" onSelect={() => onSelect('activos')} />
+      <KpiCard label="Pago pendiente" value={count(snapshot.pagoPendiente)} hint="siguen sumando MRR" onSelect={() => onSelect('past_due')} />
       <KpiCard label="En prueba" value={count(snapshot.enPrueba)} hint="trial vigente, aún sin MRR" onSelect={() => onSelect('trial')} />
       <KpiCard label="Churn del período" value={percent(current.churnRate)} hint={`sobre ${count(current.activosInicio)} activos al inicio`} trend={current.churnRate !== null && previous.churnRate !== null ? { delta: current.churnRate - previous.churnRate, goodWhenUp: false, format: (value) => percent(value) } : undefined} onSelect={() => onSelect('churn')} />
       <KpiCard label="ARPA" value={snapshot.arpa === null ? '—' : money(snapshot.arpa)} hint={`MRR nuevo ${money(current.mrrNuevo)} · perdido ${money(current.mrrPerdido)}`} onSelect={() => onSelect('arpa')} />

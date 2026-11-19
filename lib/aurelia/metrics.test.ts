@@ -5,7 +5,7 @@ const base: Omit<AureliaClient, 'id' | 'status' | 'startedAt' | 'churnedAt' | 'm
   name: 'Cliente', email: null, phone: null, rawStatus: null, planSlug: 'pro', planName: 'Pro',
   currentPeriodStart: null, endedAt: null, trialEndAt: null, planMonthlyPrice: 100,
 }
-const client = (overrides: Partial<AureliaClient> & Pick<AureliaClient, 'id' | 'status' | 'startedAt'>): AureliaClient => ({ ...base, churnedAt: null, mrr: 0, ...overrides })
+const client = (overrides: Partial<AureliaClient> & Pick<AureliaClient, 'id' | 'status' | 'startedAt'>): AureliaClient => ({ ...base, churnedAt: null, activatedAt: null, history: [], mrr: 0, ...overrides })
 
 const clients: AureliaClient[] = [
   client({ id: 'a', status: 'active', startedAt: '2026-01-10T00:00:00Z', mrr: 100 }),
@@ -87,6 +87,17 @@ describe('Aurelia metrics', () => {
     expect(resolveCustomRange('2026-11-15', '2026-11-01')).toBeNull()
     const now = new Date(2026, 10, 19, 10)
     expect(resolvePeriod('custom', now, { from: 'x', to: 'y' })).toEqual(resolvePeriod('this_month', now))
+  })
+
+  it('counts activations by activation date, not by alta', () => {
+    const withActivation = [
+      ...clients,
+      client({ id: 'mirs', name: 'Turismo Mirs', status: 'active', startedAt: '2026-04-23T00:00:00Z', activatedAt: '2026-11-19T12:00:00Z', mrr: 100 }),
+    ]
+    const metrics = computePeriodMetrics(withActivation, november)
+    expect(metrics.altas).toBe(2)
+    expect(metrics.activaciones).toBe(1)
+    expect(selectKpiClients('activaciones', withActivation, november).map((row) => row.id)).toEqual(['mirs'])
   })
 
   it('builds a monthly series ending in the current month', () => {

@@ -1,3 +1,5 @@
+import type { SubscriptionHistoryRow } from './activation'
+
 export type SubscriptionStatus = 'active' | 'trial' | 'past_due' | 'churned' | 'other'
 
 export type AureliaClient = {
@@ -16,6 +18,10 @@ export type AureliaClient = {
   trialEndAt: string | null
   /** Fecha de baja (ended_at de la suscripción vigente cuando está finalizada). */
   churnedAt: string | null
+  /** Fecha estimada en que empezó a pagar (ver estimateActivation). */
+  activatedAt: string | null
+  /** Todas sus suscripciones, de la más reciente a la más vieja. */
+  history: SubscriptionHistoryRow[]
   /** Valor mensual del plan vigente, sin importar el estado. */
   planMonthlyPrice: number | null
   /** Lo que aporta hoy al MRR: solo suscripciones activas o con pago pendiente. */
@@ -38,10 +44,11 @@ export const PAYING_STATUSES: SubscriptionStatus[] = ['active', 'past_due']
 
 export type PeriodKey = 'today' | 'last_7' | 'last_14' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_12m' | 'custom'
 
-export type DateField = 'startedAt' | 'currentPeriodStart' | 'trialEndAt' | 'churnedAt'
+export type DateField = 'startedAt' | 'activatedAt' | 'currentPeriodStart' | 'trialEndAt' | 'churnedAt'
 
 export const DATE_FIELD_OPTIONS: Array<{ value: DateField; label: string }> = [
   { value: 'startedAt', label: 'Fecha de alta' },
+  { value: 'activatedAt', label: 'Fecha de activación' },
   { value: 'currentPeriodStart', label: 'Inicio del período actual' },
   { value: 'trialEndAt', label: 'Fin de prueba' },
   { value: 'churnedAt', label: 'Fecha de baja' },
@@ -121,6 +128,7 @@ export function isInternalAccount(client: Pick<AureliaClient, 'name' | 'email'>)
 }
 
 const isAlta = (client: AureliaClient, range: DateRange) => inRange(client.startedAt, range) && !isInternalAccount(client)
+const isActivation = (client: AureliaClient, range: DateRange) => inRange(client.activatedAt, range) && !isInternalAccount(client)
 
 /** Un cliente en prueba hoy no pagó nunca, así que no cuenta como activo en el histórico. */
 export function isActiveAt(client: AureliaClient, date: Date): boolean {
@@ -134,6 +142,7 @@ export function isActiveAt(client: AureliaClient, date: Date): boolean {
 
 export type PeriodMetrics = {
   altas: number
+  activaciones: number
   bajas: number
   netas: number
   activosInicio: number
@@ -148,6 +157,7 @@ export function computePeriodMetrics(clients: AureliaClient[], range: DateRange)
   const activosInicio = clients.filter((client) => isActiveAt(client, range.start)).length
   return {
     altas: altas.length,
+    activaciones: clients.filter((client) => isActivation(client, range)).length,
     bajas: bajas.length,
     netas: altas.length - bajas.length,
     activosInicio,
@@ -157,11 +167,13 @@ export function computePeriodMetrics(clients: AureliaClient[], range: DateRange)
   }
 }
 
-export type KpiKey = 'mrr' | 'altas' | 'bajas' | 'netas' | 'activos' | 'trial' | 'churn' | 'arpa'
+export type KpiKey = 'mrr' | 'altas' | 'activaciones' | 'bajas' | 'netas' | 'activos' | 'past_due' | 'trial' | 'churn' | 'arpa'
 
 export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> = {
   mrr: { title: 'Clientes que suman MRR', description: 'Suscripciones activas o con pago pendiente, ordenadas por MRR.' },
   altas: { title: 'Altas del período', description: 'Clientes cuya primera suscripción empezó en el período (sin cuentas internas de Aurelia y MDK).' },
+  activaciones: { title: 'Activaciones del período', description: 'Clientes que empezaron a pagar en el período, aunque se hayan dado de alta antes (fecha estimada con su historial de suscripciones).' },
+  past_due: { title: 'Clientes con pago pendiente', description: 'Suscripción vigente con un cobro sin acreditar.' },
   bajas: { title: 'Bajas del período', description: 'Clientes cuya suscripción finalizó en el período.' },
   netas: { title: 'Altas y bajas del período', description: 'Altas menos bajas: los dos grupos que forman el neto.' },
   activos: { title: 'Clientes activos', description: 'Suscripción activa y al día (los de pago pendiente se ven en MRR).' },
@@ -184,6 +196,8 @@ export function selectKpiClients(key: KpiKey, clients: AureliaClient[], range: D
     case 'netas': return [...altas(), ...bajas().filter((client) => !isAlta(client, range))]
     case 'activos': return clients.filter((client) => client.status === 'active')
     case 'trial': return clients.filter((client) => client.status === 'trial')
+    case 'activaciones': return clients.filter((client) => isActivation(client, range)).sort((a, b) => (b.activatedAt ?? '').localeCompare(a.activatedAt ?? ''))
+    case 'past_due': return clients.filter((client) => client.status === 'past_due')
   }
 }
 

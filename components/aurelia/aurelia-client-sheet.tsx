@@ -70,10 +70,30 @@ function ClientDetail({ client, currency, time }: { client: AureliaClient; curre
           <Field label="Plan" value={client.planName ?? client.planSlug ?? '—'} />
           <Field label="MRR" value={client.mrr ? formatMoney(client.mrr, currency) : '—'} />
           <Field label="Alta" value={formatDate(client.startedAt)} />
+          <Field label="Activación" value={formatDate(client.activatedAt)} />
           <Field label="Período actual" value={formatDate(client.currentPeriodStart)} />
           <Field label="Fin de prueba" value={formatDate(client.trialEndAt)} />
           <Field label="Baja" value={formatDate(client.churnedAt)} />
         </dl>
+
+        <section aria-labelledby="aurelia-history-title" className="flex flex-col gap-2">
+          <h3 id="aurelia-history-title" className="text-sm font-semibold">Historial de suscripciones</h3>
+          <ul className="flex flex-col divide-y rounded-lg border">
+            {client.history.map((row, index) => (
+              <li key={`${row.createdAt}-${index}`} className="flex flex-col gap-1 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate text-sm font-medium">{row.planName ?? 'Sin plan'}</span>
+                  <Badge variant="outline" className="shrink-0" title={row.rawStatus ?? undefined}>{row.status === 'other' && row.rawStatus ? row.rawStatus : STATUS_LABELS[row.status]}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  Creada {formatDate(row.createdAt)} · Período {formatDate(row.currentPeriodStart)}
+                  {row.trialEndAt ? ` · Fin de prueba ${formatDate(row.trialEndAt)}` : ''}
+                  {row.endedAt ? ` · Finalizó ${formatDate(row.endedAt)}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <Separator />
 

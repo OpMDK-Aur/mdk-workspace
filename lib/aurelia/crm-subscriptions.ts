@@ -1,5 +1,6 @@
 import { createCrmClient } from '@/lib/supabase/crm'
 import type { AureliaClient, AureliaDataset, SubscriptionStatus } from './metrics'
+import { estimateActivation, type SubscriptionHistoryRow } from './activation'
 
 const PAGE_SIZE = 1000
 const MAX_ROWS = 20000
@@ -101,6 +102,19 @@ export async function getAureliaDataset(): Promise<AureliaDataset> {
         .sort()[0] ?? null
       const status = normalizeStatus(latest.status, latest.ended_at, now)
       const paying = status === 'active' || status === 'past_due'
+      const history: SubscriptionHistoryRow[] = [...subscriptions].sort(compareLatestFirst).map((row) => {
+        const rowPricing = row.plan_id ? pricingByPlan.get(row.plan_id) : undefined
+        return {
+          planName: rowPricing?.name ?? rowPricing?.slug ?? null,
+          status: normalizeStatus(row.status, row.ended_at, now),
+          rawStatus: row.status,
+          createdAt: row.created_at,
+          currentPeriodStart: row.current_period_start,
+          trialEndAt: row.trial_end_at,
+          endedAt: row.ended_at,
+          monthlyPrice: rowPricing?.monthlyPrice ?? null,
+        }
+      })
       if (pricing.currency) currencyVotes.set(pricing.currency, (currencyVotes.get(pricing.currency) ?? 0) + 1)
 
       clients.push({
@@ -117,6 +131,8 @@ export async function getAureliaDataset(): Promise<AureliaDataset> {
         endedAt: latest.ended_at,
         trialEndAt: latest.trial_end_at,
         churnedAt: status === 'churned' ? latest.ended_at : null,
+        activatedAt: estimateActivation(history, now),
+        history,
         planMonthlyPrice: pricing.monthlyPrice,
         mrr: paying ? pricing.monthlyPrice ?? 0 : 0,
       })

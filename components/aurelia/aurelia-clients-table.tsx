@@ -37,7 +37,7 @@ export type ClientsTableTime = {
 
 /** `bare` la muestra sin tarjeta y respeta el orden recibido (lo usa el detalle de cada indicador). */
 export function AureliaClientsTable({ clients, currency, bare = false, time, onOpenClient, range, rangeLabel }: { clients: AureliaClient[]; currency: string; bare?: boolean; time?: ClientsTableTime; onOpenClient?: (client: AureliaClient) => void; range?: DateRange; rangeLabel?: string }) {
-  const columnCount = 9 + (time ? 2 : 0)
+  const columnCount = 10 + (time ? 2 : 0)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [dateField, setDateField] = useState<DateField | 'none'>('none')
@@ -125,6 +125,7 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                 <TableHead>Plan</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Alta</TableHead>
+                <TableHead>Activación</TableHead>
                 <TableHead>Período actual</TableHead>
                 <TableHead>Fin de prueba</TableHead>
                 <TableHead>Baja</TableHead>
@@ -164,6 +165,7 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                     </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums">{formatDate(client.startedAt)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-sm tabular-nums">{formatDate(client.activatedAt)}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">{formatDate(client.currentPeriodStart)}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">{formatDate(client.trialEndAt)}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">{formatDate(client.churnedAt)}</TableCell>
