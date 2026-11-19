@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeMonthlySeries, computePeriodMetrics, computePlanBreakdown, computeSnapshot, type AureliaClient } from './metrics'
+import { computeMonthlySeries, computePeriodMetrics, computePlanBreakdown, computeSnapshot, selectKpiClients, type AureliaClient } from './metrics'
 
 const base: Omit<AureliaClient, 'id' | 'status' | 'startedAt' | 'churnedAt' | 'mrr'> = {
   name: 'Cliente', email: null, phone: null, rawStatus: null, planSlug: 'pro', planName: 'Pro',
@@ -41,6 +41,16 @@ describe('Aurelia metrics', () => {
       { plan: 'Pro', clientes: 2, mrr: 200 },
       { plan: 'Basic', clientes: 1, mrr: 50 },
     ])
+  })
+
+  it('lists the clients behind each KPI', () => {
+    const ids = (key: Parameters<typeof selectKpiClients>[0]) => selectKpiClients(key, clients, november).map((row) => row.id)
+    expect(ids('altas')).toEqual(['b', 'd'])
+    expect(ids('bajas')).toEqual(['c'])
+    expect(ids('netas')).toEqual(['b', 'd', 'c'])
+    expect(ids('mrr')).toEqual(['a', 'b', 'e'])
+    expect(ids('activos')).toEqual(['a', 'b'])
+    expect(ids('trial')).toEqual(['d'])
   })
 
   it('builds a monthly series ending in the current month', () => {

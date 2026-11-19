@@ -106,6 +106,36 @@ export function computePeriodMetrics(clients: AureliaClient[], range: DateRange)
   }
 }
 
+export type KpiKey = 'mrr' | 'altas' | 'bajas' | 'netas' | 'activos' | 'trial' | 'churn' | 'arpa'
+
+export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> = {
+  mrr: { title: 'Clientes que suman MRR', description: 'Suscripciones activas o con pago pendiente, ordenadas por MRR.' },
+  altas: { title: 'Altas del período', description: 'Clientes cuya primera suscripción empezó en el período.' },
+  bajas: { title: 'Bajas del período', description: 'Clientes cuya suscripción finalizó en el período.' },
+  netas: { title: 'Altas y bajas del período', description: 'Altas menos bajas: los dos grupos que forman el neto.' },
+  activos: { title: 'Clientes activos', description: 'Suscripción activa y al día (los de pago pendiente se ven en MRR).' },
+  trial: { title: 'Clientes en prueba', description: 'Trial vigente, todavía sin aportar MRR.' },
+  churn: { title: 'Bajas que forman el churn', description: 'Bajas del período sobre los activos al inicio.' },
+  arpa: { title: 'Cuentas que pagan', description: 'Base del ARPA: MRR dividido por estas cuentas.' },
+}
+
+/** Clientes detrás de cada indicador, para el detalle al hacer clic. */
+export function selectKpiClients(key: KpiKey, clients: AureliaClient[], range: DateRange): AureliaClient[] {
+  const altas = () => clients.filter((client) => inRange(client.startedAt, range))
+  const bajas = () => clients.filter((client) => client.status === 'churned' && inRange(client.churnedAt, range))
+  const paying = () => clients.filter((client) => PAYING_STATUSES.includes(client.status)).sort((a, b) => b.mrr - a.mrr)
+  switch (key) {
+    case 'mrr':
+    case 'arpa': return paying()
+    case 'altas': return altas()
+    case 'bajas':
+    case 'churn': return bajas()
+    case 'netas': return [...altas(), ...bajas().filter((client) => !inRange(client.startedAt, range))]
+    case 'activos': return clients.filter((client) => client.status === 'active')
+    case 'trial': return clients.filter((client) => client.status === 'trial')
+  }
+}
+
 export type SnapshotMetrics = { mrr: number; activos: number; pagando: number; enPrueba: number; pagoPendiente: number; arpa: number | null }
 
 export function computeSnapshot(clients: AureliaClient[]): SnapshotMetrics {

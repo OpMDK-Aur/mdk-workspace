@@ -24,7 +24,8 @@ const STATUS_STYLES: Record<SubscriptionStatus, string> = {
 
 const FILTER_ORDER: StatusFilter[] = ['all', 'active', 'trial', 'past_due', 'churned', 'other']
 
-export function AureliaClientsTable({ clients, currency }: { clients: AureliaClient[]; currency: string }) {
+/** `bare` la muestra sin tarjeta y respeta el orden recibido (lo usa el detalle de cada indicador). */
+export function AureliaClientsTable({ clients, currency, bare = false }: { clients: AureliaClient[]; currency: string; bare?: boolean }) {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
@@ -38,26 +39,23 @@ export function AureliaClientsTable({ clients, currency }: { clients: AureliaCli
 
   const filtered = useMemo(() => {
     const term = deferredSearch.trim().toLocaleLowerCase('es-AR')
-    return clients
+    const rows = clients
       .filter((client) => status === 'all' || client.status === status)
       .filter((client) => !term || [client.name, client.email, client.phone, client.planName, client.planSlug].some((value) => value?.toLocaleLowerCase('es-AR').includes(term)))
-      .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
-  }, [clients, deferredSearch, status])
+    return bare ? rows : rows.sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
+  }, [clients, deferredSearch, status, bare])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
   const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <CardTitle className="text-base font-medium">Clientes del CRM</CardTitle>
-          <div className="relative md:w-72">
+  const searchInput = (
+          <div className={cn('relative', !bare && 'md:w-72')}>
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Buscar por nombre, email, teléfono o plan" className="h-9 pl-8" aria-label="Buscar clientes" />
           </div>
-        </div>
+  )
+  const statusFilter = (
         <ToggleGroup type="single" size="sm" variant="outline" value={status} onValueChange={(value) => { if (value) { setStatus(value as StatusFilter); setPage(1) } }} className="flex-wrap justify-start" aria-label="Filtrar por estado">
           {FILTER_ORDER.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
             <ToggleGroupItem key={key} value={key} className="gap-1.5 px-3 text-xs">
@@ -66,8 +64,9 @@ export function AureliaClientsTable({ clients, currency }: { clients: AureliaCli
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+  )
+  const tableAndPager = (
+      <>
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -127,7 +126,29 @@ export function AureliaClientsTable({ clients, currency }: { clients: AureliaCli
             </Button>
           </div>
         </div>
-      </CardContent>
+      </>
+  )
+
+  if (bare) {
+    return (
+      <div className="flex flex-col gap-4">
+        {searchInput}
+        {statusFilter}
+        {tableAndPager}
+      </div>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardTitle className="text-base font-medium">Clientes del CRM</CardTitle>
+          {searchInput}
+        </div>
+        {statusFilter}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">{tableAndPager}</CardContent>
     </Card>
   )
 }

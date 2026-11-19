@@ -12,9 +12,12 @@ import {
   computeSnapshot,
   previousRange,
   resolvePeriod,
+  selectKpiClients,
   type AureliaDataset,
+  type KpiKey,
   type PeriodKey,
 } from '@/lib/aurelia/metrics'
+import { AureliaKpiSheet } from './aurelia-kpi-sheet'
 import { AureliaHeading } from './aurelia-heading'
 import { AureliaKpiGrid } from './aurelia-kpi-grid'
 import { AureliaGrowthChart } from './aurelia-growth-chart'
@@ -23,11 +26,13 @@ import { AureliaClientsTable } from './aurelia-clients-table'
 
 export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
   const [period, setPeriod] = useState<PeriodKey>('this_month')
+  const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
 
   const computed = useMemo(() => {
     if (!dataset.available) return null
     const range = resolvePeriod(period)
     return {
+      range,
       current: computePeriodMetrics(dataset.clients, range),
       previous: computePeriodMetrics(dataset.clients, previousRange(range)),
       snapshot: computeSnapshot(dataset.clients),
@@ -82,7 +87,15 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
         </Alert>
       )}
 
-      <AureliaKpiGrid current={computed.current} previous={computed.previous} snapshot={computed.snapshot} currency={dataset.currency} periodLabel={periodLabel} />
+      <AureliaKpiGrid current={computed.current} previous={computed.previous} snapshot={computed.snapshot} currency={dataset.currency} periodLabel={periodLabel} onSelect={setSelectedKpi} />
+
+      <AureliaKpiSheet
+        kpi={selectedKpi}
+        clients={selectedKpi ? selectKpiClients(selectedKpi, dataset.clients, computed.range) : []}
+        currency={dataset.currency}
+        periodLabel={periodLabel}
+        onClose={() => setSelectedKpi(null)}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <AureliaGrowthChart series={computed.series} currency={dataset.currency} className="lg:col-span-2" />
