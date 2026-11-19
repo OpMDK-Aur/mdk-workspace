@@ -3,7 +3,13 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { safeReturnPath } from '@/lib/google/return-path'
-import { GOOGLE_ANALYTICS_PLATFORM, GOOGLE_ANALYTICS_STATE_COOKIE as STATE_COOKIE } from '@/lib/google-analytics/user-token'
+import {
+  GOOGLE_ANALYTICS_PLATFORM,
+  GOOGLE_ANALYTICS_STATE_COOKIE as STATE_COOKIE,
+  GOOGLE_ANALYTICS_STATE_COOKIE_PATH,
+  GOOGLE_ANALYTICS_STATE_PREFIX,
+  googleAnalyticsRedirectUri,
+} from '@/lib/google-analytics/user-token'
 
 export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -20,16 +26,16 @@ export async function GET(request: Request) {
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.set('client_id', clientId)
-  authUrl.searchParams.set('redirect_uri', `${appUrl}/api/auth/google-analytics/callback`)
+  authUrl.searchParams.set('redirect_uri', googleAnalyticsRedirectUri(appUrl))
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('scope', ['https://www.googleapis.com/auth/analytics.readonly', 'https://www.googleapis.com/auth/userinfo.email', 'openid'].join(' '))
   authUrl.searchParams.set('access_type', 'offline')
   authUrl.searchParams.set('prompt', 'consent select_account')
   authUrl.searchParams.set('include_granted_scopes', 'true')
-  authUrl.searchParams.set('state', `${nonce}:${returnTo}`)
+  authUrl.searchParams.set('state', `${GOOGLE_ANALYTICS_STATE_PREFIX}${nonce}:${returnTo}`)
 
   const response = NextResponse.redirect(authUrl.toString())
-  response.cookies.set(STATE_COOKIE, nonce, { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/auth/google-analytics', maxAge: 600 })
+  response.cookies.set(STATE_COOKIE, nonce, { httpOnly: true, secure: true, sameSite: 'lax', path: GOOGLE_ANALYTICS_STATE_COOKIE_PATH, maxAge: 600 })
   return response
 }
 

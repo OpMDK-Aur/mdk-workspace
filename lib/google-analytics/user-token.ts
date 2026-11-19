@@ -3,6 +3,17 @@ import { createClient as createAdminClient } from '@/lib/supabase/admin'
 
 export const GOOGLE_ANALYTICS_PLATFORM = 'google_analytics'
 export const GOOGLE_ANALYTICS_STATE_COOKIE = 'ga_oauth_state'
+export const GOOGLE_ANALYTICS_STATE_COOKIE_PATH = '/api/auth'
+/** Prefijo del state que distingue la conexión de Analytics de la de Sheets en el callback compartido. */
+export const GOOGLE_ANALYTICS_STATE_PREFIX = 'ga:'
+
+/**
+ * Usa la URL de vuelta de Google Sheets, que ya está autorizada en el cliente
+ * OAuth. Una URL nueva sin registrar hace que Google muestre "Acceso bloqueado".
+ */
+export function googleAnalyticsRedirectUri(appUrl: string) {
+  return `${appUrl}/api/auth/google-sheets/callback`
+}
 
 export type GoogleAnalyticsAccess =
   | { accessToken: string; email: string | null; userId: string }
