@@ -57,6 +57,7 @@ import {
   Database,
   Webhook,
   ListChecks,
+  Gem,
 } from 'lucide-react'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
@@ -86,6 +87,7 @@ interface NavSection {
 }
 
 const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles }
+const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem, moduleId: 'aurelia', badge: 'nuevo', badgeUntil: '2027-01-15' }
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
@@ -430,6 +432,7 @@ export function Sidebar({
               {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
                 {renderNavItem(conexaItem, true)}
+                {renderNavItem(aureliaItem, true)}
                 {mainItems.map(item => renderNavItem(item, true))}
                 {tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
@@ -582,6 +585,7 @@ export function Sidebar({
                 {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
                   {renderNavItem(conexaItem)}
+                  {renderNavItem(aureliaItem)}
                   {/* Tareas as collapsible parent */}
                   <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
                     <div className="flex items-center">
