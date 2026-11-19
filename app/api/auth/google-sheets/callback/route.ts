@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { safeReturnPath } from '@/lib/google/return-path'
+import { handleGoogleAnalyticsCallback, isGoogleAnalyticsState } from '@/lib/google-analytics/oauth-callback'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
+  // La conexión de Google Analytics reutiliza esta URL de vuelta (ya autorizada en Google Cloud).
+  if (isGoogleAnalyticsState(requestUrl.searchParams.get('state'))) return handleGoogleAnalyticsCallback(request)
   const code = requestUrl.searchParams.get('code')
   const error = requestUrl.searchParams.get('error')
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin

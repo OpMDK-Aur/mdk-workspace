@@ -56,3 +56,13 @@ export async function GET(request: Request) {
     )
   }
 }
+
+/** Desconecta la cuenta de Analytics del usuario. Las propiedades ya asignadas a clientes no se tocan. */
+export async function DELETE() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  const { error } = await createAdminClient().from('plataformas_tokens').delete().eq('plataforma', GOOGLE_ANALYTICS_PLATFORM).eq('cliente_id', user.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

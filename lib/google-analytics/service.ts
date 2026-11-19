@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { getAuthForProperty } from './auth'
 
 export type GoogleAnalyticsSales = {
   propertyId: string
