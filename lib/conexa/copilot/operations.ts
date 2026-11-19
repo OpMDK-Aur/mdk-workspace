@@ -41,6 +41,15 @@ export type ExecutableEntities = {
 /** Normaliza la operación del modelo; solo acepta IDs que existen en las cuentas vinculadas. */
 export function normalizeOperation(raw: RawOperation | null, isKnownId: (platform: 'meta' | 'google_ads', id: string, customerId: string) => boolean): RecommendationOperation | null {
   if (!raw) return null
+  if (raw.kind === 'create_campaign' && raw.platform === 'google_ads') {
+    const customerId = raw.customerId.replace(/-/g, '').trim()
+    const templateCampaignId = raw.entityId.trim()
+    const campaignName = raw.newCampaignName.trim()
+    if (!campaignName || !raw.dailyBudget || !/^\d{3,20}$/.test(customerId) || !/^\d{1,30}$/.test(templateCampaignId) || !isKnownId('google_ads', templateCampaignId, customerId)) return null
+    const adGroups = [...new Map(raw.adRefs.map((group) => [group.id.trim(), { id: group.id.trim(), name: group.name.trim() || group.id.trim() }])).values()]
+    if (!adGroups.length || adGroups.some((group) => !/^\d{1,30}$/.test(group.id) || !isKnownId('google_ads', group.id, customerId))) return null
+    return { platform: 'google_ads', kind: 'create_campaign', customerId, templateCampaignId, templateCampaignName: raw.entityName.trim() || templateCampaignId, campaignName, dailyBudget: raw.dailyBudget, adGroups }
+  }
   if (raw.kind === 'create_campaign') {
     const templateAdsetId = raw.entityId.trim()
     const campaignName = raw.newCampaignName.trim()
