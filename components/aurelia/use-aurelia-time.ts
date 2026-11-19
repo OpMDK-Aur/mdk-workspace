@@ -3,7 +3,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { toast } from 'sonner'
-import { addAureliaTimeEntry, deleteAureliaTimeEntry, startAureliaTimer, stopAureliaTimer } from '@/app/actions/aurelia-time'
+import { addAureliaTimeEntry, deleteAureliaTimeEntry, startAureliaTimer, stopAureliaTimer, updateAureliaRunning } from '@/app/actions/aurelia-time'
+import type { AureliaClientOption } from '@/lib/aurelia/crm-clients'
+import { useTimerStore } from '@/lib/time-tracking/timer-store'
+
+const fetchClientOptions = async (url: string): Promise<AureliaClientOption[]> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('No se pudieron cargar los clientes del CRM')
+  return ((await response.json()).clients ?? []) as AureliaClientOption[]
+}
+
+/** Clientes del CRM de Aurelia para el selector del timer. */
+export function useAureliaClientOptions() {
+  return useSWR('/api/aurelia/clients', fetchClientOptions, { revalidateOnFocus: false, dedupingInterval: 5 * 60 * 1000 })
+}
 import type { AureliaTimeData } from '@/lib/aurelia/time-shared'
 
 const fetchTime = async (url: string): Promise<AureliaTimeData> => {
@@ -31,8 +44,26 @@ export function useAureliaTime() {
     data,
     isLoading,
     pending,
-    start: (clientId: string, clientName: string, descripcion?: string) => perform(() => startAureliaTimer({ clientId, clientName, descripcion }), `Midiendo tiempo en ${clientName}`),
+    start: async (clientId: string, clientName: string, descripcion?: string) => {
+      // Un solo timer a la vez entre MDK y Aurelia, para no contar el mismo tiempo dos veces.
+      const mdkTimer = useTimerStore.getState()
+      if (mdkTimer.isRunning) {
+        try {
+          await mdkTimer.stopTimer()
+          toast.info('Se detuvo el timer de MDK para no contar el tiempo dos veces')
+        } catch {
+          toast.error('No se pudo detener el timer de MDK')
+          return false
+        }
+      }
+      return perform(() => startAureliaTimer({ clientId, clientName, descripcion }), `Midiendo tiempo en ${clientName}`)
+    },
     stop: () => perform(() => stopAureliaTimer(), 'Tiempo registrado'),
+    updateRunning: async (input: { clientId?: string; clientName?: string; descripcion?: string }) => {
+      const result = await updateAureliaRunning(input)
+      if (result.error) toast.error(result.error)
+      await mutate()
+    },
     addManual: (input: { clientId: string; clientName: string; fecha: string; minutes: number; descripcion?: string }) => perform(() => addAureliaTimeEntry(input), 'Horas cargadas'),
     remove: (entryId: string) => perform(() => deleteAureliaTimeEntry(entryId), 'Entrada eliminada'),
   }

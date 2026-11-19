@@ -65,6 +65,22 @@ export async function startAureliaTimer(input: { clientId: string; clientName: s
   })
 }
 
+/** Cambia el cliente o la descripción del timer que está corriendo, como en el timer de MDK. */
+export async function updateAureliaRunning(input: { clientId?: string; clientName?: string; descripcion?: string }): Promise<Result> {
+  return run(async () => {
+    const viewer = await requireViewer()
+    const updates: Record<string, string | null> = {}
+    if (input.clientId !== undefined) {
+      updates.aurelia_client_id = validateClient(input.clientId)
+      updates.aurelia_client_name = cleanText(input.clientName, 200)
+    }
+    if (input.descripcion !== undefined) updates.descripcion = cleanText(input.descripcion, MAX_DESCRIPTION)
+    if (Object.keys(updates).length === 0) return
+    const { error } = await createAdminClient().from(AURELIA_TIME_TABLE).update(updates).eq('colaborador_id', viewer.userId).is('finalizado_en', null)
+    if (error) throw new Error(error.message)
+  })
+}
+
 export async function stopAureliaTimer(): Promise<Result> {
   return run(async () => {
     const viewer = await requireViewer()

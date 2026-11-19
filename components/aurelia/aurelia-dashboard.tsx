@@ -23,7 +23,6 @@ import { secondsByClient, todayInArgentina } from '@/lib/aurelia/time-shared'
 import { AureliaKpiSheet } from './aurelia-kpi-sheet'
 import { AureliaClientSheet } from './aurelia-client-sheet'
 import { AureliaTimeSummary } from './aurelia-time-summary'
-import { AureliaTimerPill } from './aurelia-timer-pill'
 import { useAureliaTime } from './use-aurelia-time'
 import type { ClientsTableTime } from './aurelia-clients-table'
 import { AureliaHeading } from './aurelia-heading'
@@ -78,7 +77,6 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
     : PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? ''
   const updatedAt = new Date(dataset.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
   const running = timeData?.available ? timeData.running : null
-  const clientById = new Map(dataset.clients.map((client) => [client.id, client]))
   const openClient = (client: AureliaClient) => { setSelectedKpi(null); setSelectedClient(client) }
   const tableTime: ClientsTableTime | undefined = timeData?.available
     ? {
@@ -95,14 +93,6 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
         subtitle={`${dataset.clients.length.toLocaleString('es-AR')} clientes del CRM · actualizado ${updatedAt}`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
-          {running && (
-            <AureliaTimerPill
-              running={running}
-              pending={time.pending}
-              onStop={() => time.stop()}
-              onOpen={() => { const client = clientById.get(running.clientId); if (client) openClient(client) }}
-            />
-          )}
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Período</span>
             <Select value={period} onValueChange={(value) => setPeriod(value as PeriodKey)}>
