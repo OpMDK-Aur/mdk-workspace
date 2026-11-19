@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
+import { createClient } from '@/lib/supabase/server'
 
 export const revalidate = 300
 let cachedAccounts: { expiresAt: number; accounts: Array<{ propertyId: string; propertyName: string; accountName: string; accountId: string }> } | null = null
 
 export async function GET() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
   if (cachedAccounts && cachedAccounts.expiresAt > Date.now()) {
     return Response.json({ accounts: cachedAccounts.accounts }, { headers: { 'Cache-Control': 'private, max-age=300' } })
   }
