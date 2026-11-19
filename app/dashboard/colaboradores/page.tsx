@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { BUSINESS_UNITS, type BusinessUnit } from '@/lib/business-units'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -68,6 +69,8 @@ interface Colaborador {
   rol_id: string | null
   puesto: string | null
   modulos_habilitados: string[] | null
+  /** Undefined until the `unidades_negocio` migration runs. */
+  unidades_negocio?: string[] | null
   activo: boolean
   avatar_url: string | null
   roles?: Role | null
@@ -257,7 +260,7 @@ export default function ColaboradoresPage() {
       // Load colaboradores with their roles
       const { data: colabs } = await supabase
         .from('colaboradores')
-        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .select('*, roles(id, nombre)')
         .order('nombre')
 
       if (colabs) setColaboradores(colabs as Colaborador[])
@@ -363,6 +366,17 @@ export default function ColaboradoresPage() {
     setEditedColaboradores(new Set([...editedColaboradores, colaboradorId]))
   }
 
+  const handleUnitToggle = (colaboradorId: string, unit: BusinessUnit, enabled: boolean) => {
+    setColaboradores(colaboradores.map(c => {
+      if (c.id !== colaboradorId) return c
+      const current = c.unidades_negocio?.length ? c.unidades_negocio : ['MDK']
+      const next = enabled ? [...new Set([...current, unit])] : current.filter(u => u !== unit)
+      // Every collaborator keeps at least one business unit.
+      return next.length ? { ...c, unidades_negocio: next } : c
+    }))
+    setEditedColaboradores(new Set([...editedColaboradores, colaboradorId]))
+  }
+
   const handleModuleToggle = (colaboradorId: string, moduleId: string, enabled: boolean) => {
     setColaboradores(colaboradores.map(c => {
       if (c.id === colaboradorId) {
@@ -391,6 +405,7 @@ export default function ColaboradoresPage() {
             rol_id: colab.rol_id,
             puesto: colab.puesto,
             modulos_habilitados: colab.modulos_habilitados,
+            ...(colab.unidades_negocio !== undefined ? { unidades_negocio: colab.unidades_negocio?.length ? colab.unidades_negocio : ['MDK'] } : {}),
           })
           .eq('id', id)
         
@@ -456,7 +471,7 @@ export default function ColaboradoresPage() {
       // Reload colaboradores list
       const { data: colabs } = await supabase
         .from('colaboradores')
-        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .select('*, roles(id, nombre)')
         .order('nombre')
 
       if (colabs) setColaboradores(colabs as Colaborador[])
@@ -535,7 +550,7 @@ export default function ColaboradoresPage() {
       // Reload colaboradores list
       const { data: colabs } = await supabase
         .from('colaboradores')
-        .select('id, nombre, apellido, email, rol_id, puesto, modulos_habilitados, activo, avatar_url, roles(id, nombre)')
+        .select('*, roles(id, nombre)')
         .order('nombre')
 
       if (colabs) setColaboradores(colabs as Colaborador[])
@@ -1299,6 +1314,11 @@ export default function ColaboradoresPage() {
                             <SortIcon active={rolesSort?.key === 'puesto'} dir={rolesSort?.dir || 'asc'} />
                           </button>
                         </TableHead>
+                        {BUSINESS_UNITS.map(unit => (
+                          <TableHead key={unit} className="text-center w-[90px]">
+                            <span className="text-xs font-semibold">Unidad {unit}</span>
+                          </TableHead>
+                        ))}
                         {AVAILABLE_MODULES.map(mod => (
                           <TableHead key={mod.id} className="text-center w-[100px]">
                             <div className="flex flex-col items-center">
@@ -1371,6 +1391,20 @@ export default function ColaboradoresPage() {
                                 </SelectContent>
                               </Select>
                             </TableCell>
+                            {BUSINESS_UNITS.map(unit => (
+                              <TableCell key={unit} className="text-center">
+                                {isMaster ? (
+                                  <Badge variant="secondary" className="text-[10px]">Auto</Badge>
+                                ) : (
+                                  <Checkbox
+                                    checked={(colab.unidades_negocio?.length ? colab.unidades_negocio : ['MDK']).includes(unit)}
+                                    disabled={colab.unidades_negocio === undefined}
+                                    onCheckedChange={(checked) => handleUnitToggle(colab.id, unit, checked as boolean)}
+                                    aria-label={`${colab.nombre}: unidad ${unit}`}
+                                  />
+                                )}
+                              </TableCell>
+                            ))}
                             {AVAILABLE_MODULES.map(mod => (
                               <TableCell key={mod.id} className="text-center">
                                 {isMaster ? (

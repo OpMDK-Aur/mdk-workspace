@@ -54,6 +54,7 @@ export interface Profile {
   departamento_id?: string | null
   departamento_name?: string | null
   modulos_habilitados?: string[] // enabled modules for this user
+  unidades_negocio?: string[] | null // business units the user belongs to ('MDK', 'Aurelia')
   avatar_url: string | null
   theme: 'light' | 'dark' | 'system' | null
   accent_hue: number | null
