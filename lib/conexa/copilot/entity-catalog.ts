@@ -6,10 +6,11 @@ import { getClientAdAccounts, GOOGLE_MICROS, googleRequest, loadRecentEdits, met
 export type MetaCatalogCampaign = { id: string; name: string; status: string; deliveryStatus: string; dailyBudget: number | null; spend30d: number; results30d: number; costPerResult30d: number | null; lastEditedAt: string | null }
 export type MetaCatalogAdset = { id: string; name: string; campaignId: string; status: string; deliveryStatus: string; dailyBudget: number | null; destinationType: string | null; ageMin: number | null; ageMax: number | null; advantageAudience: boolean | null; spend30d: number; results30d: number; costPerResult30d: number | null; lastEditedAt: string | null }
 export type MetaCatalogAd = { id: string; name: string; adsetId: string; status: string; deliveryStatus: string; spend30d: number; results30d: number; lastEditedAt: string | null }
-export type GoogleCatalogCampaign = { id: string; name: string; status: string; dailyBudget: number | null; budgetShared: boolean; spend30d: number; conversions30d: number; costPerConversion30d: number | null; lastEditedAt: string | null }
+export type GoogleCatalogCampaign = { id: string; name: string; status: string; channelType: string; dailyBudget: number | null; budgetShared: boolean; spend30d: number; conversions30d: number; costPerConversion30d: number | null; lastEditedAt: string | null }
 
 export type MetaCatalogAccount = { accountId: string; currency: string; campaigns: MetaCatalogCampaign[]; adsets: MetaCatalogAdset[]; ads: MetaCatalogAd[] }
-export type GoogleCatalogAccount = { customerId: string; currency: string; campaigns: GoogleCatalogCampaign[] }
+export type GoogleCatalogAdGroup = { id: string; name: string; campaignId: string; status: string; spend30d: number; conversions30d: number }
+export type GoogleCatalogAccount = { customerId: string; currency: string; campaigns: GoogleCatalogCampaign[]; adGroups: GoogleCatalogAdGroup[] }
 /** Un cliente puede tener varias cuentas por plataforma, por eso cada plataforma es una lista de cuentas. */
 export type EntityCatalog = { meta?: MetaCatalogAccount[]; googleAds?: GoogleCatalogAccount[] }
 
@@ -63,13 +64,22 @@ async function metaAccountCatalog(accountId: string, withMetrics: boolean, edits
   }
 }
 
-type GoogleRow = { customer?: { currencyCode?: string }; campaign?: { id?: string; name?: string; status?: string }; campaignBudget?: { amountMicros?: string; explicitlyShared?: boolean }; metrics?: { costMicros?: string; conversions?: number | string } }
+type GoogleRow = { customer?: { currencyCode?: string }; campaign?: { id?: string; name?: string; status?: string; advertisingChannelType?: string }; adGroup?: { id?: string; name?: string; status?: string }; campaignBudget?: { amountMicros?: string; explicitlyShared?: boolean }; metrics?: { costMicros?: string; conversions?: number | string } }
 
 async function googleAccountCatalog(customerId: string, withMetrics: boolean, edits: Map<string, string>): Promise<GoogleCatalogAccount> {
-  const [structure, metrics] = await Promise.all([
-    googleRequest<{ results?: GoogleRow[] }>(`customers/${customerId}/googleAds:search`, { query: "SELECT customer.currency_code, campaign.id, campaign.name, campaign.status, campaign_budget.amount_micros, campaign_budget.explicitly_shared FROM campaign WHERE campaign.status IN ('ENABLED', 'PAUSED') LIMIT 200" }),
+  const [structure, metrics, adGroups, adGroupMetrics] = await Promise.all([
+    googleRequest<{ results?: GoogleRow[] }>(`customers/${customerId}/googleAds:search`, { query: "SELECT customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, campaign_budget.amount_micros, campaign_budget.explicitly_shared FROM campaign WHERE campaign.status IN ('ENABLED', 'PAUSED') LIMIT 200" }),
     withMetrics ? googleRequest<{ results?: GoogleRow[] }>(`customers/${customerId}/googleAds:search`, { query: "SELECT campaign.id, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date DURING LAST_30_DAYS AND campaign.status IN ('ENABLED', 'PAUSED') LIMIT 500" }).catch(() => null) : Promise.resolve(null),
+    // Solo los grupos de campañas de búsqueda: son los únicos que se pueden copiar a una campaña nueva.
+    googleRequest<{ results?: GoogleRow[] }>(`customers/${customerId}/googleAds:search`, { query: "SELECT ad_group.id, ad_group.name, ad_group.status, campaign.id FROM ad_group WHERE campaign.advertising_channel_type = 'SEARCH' AND campaign.status IN ('ENABLED', 'PAUSED') AND ad_group.status IN ('ENABLED', 'PAUSED') AND ad_group.type = 'SEARCH_STANDARD' LIMIT 300" }).catch(() => null),
+    withMetrics ? googleRequest<{ results?: GoogleRow[] }>(`customers/${customerId}/googleAds:search`, { query: "SELECT ad_group.id, metrics.cost_micros, metrics.conversions FROM ad_group WHERE segments.date DURING LAST_30_DAYS AND campaign.advertising_channel_type = 'SEARCH' AND ad_group.status IN ('ENABLED', 'PAUSED') LIMIT 1000" }).catch(() => null) : Promise.resolve(null),
   ])
+  const adGroupStats = new Map<string, { spend: number; conversions: number }>()
+  for (const row of adGroupMetrics?.results ?? []) {
+    const id = String(row.adGroup?.id ?? '')
+    const current = adGroupStats.get(id) ?? { spend: 0, conversions: 0 }
+    adGroupStats.set(id, { spend: current.spend + Number(row.metrics?.costMicros ?? 0) / GOOGLE_MICROS, conversions: current.conversions + Number(row.metrics?.conversions ?? 0) })
+  }
   const byId = new Map((metrics?.results ?? []).map((row) => [String(row.campaign?.id ?? ''), { spend: Number(row.metrics?.costMicros ?? 0) / GOOGLE_MICROS, conversions: Number(row.metrics?.conversions ?? 0) }]))
   const rows = structure.results ?? []
   return {
@@ -79,7 +89,12 @@ async function googleAccountCatalog(customerId: string, withMetrics: boolean, ed
       const id = String(row.campaign!.id)
       const stat = byId.get(id) ?? { spend: 0, conversions: 0 }
       const amount = Number(row.campaignBudget?.amountMicros ?? 0)
-      return { id, name: row.campaign?.name ?? 'Campaña sin nombre', status: row.campaign?.status ?? '', dailyBudget: amount > 0 ? amount / GOOGLE_MICROS : null, budgetShared: row.campaignBudget?.explicitlyShared === true, spend30d: round(stat.spend), conversions30d: round(stat.conversions), costPerConversion30d: stat.conversions > 0 ? round(stat.spend / stat.conversions) : null, lastEditedAt: edits.get(id) ?? null }
+      return { id, name: row.campaign?.name ?? 'Campaña sin nombre', status: row.campaign?.status ?? '', channelType: row.campaign?.advertisingChannelType ?? '', dailyBudget: amount > 0 ? amount / GOOGLE_MICROS : null, budgetShared: row.campaignBudget?.explicitlyShared === true, spend30d: round(stat.spend), conversions30d: round(stat.conversions), costPerConversion30d: stat.conversions > 0 ? round(stat.spend / stat.conversions) : null, lastEditedAt: edits.get(id) ?? null }
+    })),
+    adGroups: prioritize((adGroups?.results ?? []).filter((row) => row.adGroup?.id).map((row) => {
+      const id = String(row.adGroup!.id)
+      const stat = adGroupStats.get(id) ?? { spend: 0, conversions: 0 }
+      return { id, name: row.adGroup?.name ?? 'Grupo sin nombre', campaignId: String(row.campaign?.id ?? ''), status: row.adGroup?.status ?? '', spend30d: round(stat.spend), conversions30d: round(stat.conversions) }
     })),
   }
 }
@@ -117,7 +132,8 @@ export function catalogSourceItems(catalog: EntityCatalog) {
   }
   for (const account of catalog.googleAds ?? []) {
     const amount = (value: number | null) => (value === null ? 'sin dato' : money(value, account.currency))
-    for (const item of account.campaigns) items.push({ id: `gads:campaign:${item.id}`, label: `Google Ads · Campaña «${item.name}»`, excerpt: `Estado ${item.status} · gasto 30 días ${amount(item.spend30d)} · ${item.conversions30d} conversiones · costo por conversión ${amount(item.costPerConversion30d)} · presupuesto diario ${amount(item.dailyBudget)}${item.budgetShared ? ' (compartido)' : ''}${lastEdit(item.lastEditedAt)}` })
+    for (const item of account.campaigns) items.push({ id: `gads:campaign:${item.id}`, label: `Google Ads · Campaña «${item.name}»`, excerpt: `Tipo ${item.channelType || 'sin dato'} · estado ${item.status} · gasto 30 días ${amount(item.spend30d)} · ${item.conversions30d} conversiones · costo por conversión ${amount(item.costPerConversion30d)} · presupuesto diario ${amount(item.dailyBudget)}${item.budgetShared ? ' (compartido)' : ''}${lastEdit(item.lastEditedAt)}` })
+    for (const item of account.adGroups) items.push({ id: `gads:adgroup:${item.id}`, label: `Google Ads · Grupo de anuncios «${item.name}»`, excerpt: `Estado ${item.status} · gasto 30 días ${amount(item.spend30d)} · ${item.conversions30d} conversiones` })
   }
   return items
 }

@@ -101,7 +101,7 @@ type TemplateAdset = {
 }
 
 /** Copia objetivo, optimización, destino y público del conjunto modelo; todo se crea en PAUSED para que una persona lo revise y lo active en Meta. */
-async function planMetaCreate(operation: Extract<RecommendationOperation, { kind: 'create_campaign' }>, assertAccount: (accountId: unknown, name: string) => string): Promise<InternalStep[]> {
+async function planMetaCreate(operation: Extract<RecommendationOperation, { platform: 'meta'; kind: 'create_campaign' }>, assertAccount: (accountId: unknown, name: string) => string): Promise<InternalStep[]> {
   const [template, ...ads] = await Promise.all([
     metaRequest<TemplateAdset>(encodeURIComponent(operation.templateAdsetId), { fields: 'id,name,account_id,daily_budget,optimization_goal,billing_event,bid_strategy,bid_amount,promoted_object,destination_type,attribution_spec,targeting,campaign{id,name,objective,special_ad_categories,daily_budget,bid_strategy}' }),
     ...operation.ads.map((ad) => metaRequest<{ id: string; name?: string; account_id?: string; creative?: { id?: string } }>(encodeURIComponent(ad.id), { fields: 'id,name,account_id,creative{id}' })),
@@ -202,9 +202,148 @@ async function planMeta(operation: Extract<RecommendationOperation, { platform: 
     async () => { await metaRequest(encodeURIComponent(operation.entityId), { daily_budget: String(nextMinor) }, 'POST') })]
 }
 
+type GoogleSearchResponse<T> = { results?: T[] }
+type GoogleTextAsset = { text?: string; pinnedField?: string }
+type GoogleTemplateRow = {
+  customer?: { currencyCode?: string }
+  campaign?: {
+    name?: string; advertisingChannelType?: string; biddingStrategyType?: string; biddingStrategy?: string; trackingUrlTemplate?: string; finalUrlSuffix?: string
+    maximizeConversions?: { targetCpaMicros?: string }; maximizeConversionValue?: { targetRoas?: number }; targetCpa?: { targetCpaMicros?: string }; targetRoas?: { targetRoas?: number }; targetSpend?: { cpcBidCeilingMicros?: string }
+    networkSettings?: { targetGoogleSearch?: boolean; targetSearchNetwork?: boolean; targetContentNetwork?: boolean; targetPartnerSearchNetwork?: boolean }
+    geoTargetTypeSetting?: { positiveGeoTargetType?: string; negativeGeoTargetType?: string }
+  }
+  campaignBudget?: { amountMicros?: string; deliveryMethod?: string }
+}
+type GoogleCampaignCriterionRow = { campaignCriterion?: { type?: string; negative?: boolean; location?: { geoTargetConstant?: string }; language?: { languageConstant?: string }; keyword?: { text?: string; matchType?: string } } }
+type GoogleAdGroupRow = { adGroup?: { id?: string; name?: string; type?: string; cpcBidMicros?: string }; campaign?: { advertisingChannelType?: string } }
+type GoogleKeywordRow = { adGroup?: { id?: string }; adGroupCriterion?: { negative?: boolean; cpcBidMicros?: string; keyword?: { text?: string; matchType?: string } } }
+type GoogleAdRow = { adGroup?: { id?: string }; adGroupAd?: { ad?: { finalUrls?: string[]; finalMobileUrls?: string[]; trackingUrlTemplate?: string; finalUrlSuffix?: string; responsiveSearchAd?: { headlines?: GoogleTextAsset[]; descriptions?: GoogleTextAsset[]; path1?: string; path2?: string } } } }
+
+const MAX_KEYWORDS_PER_AD_GROUP = 200
+const MAX_RSA_PER_AD_GROUP = 3
+const copyTextAssets = (assets: GoogleTextAsset[] = []) => assets.filter((asset) => asset.text).map((asset) => ({ text: asset.text!, ...(asset.pinnedField && asset.pinnedField !== 'UNSPECIFIED' ? { pinnedField: asset.pinnedField } : {}) }))
+
+/** Estrategia de puja de la campaña nueva con la misma lógica que el modelo; tCPA/tROAS se crean como Maximizar conversiones (valor) con objetivo, que es lo que Google recomienda hoy. */
+function googleBidding(campaign: NonNullable<GoogleTemplateRow['campaign']>, name: string): Record<string, unknown> {
+  if (campaign.biddingStrategy) return { biddingStrategy: campaign.biddingStrategy }
+  switch (campaign.biddingStrategyType) {
+    case 'MAXIMIZE_CONVERSIONS': return { maximizeConversions: campaign.maximizeConversions?.targetCpaMicros ? { targetCpaMicros: campaign.maximizeConversions.targetCpaMicros } : {} }
+    case 'TARGET_CPA': return { maximizeConversions: campaign.targetCpa?.targetCpaMicros ? { targetCpaMicros: campaign.targetCpa.targetCpaMicros } : {} }
+    case 'MAXIMIZE_CONVERSION_VALUE': return { maximizeConversionValue: campaign.maximizeConversionValue?.targetRoas ? { targetRoas: campaign.maximizeConversionValue.targetRoas } : {} }
+    case 'TARGET_ROAS': return { maximizeConversionValue: campaign.targetRoas?.targetRoas ? { targetRoas: campaign.targetRoas.targetRoas } : {} }
+    case 'TARGET_SPEND': return { targetSpend: campaign.targetSpend?.cpcBidCeilingMicros ? { cpcBidCeilingMicros: campaign.targetSpend.cpcBidCeilingMicros } : {} }
+    case 'MANUAL_CPC': return { manualCpc: {} }
+    default: throw new CopilotError(`La estrategia de puja de «${name}» (${campaign.biddingStrategyType ?? 'desconocida'}) no se puede copiar automáticamente; elegí otra campaña modelo.`, 422)
+  }
+}
+
+/** Copia configuración, segmentación y los grupos elegidos (palabras clave y anuncios RSA) en una campaña de búsqueda nueva en PAUSA. */
+async function planGoogleCreate(operation: Extract<RecommendationOperation, { platform: 'google_ads'; kind: 'create_campaign' }>, customerId: string): Promise<InternalStep[]> {
+  if (!/^\d+$/.test(operation.templateCampaignId) || operation.adGroups.some((group) => !/^\d+$/.test(group.id))) throw new CopilotError('La campaña o los grupos de anuncios indicados no son válidos.', 422)
+  const groupIds = operation.adGroups.map((group) => group.id).join(', ')
+  const search = <T>(query: string) => googleRequest<GoogleSearchResponse<T>>(`customers/${customerId}/googleAds:search`, { query }).then((response) => response.results ?? [])
+  const [templates, criteria, adGroupRows, keywordRows, adRows, existingNames] = await Promise.all([
+    search<GoogleTemplateRow>(`SELECT customer.currency_code, campaign.name, campaign.advertising_channel_type, campaign.bidding_strategy_type, campaign.bidding_strategy, campaign.tracking_url_template, campaign.final_url_suffix, campaign.maximize_conversions.target_cpa_micros, campaign.maximize_conversion_value.target_roas, campaign.target_cpa.target_cpa_micros, campaign.target_roas.target_roas, campaign.target_spend.cpc_bid_ceiling_micros, campaign.network_settings.target_google_search, campaign.network_settings.target_search_network, campaign.network_settings.target_content_network, campaign.network_settings.target_partner_search_network, campaign.geo_target_type_setting.positive_geo_target_type, campaign.geo_target_type_setting.negative_geo_target_type, campaign_budget.amount_micros, campaign_budget.delivery_method FROM campaign WHERE campaign.id = ${operation.templateCampaignId} LIMIT 1`),
+    search<GoogleCampaignCriterionRow>(`SELECT campaign_criterion.type, campaign_criterion.negative, campaign_criterion.location.geo_target_constant, campaign_criterion.language.language_constant, campaign_criterion.keyword.text, campaign_criterion.keyword.match_type FROM campaign_criterion WHERE campaign.id = ${operation.templateCampaignId} AND campaign_criterion.type IN ('LOCATION', 'LANGUAGE', 'KEYWORD') AND campaign_criterion.status != 'REMOVED' LIMIT 1000`),
+    search<GoogleAdGroupRow>(`SELECT ad_group.id, ad_group.name, ad_group.type, ad_group.cpc_bid_micros, campaign.advertising_channel_type FROM ad_group WHERE ad_group.id IN (${groupIds})`),
+    search<GoogleKeywordRow>(`SELECT ad_group.id, ad_group_criterion.negative, ad_group_criterion.cpc_bid_micros, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type FROM ad_group_criterion WHERE ad_group.id IN (${groupIds}) AND ad_group_criterion.type = 'KEYWORD' AND ad_group_criterion.status = 'ENABLED' LIMIT 2000`),
+    search<GoogleAdRow>(`SELECT ad_group.id, ad_group_ad.ad.final_urls, ad_group_ad.ad.final_mobile_urls, ad_group_ad.ad.tracking_url_template, ad_group_ad.ad.final_url_suffix, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions, ad_group_ad.ad.responsive_search_ad.path1, ad_group_ad.ad.responsive_search_ad.path2 FROM ad_group_ad WHERE ad_group.id IN (${groupIds}) AND ad_group_ad.status = 'ENABLED' AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD' LIMIT 100`),
+    search<{ campaign?: { name?: string } }>("SELECT campaign.name FROM campaign WHERE campaign.status != 'REMOVED' LIMIT 2000"),
+  ])
+
+  const template = templates[0]
+  if (!template?.campaign) throw new CopilotError(`La campaña modelo «${operation.templateCampaignName}» no existe en la cuenta de Google Ads vinculada.`, 404)
+  const templateName = template.campaign.name ?? operation.templateCampaignName
+  if (template.campaign.advertisingChannelType !== 'SEARCH') throw new CopilotError(`«${templateName}» no es una campaña de búsqueda; por ahora solo se pueden crear campañas de búsqueda.`, 422)
+  const campaignName = operation.campaignName.trim()
+  if (existingNames.some((row) => row.campaign?.name?.trim().toLocaleLowerCase('es') === campaignName.toLocaleLowerCase('es'))) throw new CopilotError(`Ya existe una campaña llamada «${campaignName}» en la cuenta; cambiá el nombre antes de publicar.`, 422)
+
+  const currency = template.customer?.currencyCode ?? 'USD'
+  const reference = Number(template.campaignBudget?.amountMicros ?? 0) / GOOGLE_MICROS
+  const nextMicros = Math.round(operation.dailyBudget * 10_000) * 100
+  const next = nextMicros / GOOGLE_MICROS
+  if (!Number.isFinite(next) || next <= 0) throw new CopilotError('El presupuesto diario de la campaña nueva no es válido.', 422)
+  if (reference <= 0) throw new CopilotError(`«${templateName}» no tiene presupuesto de referencia para acotar el de la campaña nueva.`, 422)
+  if (next > reference * NEW_CAMPAIGN_MAX_BUDGET_RATIO + 1e-9) throw new CopilotError(`El presupuesto de la campaña nueva (${money(next, currency)}) supera ${NEW_CAMPAIGN_MAX_BUDGET_RATIO} veces el del modelo (${money(reference, currency)}).`, 422)
+  const bidding = googleBidding(template.campaign, templateName)
+
+  const warnings = [
+    'Se crea en PAUSA: revisala en Google Ads y activala a mano cuando esté lista.',
+    `Copia redes, ubicaciones, idiomas, negativas y estrategia de puja (${template.campaign.biddingStrategyType ?? 'sin dato'}) de «${templateName}».`,
+  ]
+  const groups = operation.adGroups.map((ref) => {
+    const row = adGroupRows.find((item) => String(item.adGroup?.id) === ref.id)
+    if (!row?.adGroup) throw new CopilotError(`El grupo de anuncios «${ref.name}» no existe en la cuenta de Google Ads vinculada.`, 404)
+    const name = row.adGroup.name ?? ref.name
+    if (row.campaign?.advertisingChannelType !== 'SEARCH' || row.adGroup.type !== 'SEARCH_STANDARD') throw new CopilotError(`«${name}» no es un grupo de anuncios de búsqueda estándar.`, 422)
+    const keywords = keywordRows.filter((item) => String(item.adGroup?.id) === ref.id && item.adGroupCriterion?.keyword?.text)
+    const positives = keywords.filter((item) => !item.adGroupCriterion!.negative)
+    const ads = adRows.filter((item) => String(item.adGroup?.id) === ref.id && item.adGroupAd?.ad?.responsiveSearchAd && item.adGroupAd.ad.finalUrls?.length).slice(0, MAX_RSA_PER_AD_GROUP)
+    if (!positives.length) throw new CopilotError(`«${name}» no tiene palabras clave activas para copiar.`, 422)
+    if (!ads.length) throw new CopilotError(`«${name}» no tiene anuncios de búsqueda responsivos activos para copiar.`, 422)
+    if (keywords.length > MAX_KEYWORDS_PER_AD_GROUP) warnings.push(`«${name}» tiene ${keywords.length} palabras clave; se copian las primeras ${MAX_KEYWORDS_PER_AD_GROUP}.`)
+    return { name, cpcBidMicros: row.adGroup.cpcBidMicros, keywords: keywords.slice(0, MAX_KEYWORDS_PER_AD_GROUP), ads }
+  })
+
+  const keywordCount = groups.reduce((sum, group) => sum + group.keywords.length, 0)
+  const adCount = groups.reduce((sum, group) => sum + group.ads.length, 0)
+  const after = `${campaignName}|${nextMicros}|${operation.adGroups.map((group) => group.id).join(',')}|${keywordCount}|${adCount}`
+  const budgetResource = `customers/${customerId}/campaignBudgets/-1`
+  const campaignResource = `customers/${customerId}/campaigns/-2`
+  const adGroupResource = (index: number) => `customers/${customerId}/adGroups/-${index + 3}`
+
+  return [step({ platform: 'google_ads', accountId: customerId, entityType: 'campaign', entityId: `nueva:${operation.templateCampaignId}`, entityName: campaignName, field: 'create', before: 'none', after, beforeLabel: 'No existe', afterLabel: `Campaña de búsqueda nueva en pausa · ${money(next, currency)} / día · ${groups.length} grupo(s) · ${keywordCount} palabra(s) clave · ${adCount} anuncio(s)`, warnings },
+    async () => {
+      const { networkSettings, geoTargetTypeSetting, trackingUrlTemplate, finalUrlSuffix } = template.campaign!
+      const mutateOperations: Array<Record<string, unknown>> = [
+        { campaignBudgetOperation: { create: { resourceName: budgetResource, name: `${campaignName} · presupuesto ${Date.now()}`, amountMicros: String(nextMicros), deliveryMethod: template.campaignBudget?.deliveryMethod ?? 'STANDARD', explicitlyShared: false } } },
+        { campaignOperation: { create: {
+          resourceName: campaignResource, name: campaignName, status: 'PAUSED', advertisingChannelType: 'SEARCH', campaignBudget: budgetResource,
+          containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',
+          ...(networkSettings ? { networkSettings } : {}), ...(geoTargetTypeSetting ? { geoTargetTypeSetting } : {}),
+          ...(trackingUrlTemplate ? { trackingUrlTemplate } : {}), ...(finalUrlSuffix ? { finalUrlSuffix } : {}),
+          ...bidding,
+        } } },
+        ...criteria.flatMap(({ campaignCriterion: criterion }): Array<Record<string, unknown>> => {
+          if (!criterion) return []
+          const base = { campaign: campaignResource, negative: Boolean(criterion.negative) }
+          if (criterion.type === 'LOCATION' && criterion.location?.geoTargetConstant) return [{ campaignCriterionOperation: { create: { ...base, location: { geoTargetConstant: criterion.location.geoTargetConstant } } } }]
+          if (criterion.type === 'LANGUAGE' && criterion.language?.languageConstant && !criterion.negative) return [{ campaignCriterionOperation: { create: { campaign: campaignResource, language: { languageConstant: criterion.language.languageConstant } } } }]
+          if (criterion.type === 'KEYWORD' && criterion.negative && criterion.keyword?.text) return [{ campaignCriterionOperation: { create: { ...base, keyword: { text: criterion.keyword.text, matchType: criterion.keyword.matchType ?? 'BROAD' } } } }]
+          return []
+        }),
+        ...groups.flatMap((group, index): Array<Record<string, unknown>> => [
+          { adGroupOperation: { create: { resourceName: adGroupResource(index), campaign: campaignResource, name: group.name, status: 'ENABLED', type: 'SEARCH_STANDARD', ...(group.cpcBidMicros ? { cpcBidMicros: group.cpcBidMicros } : {}) } } },
+          ...group.keywords.map(({ adGroupCriterion: criterion }) => ({ adGroupCriterionOperation: { create: { adGroup: adGroupResource(index), status: 'ENABLED', negative: Boolean(criterion!.negative), keyword: { text: criterion!.keyword!.text, matchType: criterion!.keyword!.matchType ?? 'BROAD' }, ...(!criterion!.negative && criterion!.cpcBidMicros ? { cpcBidMicros: criterion!.cpcBidMicros } : {}) } } })),
+          ...group.ads.map(({ adGroupAd }) => {
+            const ad = adGroupAd!.ad!
+            const rsa = ad.responsiveSearchAd!
+            return { adGroupAdOperation: { create: { adGroup: adGroupResource(index), status: 'ENABLED', ad: {
+              finalUrls: ad.finalUrls, ...(ad.finalMobileUrls?.length ? { finalMobileUrls: ad.finalMobileUrls } : {}),
+              ...(ad.trackingUrlTemplate ? { trackingUrlTemplate: ad.trackingUrlTemplate } : {}), ...(ad.finalUrlSuffix ? { finalUrlSuffix: ad.finalUrlSuffix } : {}),
+              responsiveSearchAd: { headlines: copyTextAssets(rsa.headlines), descriptions: copyTextAssets(rsa.descriptions), ...(rsa.path1 ? { path1: rsa.path1 } : {}), ...(rsa.path2 ? { path2: rsa.path2 } : {}) },
+            } } } }
+          }),
+        ]),
+      ]
+      // googleAds:mutate es atómico: si una operación falla, Google no crea nada y no queda una campaña a medias.
+      const response = await googleRequest<{ mutateOperationResponses?: Array<{ campaignResult?: { resourceName?: string }; adGroupResult?: { resourceName?: string }; adGroupAdResult?: { resourceName?: string } }> }>(`customers/${customerId}/googleAds:mutate`, { mutateOperations })
+      const results = response.mutateOperationResponses ?? []
+      const lastId = (resource?: string) => resource?.split('/').pop()?.split('~').pop() ?? ''
+      const campaignId = lastId(results.find((item) => item.campaignResult)?.campaignResult?.resourceName)
+      if (!campaignId) throw new CopilotError('Google Ads no devolvió la campaña creada.', 502)
+      return {
+        campaignId,
+        adGroupIds: results.flatMap((item) => (item.adGroupResult?.resourceName ? [lastId(item.adGroupResult.resourceName)] : [])),
+        adIds: results.flatMap((item) => (item.adGroupAdResult?.resourceName ? [lastId(item.adGroupAdResult.resourceName)] : [])),
+      }
+    })]
+}
+
 async function planGoogle(operation: Extract<RecommendationOperation, { platform: 'google_ads' }>, accounts: Set<string>): Promise<InternalStep[]> {
   const customerId = operation.customerId.replace(/-/g, '')
   if (!accounts.has(customerId)) throw new CopilotError('La cuenta de Google Ads no está vinculada a este cliente.', 403)
+  if (operation.kind === 'create_campaign') return planGoogleCreate(operation, customerId)
   if (!/^\d+$/.test(operation.campaignId)) throw new CopilotError('La campaña de Google Ads indicada no es válida.', 422)
   const search = await googleRequest<{ results?: Array<{ customer?: { currencyCode?: string }; campaign?: { resourceName?: string; name?: string; status?: string }; campaignBudget?: { resourceName?: string; amountMicros?: string; explicitlyShared?: boolean } }> }>(`customers/${customerId}/googleAds:search`, {
     query: `SELECT customer.currency_code, campaign.resource_name, campaign.name, campaign.status, campaign_budget.resource_name, campaign_budget.amount_micros, campaign_budget.explicitly_shared FROM campaign WHERE campaign.id = ${operation.campaignId} LIMIT 1`,
