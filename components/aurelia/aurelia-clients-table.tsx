@@ -10,7 +10,10 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
-import { STATUS_LABELS, formatDate, formatMoney, isInternalAccount, type AureliaClient, type SubscriptionStatus } from '@/lib/aurelia/metrics'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { DATE_FIELD_OPTIONS, STATUS_LABELS, formatDate, formatMoney, isDateInRange, isInternalAccount, type AureliaClient, type DateField, type DateRange, type SubscriptionStatus } from '@/lib/aurelia/metrics'
 
 const PAGE_SIZE = 25
 type StatusFilter = 'all' | SubscriptionStatus
@@ -33,26 +36,38 @@ export type ClientsTableTime = {
 }
 
 /** `bare` la muestra sin tarjeta y respeta el orden recibido (lo usa el detalle de cada indicador). */
-export function AureliaClientsTable({ clients, currency, bare = false, time, onOpenClient }: { clients: AureliaClient[]; currency: string; bare?: boolean; time?: ClientsTableTime; onOpenClient?: (client: AureliaClient) => void }) {
+export function AureliaClientsTable({ clients, currency, bare = false, time, onOpenClient, range, rangeLabel }: { clients: AureliaClient[]; currency: string; bare?: boolean; time?: ClientsTableTime; onOpenClient?: (client: AureliaClient) => void; range?: DateRange; rangeLabel?: string }) {
   const columnCount = 9 + (time ? 2 : 0)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
+  const [dateField, setDateField] = useState<DateField | 'none'>('none')
+  const [onlyActive, setOnlyActive] = useState(false)
   const [page, setPage] = useState(1)
   const deferredSearch = useDeferredValue(search)
 
+  // Filtrar por fecha usa el mismo período elegido arriba en el tablero.
+  const dateFiltered = useMemo(
+    () => (dateField === 'none' || !range ? clients : clients.filter((client) => isDateInRange(client[dateField], range))),
+    [clients, dateField, range],
+  )
+
   const counts = useMemo(() => {
-    const result: Record<StatusFilter, number> = { all: clients.length, active: 0, trial: 0, past_due: 0, churned: 0, other: 0 }
-    for (const client of clients) result[client.status] += 1
+    const result: Record<StatusFilter, number> = { all: dateFiltered.length, active: 0, trial: 0, past_due: 0, churned: 0, other: 0 }
+    for (const client of dateFiltered) result[client.status] += 1
     return result
-  }, [clients])
+  }, [dateFiltered])
+
+  const effectiveStatus: StatusFilter = onlyActive ? 'active' : status
 
   const filtered = useMemo(() => {
     const term = deferredSearch.trim().toLocaleLowerCase('es-AR')
-    const rows = clients
-      .filter((client) => status === 'all' || client.status === status)
+    const rows = dateFiltered
+      .filter((client) => effectiveStatus === 'all' || client.status === effectiveStatus)
       .filter((client) => !term || [client.name, client.email, client.phone, client.planName, client.planSlug].some((value) => value?.toLocaleLowerCase('es-AR').includes(term)))
-    return bare ? rows : rows.sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
-  }, [clients, deferredSearch, status, bare])
+    if (bare) return rows
+    const sortField: DateField = dateField === 'none' ? 'startedAt' : dateField
+    return rows.sort((a, b) => (b[sortField] ?? '').localeCompare(a[sortField] ?? ''))
+  }, [dateFiltered, deferredSearch, effectiveStatus, bare, dateField])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -65,6 +80,29 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
           </div>
   )
   const statusFilter = (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        {range && (
+          <div className="flex items-center gap-2">
+            <Label htmlFor={`${bare ? 'kpi' : 'main'}-date-field`} className="text-xs text-muted-foreground">Fecha</Label>
+            <Select value={dateField} onValueChange={(value) => { setDateField(value as DateField | 'none'); setPage(1) }}>
+              <SelectTrigger id={`${bare ? 'kpi' : 'main'}-date-field`} className="h-8 w-56 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin filtro de fecha</SelectItem>
+                {DATE_FIELD_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {dateField !== 'none' && rangeLabel && <span className="text-xs text-muted-foreground">en {rangeLabel}</span>}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Switch id={`${bare ? 'kpi' : 'main'}-only-active`} checked={onlyActive} onCheckedChange={(checked) => { setOnlyActive(checked); setPage(1) }} />
+          <Label htmlFor={`${bare ? 'kpi' : 'main'}-only-active`} className="text-xs">Solo activos</Label>
+        </div>
+      </div>
+      {!onlyActive && (
         <ToggleGroup type="single" size="sm" variant="outline" value={status} onValueChange={(value) => { if (value) { setStatus(value as StatusFilter); setPage(1) } }} className="flex-wrap justify-start" aria-label="Filtrar por estado">
           {FILTER_ORDER.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
             <ToggleGroupItem key={key} value={key} className="gap-1.5 px-3 text-xs">
@@ -73,6 +111,8 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+      )}
+    </div>
   )
   const tableAndPager = (
       <>

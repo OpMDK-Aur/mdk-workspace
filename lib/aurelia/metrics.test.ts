@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeMonthlySeries, computePeriodMetrics, computePlanBreakdown, computeSnapshot, isInternalAccount, previousRange, resolvePeriod, selectKpiClients, type AureliaClient } from './metrics'
+import { computeMonthlySeries, computePeriodMetrics, computePlanBreakdown, computeSnapshot, isInternalAccount, previousRange, resolveCustomRange, resolvePeriod, selectKpiClients, type AureliaClient } from './metrics'
 
 const base: Omit<AureliaClient, 'id' | 'status' | 'startedAt' | 'churnedAt' | 'mrr'> = {
   name: 'Cliente', email: null, phone: null, rawStatus: null, planSlug: 'pro', planName: 'Pro',
@@ -80,6 +80,13 @@ describe('Aurelia metrics', () => {
     expect(previousRange(resolvePeriod('today', now))).toEqual({ start: new Date(2026, 10, 18), end: new Date(2026, 10, 18, 15, 30) })
     const week = resolvePeriod('last_7', now)
     expect(previousRange(week)).toEqual({ start: new Date(week.start.getTime() - (now.getTime() - week.start.getTime())), end: week.start })
+  })
+
+  it('resolves custom ranges including both days', () => {
+    expect(resolveCustomRange('2026-11-01', '2026-11-15')).toEqual({ start: new Date(2026, 10, 1), end: new Date(2026, 10, 16) })
+    expect(resolveCustomRange('2026-11-15', '2026-11-01')).toBeNull()
+    const now = new Date(2026, 10, 19, 10)
+    expect(resolvePeriod('custom', now, { from: 'x', to: 'y' })).toEqual(resolvePeriod('this_month', now))
   })
 
   it('builds a monthly series ending in the current month', () => {

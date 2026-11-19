@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, DatabaseZap } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   PERIOD_OPTIONS,
@@ -33,13 +34,14 @@ import { AureliaClientsTable } from './aurelia-clients-table'
 
 export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
   const [period, setPeriod] = useState<PeriodKey>('this_month')
+  const [customRange, setCustomRange] = useState(() => ({ from: todayInArgentina().slice(0, 8) + '01', to: todayInArgentina() }))
   const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
   const [selectedClient, setSelectedClient] = useState<AureliaClient | null>(null)
   const time = useAureliaTime()
 
   const computed = useMemo(() => {
     if (!dataset.available) return null
-    const range = resolvePeriod(period)
+    const range = resolvePeriod(period, new Date(), customRange)
     return {
       range,
       current: computePeriodMetrics(dataset.clients, range),
@@ -48,7 +50,7 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
       series: computeMonthlySeries(dataset.clients),
       plans: computePlanBreakdown(dataset.clients),
     }
-  }, [dataset, period])
+  }, [dataset, period, customRange])
 
   const timeData = time.data
   const periodSeconds = useMemo(() => {
@@ -70,7 +72,10 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
     )
   }
 
-  const periodLabel = PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? ''
+  const shortDate = (date: Date) => date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+  const periodLabel = period === 'custom'
+    ? `${shortDate(computed.range.start)} – ${shortDate(new Date(computed.range.end.getTime() - 1))}`
+    : PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? ''
   const updatedAt = new Date(dataset.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
   const running = timeData?.available ? timeData.running : null
   const clientById = new Map(dataset.clients.map((client) => [client.id, client]))
@@ -108,6 +113,13 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
                 {PERIOD_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
               </SelectContent>
             </Select>
+            {period === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <Input type="date" value={customRange.from} max={customRange.to} onChange={(event) => event.target.value && setCustomRange((current) => ({ ...current, from: event.target.value }))} className="h-9 w-36" aria-label="Desde" />
+                <span className="text-xs text-muted-foreground">a</span>
+                <Input type="date" value={customRange.to} min={customRange.from} onChange={(event) => event.target.value && setCustomRange((current) => ({ ...current, to: event.target.value }))} className="h-9 w-36" aria-label="Hasta" />
+              </div>
+            )}
           </div>
           </div>
         }
@@ -131,6 +143,7 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
         clients={selectedKpi ? selectKpiClients(selectedKpi, dataset.clients, computed.range) : []}
         currency={dataset.currency}
         periodLabel={periodLabel}
+        range={computed.range}
         onClose={() => setSelectedKpi(null)}
         onOpenClient={openClient}
       />
@@ -145,7 +158,7 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
         </div>
       </div>
 
-      <AureliaClientsTable clients={dataset.clients} currency={dataset.currency} time={tableTime} onOpenClient={openClient} />
+      <AureliaClientsTable clients={dataset.clients} currency={dataset.currency} time={tableTime} onOpenClient={openClient} range={computed.range} rangeLabel={periodLabel} />
     </div>
   )
 }

@@ -36,7 +36,30 @@ export const STATUS_LABELS: Record<SubscriptionStatus, string> = {
 
 export const PAYING_STATUSES: SubscriptionStatus[] = ['active', 'past_due']
 
-export type PeriodKey = 'today' | 'last_7' | 'last_14' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_12m'
+export type PeriodKey = 'today' | 'last_7' | 'last_14' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_12m' | 'custom'
+
+export type DateField = 'startedAt' | 'currentPeriodStart' | 'trialEndAt' | 'churnedAt'
+
+export const DATE_FIELD_OPTIONS: Array<{ value: DateField; label: string }> = [
+  { value: 'startedAt', label: 'Fecha de alta' },
+  { value: 'currentPeriodStart', label: 'Inicio del período actual' },
+  { value: 'trialEndAt', label: 'Fin de prueba' },
+  { value: 'churnedAt', label: 'Fecha de baja' },
+]
+
+/** Rango a partir de dos fechas yyyy-mm-dd, ambas incluidas, en hora local. */
+export function resolveCustomRange(from: string, to: string): DateRange | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
+  const [fy, fm, fd] = from.split('-').map(Number)
+  const [ty, tm, td] = to.split('-').map(Number)
+  const start = new Date(fy, fm - 1, fd)
+  const end = new Date(ty, tm - 1, td + 1)
+  return end > start ? { start, end } : null
+}
+
+export function isDateInRange(value: string | null, range: DateRange) {
+  return inRange(value, range)
+}
 
 export const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
   { value: 'today', label: 'Hoy' },
@@ -48,11 +71,14 @@ export const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
   { value: 'last_90', label: 'Últimos 90 días' },
   { value: 'this_year', label: 'Año en curso' },
   { value: 'last_12m', label: 'Últimos 12 meses' },
+  { value: 'custom', label: 'Personalizado' },
 ]
 
 export type DateRange = { start: Date; end: Date }
 
-export function resolvePeriod(key: PeriodKey, now = new Date()): DateRange {
+/** `custom` necesita sus fechas; sin ellas (o inválidas) cae en "Este mes". */
+export function resolvePeriod(key: PeriodKey, now = new Date(), custom?: { from: string; to: string }): DateRange {
+  if (key === 'custom') return (custom && resolveCustomRange(custom.from, custom.to)) ?? resolvePeriod('this_month', now)
   const startOfMonth = (year: number, month: number) => new Date(year, month, 1)
   const daysAgo = (days: number) => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + 1); return date }
   switch (key) {
