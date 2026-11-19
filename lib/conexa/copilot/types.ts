@@ -17,6 +17,7 @@ export type RecommendationOperation =
   | { platform: 'meta'; kind: 'create_campaign'; templateAdsetId: string; templateAdsetName: string; campaignName: string; adsetName: string; dailyBudget: number; ageMin: number | null; ageMax: number | null; ads: Array<{ id: string; name: string }> }
   | { platform: 'google_ads'; kind: 'set_status'; customerId: string; campaignId: string; entityName: string; status: 'ENABLED' | 'PAUSED' }
   | { platform: 'google_ads'; kind: 'set_daily_budget'; customerId: string; campaignId: string; entityName: string; dailyBudget: number }
+  | { platform: 'google_ads'; kind: 'create_campaign'; customerId: string; templateCampaignId: string; templateCampaignName: string; campaignName: string; dailyBudget: number; adGroups: Array<{ id: string; name: string }> }
 
 export type PlanStep = {
   platform: 'meta' | 'google_ads'
@@ -34,7 +35,7 @@ export type PlanStep = {
   alreadyApplied: boolean
 }
 export type ExecutionPlan = { steps: PlanStep[]; hash: string }
-export type CreatedEntities = { campaignId: string; adsetId: string; adIds: string[] }
+export type CreatedEntities = { campaignId: string; adsetId?: string; adGroupIds?: string[]; adIds: string[] }
 export type PlanStepResult = PlanStep & { outcome: 'success' | 'failed' | 'skipped'; error?: string; created?: CreatedEntities }
 
 type LegacyExecutionResult = { platform: 'meta' | 'google_ads'; entityId: string; entityName: string; before: string; after: string; executedAt: string }
@@ -72,6 +73,9 @@ export function executionLines(result: ExecutionResult | null) {
 export const META_LEVEL_LABEL = { campaign: 'Campaña', adset: 'Conjunto de anuncios', ad: 'Anuncio' } as const
 
 export function describeOperation(operation: RecommendationOperation) {
+  if (operation.kind === 'create_campaign' && operation.platform === 'google_ads') {
+    return `Crear en pausa la campaña de búsqueda «${operation.campaignName}» (modelo: campaña «${operation.templateCampaignName}»), presupuesto diario ${operation.dailyBudget.toLocaleString('es-AR')}, ${operation.adGroups.length} grupo(s) de anuncios copiados`
+  }
   if (operation.kind === 'create_campaign') {
     const age = operation.ageMin !== null && operation.ageMax !== null ? `, edad ${operation.ageMin} a ${operation.ageMax === 65 ? '65+' : operation.ageMax}` : ''
     return `Crear en pausa la campaña «${operation.campaignName}» (modelo: conjunto «${operation.templateAdsetName}»), presupuesto diario ${operation.dailyBudget.toLocaleString('es-AR')}${age}, ${operation.ads.length} anuncio(s)`
