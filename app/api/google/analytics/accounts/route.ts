@@ -1,34 +1,46 @@
 import { NextResponse } from 'next/server'
-import { google } from 'googleapis'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { GOOGLE_ANALYTICS_PLATFORM, getSourcesForUser, listProperties, type AnalyticsProperty } from '@/lib/google-analytics/auth'
 
-export const revalidate = 300
-let cachedAccounts: { expiresAt: number; accounts: Array<{ propertyId: string; propertyName: string; accountName: string; accountId: string }> } | null = null
+export const dynamic = 'force-dynamic'
 
+type PropertyWithSource = AnalyticsProperty & { source: string }
+
+/** Propiedades GA4 de la cuenta de operaciones más las de la cuenta que conectó el usuario. */
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  if (cachedAccounts && cachedAccounts.expiresAt > Date.now()) {
-    return Response.json({ accounts: cachedAccounts.accounts }, { headers: { 'Cache-Control': 'private, max-age=300' } })
-  }
   try {
-    const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
-    auth.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })
-    const admin = google.analyticsadmin({ version: 'v1beta', auth })
-    const accounts = await admin.accountSummaries.list({ pageSize: 200 })
-    const result = (accounts.data.accountSummaries ?? []).flatMap(account =>
-      (account.propertySummaries ?? []).map(property => ({
-        accountId: account.name?.replace('accountSummaries/', '') ?? '',
-        accountName: account.displayName ?? 'Cuenta sin nombre',
-        propertyId: property.property?.replace('properties/', '') ?? '',
-        propertyName: property.displayName ?? 'Propiedad sin nombre',
-      })),
+    const { shared, own } = await getSourcesForUser(user.id)
+    const byId = new Map<string, PropertyWithSource>()
+    const errors: string[] = []
+    for (const source of [...(shared ? [shared] : []), ...own]) {
+      try {
+        for (const property of await listProperties(source)) {
+          if (!byId.has(property.propertyId)) byId.set(property.propertyId, { ...property, source: source.email ?? 'Cuenta conectada' })
+        }
+      } catch (error) {
+        errors.push(`${source.email ?? 'Cuenta conectada'}: ${error instanceof Error ? error.message : 'error desconocido'}`)
+      }
+    }
+    return NextResponse.json(
+      { accounts: [...byId.values()], connection: own[0] ? { email: own[0].email } : null, errors },
+      { headers: { 'Cache-Control': 'private, no-store' } },
     )
-    cachedAccounts = { accounts: result, expiresAt: Date.now() + 300_000 }
-    return NextResponse.json({ accounts: result }, { headers: { 'Cache-Control': 'private, max-age=300' } })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudieron cargar propiedades de Analytics' }, { status: 500 })
   }
+}
+
+/** Desconecta la cuenta de Analytics del usuario. Las propiedades ya asignadas a clientes no se tocan. */
+export async function DELETE() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  const { error } = await createAdminClient().from('plataformas_tokens').delete().eq('plataforma', GOOGLE_ANALYTICS_PLATFORM).eq('cliente_id', user.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }

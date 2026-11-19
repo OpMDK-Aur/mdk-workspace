@@ -437,6 +437,14 @@ interface ClientsPlatformConfigProps {
   isMaster?: boolean
 }
 
+const ANALYTICS_OAUTH_ERRORS: Record<string, string> = {
+  ga_state: 'La conexión con Google venció o se abrió en otra pestaña. Probá de nuevo.',
+  ga_denied: 'Cancelaste el permiso en Google, así que no se conectó Analytics.',
+  ga_scope: 'Google no dio permiso de lectura de Analytics. Volvé a conectar y aceptá ese permiso.',
+  ga_no_refresh: 'Google no devolvió un acceso permanente. Probá de nuevo.',
+  ga_config: 'Falta la configuración de Google en el servidor.',
+}
+
 export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlatformConfigProps) {
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
@@ -447,7 +455,10 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [loadingGoogleAccounts, setLoadingGoogleAccounts] = useState(false)
   const [googleAccountsError, setGoogleAccountsError] = useState<string | null>(null)
   const [googleMatchResults, setGoogleMatchResults] = useState<Record<string, ClientMatchResult>>({})
-  const [analyticsProperties, setAnalyticsProperties] = useState<Array<{ propertyId: string; propertyName: string; accountName: string }>>([])
+  const [analyticsProperties, setAnalyticsProperties] = useState<Array<{ propertyId: string; propertyName: string; accountName: string; source?: string }>>([])
+  const [analyticsConnection, setAnalyticsConnection] = useState<{ email: string | null } | null>(null)
+  const [analyticsNotice, setAnalyticsNotice] = useState<string | null>(null)
+  const [analyticsBusy, setAnalyticsBusy] = useState(false)
   const [tagContainers, setTagContainers] = useState<Array<{ containerId: string; publicId: string; containerName: string; accountName: string }>>([])
   const [analyticsSelection, setAnalyticsSelection] = useState<Record<string, string[]>>({})
   const [tagSelection, setTagSelection] = useState<Record<string, string[]>>({})
@@ -550,15 +561,37 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     })
   }, [clients])
 
-  useEffect(() => {
-  fetchCrmClients()
-  fetch('/api/google/analytics/accounts')
+  function loadAnalyticsProperties() {
+    return fetch('/api/google/analytics/accounts', { cache: 'no-store' })
       .then(response => response.json())
       .then(data => {
         if (data.error) throw new Error(data.error)
         setAnalyticsProperties(data.accounts ?? [])
+        setAnalyticsConnection(data.connection ?? null)
+        setGoogleResourcesError(data.errors?.length ? data.errors.join(' · ') : null)
       })
       .catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar las propiedades de Analytics'))
+  }
+
+  async function disconnectAnalytics() {
+    setAnalyticsBusy(true)
+    const response = await fetch('/api/google/analytics/accounts', { method: 'DELETE' })
+    setAnalyticsBusy(false)
+    if (!response.ok) {
+      setAnalyticsNotice('No se pudo desconectar tu cuenta de Analytics.')
+      return
+    }
+    setAnalyticsNotice('Desconectaste tu cuenta de Analytics.')
+    await loadAnalyticsProperties()
+  }
+
+  useEffect(() => {
+  fetchCrmClients()
+  loadAnalyticsProperties()
+  const oauthResult = new URLSearchParams(window.location.search)
+  if (oauthResult.get('connected') === 'google_analytics') setAnalyticsNotice('Tu cuenta de Google Analytics quedó conectada. Ya podés elegir sus propiedades en cada cliente.')
+  const oauthError = oauthResult.get('error')
+  if (oauthError?.startsWith('ga_')) setAnalyticsNotice(ANALYTICS_OAUTH_ERRORS[oauthError] ?? 'No se pudo conectar Google Analytics. Probá de nuevo.')
 
     fetchTagContainers(1)
 
@@ -962,8 +995,25 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
             {loadingGoogleAccounts ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             {loadingGoogleAccounts ? 'Cargando Google...' : 'Cuentas Google'}
           </Button>
+          {analyticsConnection ? (
+            <Button size="sm" variant="outline" className="h-8 gap-2 text-xs" onClick={disconnectAnalytics} disabled={analyticsBusy} title={`Analytics conectado con ${analyticsConnection.email ?? 'tu cuenta'}`}>
+              {analyticsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-orange-500 text-[8px] font-bold text-white">GA</span>}
+              <span className="max-w-40 truncate">{analyticsConnection.email ?? 'Analytics conectado'}</span>
+              <span className="text-muted-foreground">· Desconectar</span>
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="h-8 gap-2 text-xs" asChild>
+              <a href="/api/auth/google-analytics?return=/dashboard/platform">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-orange-500 text-[8px] font-bold text-white">GA</span>
+                Conectar mi Analytics
+              </a>
+            </Button>
+          )}
         </div>
       </div>
+      {analyticsNotice && (
+        <p role="status" className="text-xs text-muted-foreground">{analyticsNotice}</p>
+      )}
 
       {/* Service Map Config Link (Master only) */}
       {isMaster && (

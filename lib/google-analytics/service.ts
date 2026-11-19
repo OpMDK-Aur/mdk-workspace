@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { getAuthForProperty } from './auth'
 
 export type GoogleAnalyticsSales = {
   propertyId: string
@@ -28,10 +29,9 @@ export function getBuenosAiresLastSevenDays() {
   return { dateFrom, dateTo, timeZone: 'America/Argentina/Buenos_Aires' }
 }
 
-function createAuth() {
-  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
-  auth.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })
-  return auth
+/** Usa la cuenta de operaciones o la cuenta conectada por un usuario que tenga acceso a la propiedad. */
+async function createAuth(propertyId: string) {
+  return getAuthForProperty(propertyId)
 }
 
 export type GoogleAnalyticsReport = {
@@ -92,7 +92,7 @@ function mergeRecordsByDimensions(chunks: Array<Array<Record<string, string | nu
 export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsReport> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
-  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: await createAuth(propertyId) })
   const base = { dateRanges: [{ startDate: dateFrom, endDate: dateTo }] }
   // Nota sobre dimensiones/métricas: "sessionCampaignName" (Campaña de la
   // sesión), "unifiedPagePathScreen" (Ruta de página y clase de pantalla),
@@ -153,7 +153,7 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
 export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom: string, dateTo: string, pagePath: string) {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
-  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: await createAuth(propertyId) })
   const baseMetrics = ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions']
   const optionalMetrics = ['newUsers', 'engagementRate', 'averageSessionDuration', 'bounceRate', 'eventCount', 'keyEvents', 'ecommercePurchases', 'purchaseRevenue']
   const request = (metrics: string[]) => analyticsData.properties.runReport({
@@ -187,7 +187,7 @@ export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom
 export async function getGoogleAnalyticsSales(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsSales> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
-  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: await createAuth(propertyId) })
   const response = await analyticsData.properties.runReport({
     property: `properties/${normalizedProperty}`,
     requestBody: {
