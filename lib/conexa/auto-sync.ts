@@ -1,7 +1,7 @@
 import { google } from 'googleapis'
 import { getMetaAccessToken } from '@/lib/meta-ads/token'
 import { getGoogleAdsAccessToken, getGoogleAdsDeveloperToken, getGoogleAdsLoginCustomerId } from '@/lib/google-tokens'
-import { listAllTagManagerAccounts } from '@/lib/google-tag-manager/service'
+import { findTagManagerContainers } from '@/lib/google-tag-manager/service'
 
 export type FoundAccount = { id: string; name: string }
 export type AutoSyncMatches = { meta: FoundAccount[]; google: FoundAccount[]; analytics: FoundAccount[]; tagManager: FoundAccount[]; errors: string[] }
@@ -76,9 +76,9 @@ async function findAnalytics(clientName: string): Promise<FoundAccount[]> {
 }
 
 async function findTagManager(clientName: string): Promise<FoundAccount[]> {
-  const result = await listAllTagManagerAccounts()
+  const result = await findTagManagerContainers((accountName) => nameMatches(clientName, accountName))
   if (!result.ok) throw new Error(`Tag Manager: ${result.error}`)
-  return result.accounts.filter((container) => container.containerId && (nameMatches(clientName, container.containerName) || nameMatches(clientName, container.accountName))).map((container) => ({ id: container.containerId, name: `${container.containerName}${container.publicId ? ` (${container.publicId})` : ''}` }))
+  return result.containers.filter((container) => container.containerId).map((container) => ({ id: container.containerId, name: `${container.containerName}${container.publicId ? ` (${container.publicId})` : ''}` }))
 }
 
 /** Busca, por nombre del cliente, cuentas en Meta Ads, Google Ads, GA4 y Tag Manager a las que Conexa tiene acceso. */

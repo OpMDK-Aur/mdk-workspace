@@ -8,6 +8,7 @@ import { runPerformanceAnalyst } from '@/lib/ai/specialists/performance-analyst'
 import { contextFromEvents, mergeWorkingContext } from '@/lib/ai/conversation-context'
 import { CLIENT_PROFILE_COLUMNS, buildClientMemory, buildPerformance90d, emptyClientMemory, normalizeIndustry, type MetricRow } from '@/lib/ai/client-memory'
 import { getBuenosAiresLastSevenDays, getGoogleAnalyticsReport, getGoogleAnalyticsSales, getGoogleAnalyticsPageMetrics } from '@/lib/google-analytics/service'
+import { getOptionalGoogleAnalyticsToken } from '@/lib/google-analytics/user-token'
 import { getGoogleTagManagerReport } from '@/lib/google-tag-manager/service'
 import { createCrmClient } from '@/lib/supabase/crm'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
@@ -710,7 +711,7 @@ const getGoogleAnalyticsReportTool: ToolDefinition = {
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'running', label: 'Consultando información completa de Google Analytics 4...' })
     try {
-      const report = await getGoogleAnalyticsReport(client.analytics_property_id, dateFrom, dateTo)
+      const report = await getGoogleAnalyticsReport(client.analytics_property_id, dateFrom, dateTo, { accessToken: await getOptionalGoogleAnalyticsToken(context.userId) })
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_report', status: 'completed', label: 'Información de Google Analytics 4 recibida' })
       return { available: true, source: 'Google Analytics 4', timeZone: argentinaRange.timeZone, ...report }
     } catch (cause) {
@@ -728,11 +729,11 @@ const getGoogleTagManagerReportTool: ToolDefinition = {
   async execute(_input, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const supabase = createAdminClient()
-    const { data: client, error } = await supabase.from('clientes').select('tag_manager_container_id').eq('id', context.clientId).single()
+    const { data: client, error } = await supabase.from('clientes').select('nombre_del_negocio, tag_manager_container_id').eq('id', context.clientId).single()
     if (error || !client?.tag_manager_container_id) return { available: false, message: 'El cliente no tiene un contenedor de Google Tag Manager asignado en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'running', label: 'Consultando Google Tag Manager...' })
     try {
-      const report = await getGoogleTagManagerReport(client.tag_manager_container_id)
+      const report = await getGoogleTagManagerReport(client.tag_manager_container_id, { clientName: client.nombre_del_negocio })
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'completed', label: 'Información de Google Tag Manager recibida' })
       return { available: true, source: 'Google Tag Manager', ...report }
     } catch (cause) {
@@ -757,7 +758,7 @@ const getGoogleTagManagerReportTool: ToolDefinition = {
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'running', label: `Consultando métricas de ${input.pagePath} en GA4...` })
     try {
-      const result = await getGoogleAnalyticsPageMetrics(client.analytics_property_id, dateFrom, dateTo, input.pagePath)
+      const result = await getGoogleAnalyticsPageMetrics(client.analytics_property_id, dateFrom, dateTo, input.pagePath, { accessToken: await getOptionalGoogleAnalyticsToken(context.userId) })
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_page_metrics', status: 'completed', label: `Métricas de ${input.pagePath} recibidas` })
       return { available: true, source: 'Google Analytics 4', timeZone: range.timeZone, ...result }
     } catch (cause) {
@@ -782,7 +783,7 @@ const getGoogleTagManagerReportTool: ToolDefinition = {
     if (error || !client?.analytics_property_id) return { available: false, message: 'El cliente no tiene una propiedad de Google Analytics 4 asignada en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'running', label: 'Consultando ventas de Google Analytics 4...' })
     try {
-      const sales = await getGoogleAnalyticsSales(client.analytics_property_id, dateFrom, dateTo)
+      const sales = await getGoogleAnalyticsSales(client.analytics_property_id, dateFrom, dateTo, { accessToken: await getOptionalGoogleAnalyticsToken(context.userId) })
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_analytics_sales', status: 'completed', label: 'Ventas de Google Analytics 4 recibidas' })
       return { available: true, source: 'Google Analytics 4', event: 'purchase', ...sales }
     } catch (cause) {
