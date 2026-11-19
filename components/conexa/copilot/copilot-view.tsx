@@ -41,13 +41,16 @@ const PRIORITY_OPTIONS: RecommendationPriority[] = ['alta', 'media', 'baja']
 const FILTER_ALL = 'all'
 const COMPLETE_CONTEXT_MESSAGE = 'Ayudame a completar el contexto del cliente. Preguntame lo que falta de a uno o dos datos por vez.'
 
-export function CopilotView({ client }: { client: Client | null }) {
+type InitialPrompt = { id: number; text: string } | null
+
+export function CopilotView({ client, initialPrompt = null, onPromptConsumed }: { client: Client | null; initialPrompt?: InitialPrompt; onPromptConsumed?: () => void }) {
   if (!client) return <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Elegí un cliente para ver sus recomendaciones.</div>
-  return <RecommendationsWorkspace key={client.id} client={client} />
+  return <RecommendationsWorkspace key={client.id} client={client} initialPrompt={initialPrompt} onPromptConsumed={onPromptConsumed} />
 }
 
-function RecommendationsWorkspace({ client }: { client: Client }) {
+function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: { client: Client; initialPrompt: InitialPrompt; onPromptConsumed?: () => void }) {
   const copilot = useCopilot(client.id)
+  const handledPromptId = useRef<number | null>(null)
   const [collapsed, setCollapsed] = useState<Record<Panel, boolean>>({ chat: false, recommendations: false, history: false })
   const [mobilePanel, setMobilePanel] = useState<Panel>('recommendations')
   const [fullPanel, setFullPanel] = useState<Panel | null>(null)
@@ -166,6 +169,16 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
       setMessageInput(message)
     } finally { setBusy(false) }
   }
+
+  // Pedido que llega desde las pestañas de Meta Ads / Google Ads ("Crear campaña con Conexa"): se envía una sola vez al chat.
+  useEffect(() => {
+    if (!initialPrompt || handledPromptId.current === initialPrompt.id) return
+    handledPromptId.current = initialPrompt.id
+    setMobilePanel('chat')
+    void submitMessage(initialPrompt.text)
+    onPromptConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt?.id])
 
   async function saveManualContext(event: FormEvent) {
     event.preventDefault()
