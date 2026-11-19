@@ -7,7 +7,7 @@ import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
 import type { Profile } from '@/lib/types'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
-import { isMaster, canSeeSection } from '@/lib/permissions'
+import { isMaster } from '@/lib/permissions'
 import { resolveUnitAccess } from '@/lib/business-units'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -454,7 +454,7 @@ export function Sidebar({
               )}
 
               {/* Integraciones section */}
-              {unitAccess.mdk && (userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
+              {unitAccess.mdk && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {platformItems.map(item => renderNavItem(item, true))}
                 </div>
@@ -697,7 +697,7 @@ export function Sidebar({
                 )}
 
                 {/* Integraciones section */}
-                {unitAccess.mdk && (userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
+                {unitAccess.mdk && (
                   <div className="space-y-1">
                     <Collapsible open={platformsOpen} onOpenChange={setPlatformsOpen}>
                       <div className="flex items-center">
