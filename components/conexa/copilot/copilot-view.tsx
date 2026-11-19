@@ -41,13 +41,16 @@ const PRIORITY_OPTIONS: RecommendationPriority[] = ['alta', 'media', 'baja']
 const FILTER_ALL = 'all'
 const COMPLETE_CONTEXT_MESSAGE = 'Ayudame a completar el contexto del cliente. Preguntame lo que falta de a uno o dos datos por vez.'
 
-export function CopilotView({ client }: { client: Client | null }) {
+type InitialPrompt = { id: number; text: string } | null
+
+export function CopilotView({ client, initialPrompt = null, onPromptConsumed }: { client: Client | null; initialPrompt?: InitialPrompt; onPromptConsumed?: () => void }) {
   if (!client) return <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Elegí un cliente para ver sus recomendaciones.</div>
-  return <RecommendationsWorkspace key={client.id} client={client} />
+  return <RecommendationsWorkspace key={client.id} client={client} initialPrompt={initialPrompt} onPromptConsumed={onPromptConsumed} />
 }
 
-function RecommendationsWorkspace({ client }: { client: Client }) {
+function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: { client: Client; initialPrompt: InitialPrompt; onPromptConsumed?: () => void }) {
   const copilot = useCopilot(client.id)
+  const handledPromptId = useRef<number | null>(null)
   const [collapsed, setCollapsed] = useState<Record<Panel, boolean>>({ chat: false, recommendations: false, history: false })
   const [mobilePanel, setMobilePanel] = useState<Panel>('recommendations')
   const [fullPanel, setFullPanel] = useState<Panel | null>(null)
@@ -166,6 +169,16 @@ function RecommendationsWorkspace({ client }: { client: Client }) {
       setMessageInput(message)
     } finally { setBusy(false) }
   }
+
+  // Pedido que llega desde las pestañas de Meta Ads / Google Ads ("Crear campaña con Conexa"): se envía una sola vez al chat.
+  useEffect(() => {
+    if (!initialPrompt || handledPromptId.current === initialPrompt.id) return
+    handledPromptId.current = initialPrompt.id
+    setMobilePanel('chat')
+    void submitMessage(initialPrompt.text)
+    onPromptConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt?.id])
 
   async function saveManualContext(event: FormEvent) {
     event.preventDefault()
@@ -361,7 +374,7 @@ function ChatPanel({ clientName, connectedPlatforms, messages, assessment, conte
     <ContextStatus assessment={assessment} unavailable={contextUnavailable} busy={busy} competitors={competitors} onAddManual={onAddManual} onComplete={onCompleteContext} />
     {!connectedPlatforms.length && <p role="status" className="border-b border-[#f0e5d9] bg-[#fff8f1] px-3 py-2 text-[10px] leading-relaxed text-[#8a541e]">Este cliente no tiene plataformas conectadas. El chat recomendará únicamente a partir del contexto, las tareas y los comentarios.</p>}
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Proponé una campaña nueva en Meta para captar más leads', '¿Cuáles son los competidores y qué están haciendo?', 'Tiene una promoción este mes'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
+      {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Proponé una campaña nueva en Meta para captar más leads', 'Proponé una campaña de búsqueda nueva en Google Ads', '¿Cuáles son los competidores y qué están haciendo?', 'Tiene una promoción este mes'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
       <div className="flex flex-col gap-3">{messages.map((message) => <article key={message.id} className={cn('max-w-[96%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-[#fff2e9] text-[#4a2b18]' : 'self-start border border-[#eeeeec] bg-[#fafaf9] text-[#444]')}><p className="mb-1 text-[9px] font-semibold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'Vos' : 'Conexa'}</p><p className="whitespace-pre-wrap">{message.content}</p></article>)}</div>
       {proposal.length > 0 && <ProfileProposalCard key={proposal.map((item) => `${item.field}:${item.value}`).join('|')} proposal={proposal} saving={savingProfile} onSave={onSaveProposal} onDismiss={onDismissProposal} />}
       {busy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está analizando contexto y datos…</div>}
@@ -568,7 +581,12 @@ function OperationFields({ operation, onChange }: { operation: RecommendationOpe
     <p className="text-[11px] text-[#5a3a22]">{describeOperation(operation)}</p>
     {operation.kind === 'set_status' && <label className="flex flex-col gap-1 text-xs font-medium">Estado<select value={operation.status} onChange={(event) => onChange(operation.platform === 'meta' ? { ...operation, status: event.target.value as 'ACTIVE' | 'PAUSED' } : { ...operation, status: event.target.value as 'ENABLED' | 'PAUSED' })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs"><option value={operation.platform === 'meta' ? 'ACTIVE' : 'ENABLED'}>Activar</option><option value="PAUSED">Pausar</option></select></label>}
     {operation.kind === 'set_daily_budget' && <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario nuevo (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>}
-    {operation.kind === 'create_campaign' && <>
+    {operation.kind === 'create_campaign' && operation.platform === 'google_ads' && <>
+      <label className="flex flex-col gap-1 text-xs font-medium">Nombre de la campaña<Input value={operation.campaignName} maxLength={120} onChange={(event) => onChange({ ...operation, campaignName: event.target.value })} /></label>
+      <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>
+      <p className="text-[11px] text-[#5a3a22]">Modelo: «{operation.templateCampaignName}» · Grupos copiados: {operation.adGroups.map((group) => `«${group.name}»`).join(', ')}</p>
+    </>}
+    {operation.kind === 'create_campaign' && operation.platform === 'meta' && <>
       <label className="flex flex-col gap-1 text-xs font-medium">Nombre de la campaña<Input value={operation.campaignName} maxLength={120} onChange={(event) => onChange({ ...operation, campaignName: event.target.value })} /></label>
       <label className="flex flex-col gap-1 text-xs font-medium">Nombre del conjunto<Input value={operation.adsetName} maxLength={120} onChange={(event) => onChange({ ...operation, adsetName: event.target.value })} /></label>
       <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>

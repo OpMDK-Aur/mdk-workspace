@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { MAX_BUDGET_CHANGE, MAX_NEW_CAMPAIGN_ADS, NEW_CAMPAIGN_MAX_BUDGET_RATIO, RECENT_EDIT_WINDOW_DAYS } from './config'
-import type { EntityCatalog, GoogleCatalogAccount, GoogleCatalogCampaign, MetaCatalogAccount, MetaCatalogAd, MetaCatalogAdset, MetaCatalogCampaign } from './entity-catalog'
+import type { EntityCatalog, GoogleCatalogAccount, GoogleCatalogAdGroup, GoogleCatalogCampaign, MetaCatalogAccount, MetaCatalogAd, MetaCatalogAdset, MetaCatalogCampaign } from './entity-catalog'
 import { money } from './executors'
 import type { RecommendationOperation } from './types'
 
@@ -14,13 +14,17 @@ type MetaEntry =
 export function indexCatalog(catalog: EntityCatalog) {
   const meta = new Map<string, MetaEntry>()
   const google = new Map<string, { account: GoogleCatalogAccount; entity: GoogleCatalogCampaign }>()
+  const googleAdGroups = new Map<string, { account: GoogleCatalogAccount; entity: GoogleCatalogAdGroup }>()
   for (const account of catalog.meta ?? []) {
     for (const entity of account.campaigns) meta.set(entity.id, { level: 'campaign', account, entity })
     for (const entity of account.adsets) meta.set(entity.id, { level: 'adset', account, entity })
     for (const entity of account.ads) meta.set(entity.id, { level: 'ad', account, entity })
   }
-  for (const account of catalog.googleAds ?? []) for (const entity of account.campaigns) google.set(`${account.customerId}:${entity.id}`, { account, entity })
-  return { meta, google }
+  for (const account of catalog.googleAds ?? []) {
+    for (const entity of account.campaigns) google.set(`${account.customerId}:${entity.id}`, { account, entity })
+    for (const entity of account.adGroups ?? []) googleAdGroups.set(`${account.customerId}:${entity.id}`, { account, entity })
+  }
+  return { meta, google, googleAdGroups }
 }
 
 const LEVEL_NAME = { campaign: 'la campaña', adset: 'el conjunto', ad: 'el anuncio' } as const
@@ -41,7 +45,7 @@ export function templateReferenceBudget(adset: MetaCatalogAdset, account: MetaCa
   return adset.dailyBudget ?? account.campaigns.find((campaign) => campaign.id === adset.campaignId)?.dailyBudget ?? null
 }
 
-function validateCreateCampaign(operation: Extract<RecommendationOperation, { kind: 'create_campaign' }>, index: ReturnType<typeof indexCatalog>, linked: LinkedAccounts) {
+function validateCreateCampaign(operation: Extract<RecommendationOperation, { platform: 'meta'; kind: 'create_campaign' }>, index: ReturnType<typeof indexCatalog>, linked: LinkedAccounts) {
   const template = index.meta.get(operation.templateAdsetId)
   if (!template || template.level !== 'adset') return [`El conjunto modelo «${operation.templateAdsetName}» no está en el catálogo de cuentas vinculadas.`]
   if (!linked.meta.has(template.account.accountId)) return [`El conjunto modelo «${template.entity.name}» no pertenece a una cuenta vinculada al cliente.`]
@@ -58,6 +62,27 @@ function validateCreateCampaign(operation: Extract<RecommendationOperation, { ki
   const currency = template.account.currency
   if (!Number.isFinite(operation.dailyBudget) || operation.dailyBudget <= 0) errors.push('El presupuesto diario de la campaña nueva no es válido.')
   else if (reference === null) errors.push(`No hay presupuesto de referencia en «${template.entity.name}» ni en su campaña para acotar el de la campaña nueva; elegí otro conjunto modelo.`)
+  else if (operation.dailyBudget > reference * NEW_CAMPAIGN_MAX_BUDGET_RATIO + 1e-9) errors.push(`El presupuesto de la campaña nueva (${money(operation.dailyBudget, currency)}) supera ${NEW_CAMPAIGN_MAX_BUDGET_RATIO} veces el del modelo (${money(reference, currency)}).`)
+  return errors
+}
+
+function validateGoogleCreateCampaign(operation: Extract<RecommendationOperation, { platform: 'google_ads'; kind: 'create_campaign' }>, index: ReturnType<typeof indexCatalog>, linked: LinkedAccounts) {
+  const template = index.google.get(`${operation.customerId}:${operation.templateCampaignId}`)
+  if (!template) return [`La campaña modelo «${operation.templateCampaignName}» no está en el catálogo de cuentas de Google Ads vinculadas.`]
+  if (!linked.google.has(template.account.customerId)) return [`La campaña modelo «${template.entity.name}» no pertenece a una cuenta vinculada al cliente.`]
+  const errors: string[] = []
+  if (template.entity.channelType && template.entity.channelType !== 'SEARCH') errors.push(`La campaña modelo «${template.entity.name}» es de tipo ${template.entity.channelType}; por ahora solo se pueden crear campañas de búsqueda.`)
+  const campaignName = operation.campaignName.trim()
+  if (!campaignName) errors.push('La campaña nueva necesita un nombre.')
+  else if (template.account.campaigns.some((campaign) => campaign.name.trim().toLocaleLowerCase('es') === campaignName.toLocaleLowerCase('es'))) errors.push(`Ya existe una campaña llamada «${campaignName}» en la cuenta; Google Ads no admite nombres repetidos.`)
+  if (!operation.adGroups.length || operation.adGroups.length > MAX_NEW_CAMPAIGN_ADS) errors.push(`Elegí entre 1 y ${MAX_NEW_CAMPAIGN_ADS} grupos de anuncios existentes para copiar sus palabras clave y anuncios.`)
+  for (const group of operation.adGroups) {
+    if (!index.googleAdGroups.get(`${operation.customerId}:${group.id}`)) errors.push(`El grupo de anuncios «${group.name}» no está en el catálogo de campañas de búsqueda de esa cuenta.`)
+  }
+  const reference = template.entity.dailyBudget
+  const currency = template.account.currency
+  if (!Number.isFinite(operation.dailyBudget) || operation.dailyBudget <= 0) errors.push('El presupuesto diario de la campaña nueva no es válido.')
+  else if (reference === null) errors.push(`«${template.entity.name}» no tiene presupuesto diario de referencia para acotar el de la campaña nueva; elegí otra campaña modelo.`)
   else if (operation.dailyBudget > reference * NEW_CAMPAIGN_MAX_BUDGET_RATIO + 1e-9) errors.push(`El presupuesto de la campaña nueva (${money(operation.dailyBudget, currency)}) supera ${NEW_CAMPAIGN_MAX_BUDGET_RATIO} veces el del modelo (${money(reference, currency)}).`)
   return errors
 }
@@ -97,6 +122,7 @@ export function validateOperation(operation: RecommendationOperation, catalog: E
     return errors
   }
 
+  if (operation.kind === 'create_campaign') return validateGoogleCreateCampaign(operation, index, linked)
   const entry = index.google.get(`${operation.customerId}:${operation.campaignId}`)
   if (!entry) return [`La campaña «${operation.entityName}» no está en el catálogo de cuentas de Google Ads vinculadas.`]
   if (!linked.google.has(entry.account.customerId)) return [`La campaña «${entry.entity.name}» no pertenece a una cuenta vinculada al cliente.`]
@@ -112,6 +138,7 @@ export function validateOperation(operation: RecommendationOperation, catalog: E
 
 /** Clave para el índice único de borradores vigentes: misma acción sobre las mismas entidades con el mismo valor objetivo. */
 export function operationDedupeKey(operation: RecommendationOperation) {
+  if (operation.kind === 'create_campaign' && operation.platform === 'google_ads') return createHash('sha256').update(`create_campaign|google_ads|${operation.customerId}:${operation.templateCampaignId}|${operation.campaignName.trim().toLocaleLowerCase('es')}|${operation.dailyBudget}`).digest('hex')
   if (operation.kind === 'create_campaign') return createHash('sha256').update(`create_campaign|meta|${operation.templateAdsetId}|${operation.campaignName.trim().toLocaleLowerCase('es')}|${operation.dailyBudget}`).digest('hex')
   const ids = operation.kind === 'set_age_range' ? operation.adsets.map((adset) => adset.id) : [operation.platform === 'meta' ? operation.entityId : `${operation.customerId}:${operation.campaignId}`]
   const target = operation.kind === 'set_age_range' ? `${operation.ageMin}-${operation.ageMax}` : operation.kind === 'set_status' ? operation.status : String(operation.dailyBudget)
