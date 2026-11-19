@@ -123,6 +123,25 @@ const PLATFORM_DATA_KEYS: Array<[string, RecommendationPlatform, string]> = [
 ]
 const MAX_SOURCE_CHARS = 1800
 const clip = (value: unknown, limit = 320) => String(value ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit)
+
+/** Resumen legible de los datos de una plataforma para mostrar como evidencia (el modelo recibe el JSON completo). */
+function summarizePlatformData(value: unknown) {
+  const data = (value ?? {}) as { accounts?: Array<{ totals?: Record<string, unknown> }>; date_range?: { start?: string; end?: string } }
+  const accounts = Array.isArray(data.accounts) ? data.accounts : []
+  if (!accounts.length) return 'Datos de la plataforma en el período analizado.'
+  const sum = (key: string) => accounts.reduce((total, account) => total + (Number(account.totals?.[key]) || 0), 0)
+  const format = (amount: number) => Math.round(amount).toLocaleString('es-AR')
+  const day = (date?: string) => (date ? date.split('-').reverse().join('/') : '')
+  const parts = [
+    `${accounts.length} cuenta(s)`,
+    `inversión $ ${format(sum('spend'))}`,
+    `${format(sum('leads') || sum('results') || sum('conversions'))} resultados`,
+    `${format(sum('clicks'))} clics`,
+    `${format(sum('impressions'))} impresiones`,
+  ]
+  if (data.date_range?.start && data.date_range.end) parts.push(`del ${day(data.date_range.start)} al ${day(data.date_range.end)}`)
+  return parts.join(' · ')
+}
 const compactValue = (value: unknown, depth = 0): unknown => {
   if (typeof value === 'string') return clip(value, 280)
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value
@@ -178,7 +197,10 @@ function evaluate(output: ModelOutput, evidenceById: Map<string, { label: string
         title: item.title.trim(), platforms, type: item.type, priority: item.priority,
         description: item.description.trim(), rationale: item.rationale.trim(),
         suggested_actions: item.suggested_actions.map((action) => action.trim()), expected_impact: item.expected_impact.trim(),
-        evidence: evidenceIds.map((id) => ({ id, label: evidenceById.get(id)!.label, excerpt: evidenceById.get(id)!.excerpt })),
+        evidence: evidenceIds.map((id) => {
+          const source = evidenceById.get(id)!
+          return { id, label: source.label, excerpt: 'display' in source && typeof source.display === 'string' ? source.display : source.excerpt }
+        }),
       },
     }]
   })
@@ -224,12 +246,12 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
   }
 
   const sourceItems = [
-    ...(profile ? [{ id: 'profile', label: 'Contexto del cliente', excerpt: clip(JSON.stringify(profile), MAX_SOURCE_CHARS) }] : []),
+    ...(profile ? [{ id: 'profile', label: 'Contexto del cliente', excerpt: clip(JSON.stringify(profile), MAX_SOURCE_CHARS), display: 'Datos del formulario de Contexto del cliente.' }] : []),
     ...competitors.sources,
     ...context.notes.slice(0, 30).map((note) => ({ id: `context:${note.id}`, label: `Contexto agregado (${note.source})`, excerpt: clip(note.content, 900) })),
     ...context.tasks.map((task) => ({ id: `task:${String(task.id)}`, label: `Tarea · ${clip(task.titulo, 120)}`, excerpt: clip(`${task.estado ?? ''} · ${task.descripcion ?? ''} · prioridad ${task.prioridad ?? 'sin prioridad'}`, MAX_SOURCE_CHARS) })),
     ...context.comments.map((comment) => ({ id: `comment:${String(comment.id)}`, label: `Comentario · ${clip(comment.autor, 80)}`, excerpt: clip(comment.contenido, MAX_SOURCE_CHARS) })),
-    ...platformData.data.map((item) => ({ id: `platform:${item.key}`, label: item.label, excerpt: clip(JSON.stringify(item.value), MAX_SOURCE_CHARS) })),
+    ...platformData.data.map((item) => ({ id: `platform:${item.key}`, label: item.label, excerpt: clip(JSON.stringify(item.value), MAX_SOURCE_CHARS), display: summarizePlatformData(item.value) })),
     ...catalogSourceItems(catalog),
     ...allRecommendations.slice(0, 20).map((item) => ({ id: `recommendation:${item.id}`, label: `Historial · ${item.status} · ${clip(item.title, 120)}`, excerpt: clip(`${item.description} ${item.rationale}`, 700) })),
   ]
@@ -249,7 +271,7 @@ export async function runGeneration(input: { supabase: SupabaseClient; user: { i
     entityCatalog: catalog,
     previousRecommendations: allRecommendations.slice(0, 30).map(({ title, status, platforms, type, rationale, expected_impact, operation }) => ({ title: clip(title, 140), status, platforms, type, operation, rationale: clip(rationale, 500), expected_impact: clip(expected_impact, 300) })),
     editingRecommendation: editTarget,
-    sourceItems,
+    sourceItems: sourceItems.map(({ id, label, excerpt }) => ({ id, label, excerpt })),
     currentUserMessage: message,
   }
   const history = previousMessages.slice(-12).map((item) => ({ role: item.role, content: item.content.slice(0, 2500) }))
