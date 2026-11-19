@@ -71,6 +71,19 @@ export function previousRange(range: DateRange): DateRange {
 const time = (value: string | null) => (value ? new Date(value).getTime() : Number.NaN)
 const inRange = (value: string | null, range: DateRange) => { const t = time(value); return t >= range.start.getTime() && t < range.end.getTime() }
 
+// Cuentas propias de Aurelia y MDK cargadas en el CRM (pruebas, uso interno).
+// Se detectan por nombre o email; no cuentan como altas.
+const INTERNAL_NAME = /\b(aurelia|mdk|madketing)\b/
+const INTERNAL_EMAIL = /aurelia|madketing|(^|[^a-z])mdk([^a-z]|$)/
+
+const normalize = (value: string | null) => (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+export function isInternalAccount(client: Pick<AureliaClient, 'name' | 'email'>): boolean {
+  return INTERNAL_NAME.test(normalize(client.name)) || INTERNAL_EMAIL.test(normalize(client.email))
+}
+
+const isAlta = (client: AureliaClient, range: DateRange) => inRange(client.startedAt, range) && !isInternalAccount(client)
+
 /** Un cliente en prueba hoy no pagó nunca, así que no cuenta como activo en el histórico. */
 export function isActiveAt(client: AureliaClient, date: Date): boolean {
   if (client.status === 'trial') return false
@@ -92,7 +105,7 @@ export type PeriodMetrics = {
 }
 
 export function computePeriodMetrics(clients: AureliaClient[], range: DateRange): PeriodMetrics {
-  const altas = clients.filter((client) => inRange(client.startedAt, range))
+  const altas = clients.filter((client) => isAlta(client, range))
   const bajas = clients.filter((client) => client.status === 'churned' && inRange(client.churnedAt, range))
   const activosInicio = clients.filter((client) => isActiveAt(client, range.start)).length
   return {
@@ -110,7 +123,7 @@ export type KpiKey = 'mrr' | 'altas' | 'bajas' | 'netas' | 'activos' | 'trial' |
 
 export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> = {
   mrr: { title: 'Clientes que suman MRR', description: 'Suscripciones activas o con pago pendiente, ordenadas por MRR.' },
-  altas: { title: 'Altas del período', description: 'Clientes cuya primera suscripción empezó en el período.' },
+  altas: { title: 'Altas del período', description: 'Clientes cuya primera suscripción empezó en el período (sin cuentas internas de Aurelia y MDK).' },
   bajas: { title: 'Bajas del período', description: 'Clientes cuya suscripción finalizó en el período.' },
   netas: { title: 'Altas y bajas del período', description: 'Altas menos bajas: los dos grupos que forman el neto.' },
   activos: { title: 'Clientes activos', description: 'Suscripción activa y al día (los de pago pendiente se ven en MRR).' },
@@ -121,7 +134,7 @@ export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> 
 
 /** Clientes detrás de cada indicador, para el detalle al hacer clic. */
 export function selectKpiClients(key: KpiKey, clients: AureliaClient[], range: DateRange): AureliaClient[] {
-  const altas = () => clients.filter((client) => inRange(client.startedAt, range))
+  const altas = () => clients.filter((client) => isAlta(client, range))
   const bajas = () => clients.filter((client) => client.status === 'churned' && inRange(client.churnedAt, range))
   const paying = () => clients.filter((client) => PAYING_STATUSES.includes(client.status)).sort((a, b) => b.mrr - a.mrr)
   switch (key) {
@@ -130,7 +143,7 @@ export function selectKpiClients(key: KpiKey, clients: AureliaClient[], range: D
     case 'altas': return altas()
     case 'bajas':
     case 'churn': return bajas()
-    case 'netas': return [...altas(), ...bajas().filter((client) => !inRange(client.startedAt, range))]
+    case 'netas': return [...altas(), ...bajas().filter((client) => !isAlta(client, range))]
     case 'activos': return clients.filter((client) => client.status === 'active')
     case 'trial': return clients.filter((client) => client.status === 'trial')
   }
@@ -166,7 +179,7 @@ export function computeMonthlySeries(clients: AureliaClient[], months = 12, now 
     return {
       key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
       label: formatter.format(start).replace('.', ''),
-      altas: clients.filter((client) => inRange(client.startedAt, range)).length,
+      altas: clients.filter((client) => isAlta(client, range)).length,
       bajas: clients.filter((client) => client.status === 'churned' && inRange(client.churnedAt, range)).length,
       activos: activeAtEnd.length,
       mrr: activeAtEnd.reduce((sum, client) => sum + (client.planMonthlyPrice ?? 0), 0),

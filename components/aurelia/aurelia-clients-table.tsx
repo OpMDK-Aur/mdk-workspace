@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
-import { STATUS_LABELS, formatDate, formatMoney, type AureliaClient, type SubscriptionStatus } from '@/lib/aurelia/metrics'
+import { STATUS_LABELS, formatDate, formatMoney, isInternalAccount, type AureliaClient, type SubscriptionStatus } from '@/lib/aurelia/metrics'
 
 const PAGE_SIZE = 25
 type StatusFilter = 'all' | SubscriptionStatus
@@ -116,9 +116,12 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                   <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{client.phone || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm">{client.planName ?? client.planSlug ?? '—'}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn('whitespace-nowrap font-medium', STATUS_STYLES[client.status])} title={client.rawStatus ?? undefined}>
-                      {client.status === 'other' && client.rawStatus ? client.rawStatus : STATUS_LABELS[client.status]}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className={cn('whitespace-nowrap font-medium', STATUS_STYLES[client.status])} title={client.rawStatus ?? undefined}>
+                        {client.status === 'other' && client.rawStatus ? client.rawStatus : STATUS_LABELS[client.status]}
+                      </Badge>
+                      {isInternalAccount(client) && <Badge variant="secondary" className="whitespace-nowrap" title="Cuenta propia de Aurelia o MDK: no cuenta como alta">Interna</Badge>}
+                    </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums">{formatDate(client.startedAt)}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">{formatDate(client.currentPeriodStart)}</TableCell>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeMonthlySeries, computePeriodMetrics, computePlanBreakdown, computeSnapshot, selectKpiClients, type AureliaClient } from './metrics'
+import { computeMonthlySeries, computePeriodMetrics, computePlanBreakdown, computeSnapshot, isInternalAccount, selectKpiClients, type AureliaClient } from './metrics'
 
 const base: Omit<AureliaClient, 'id' | 'status' | 'startedAt' | 'churnedAt' | 'mrr'> = {
   name: 'Cliente', email: null, phone: null, rawStatus: null, planSlug: 'pro', planName: 'Pro',
@@ -51,6 +51,25 @@ describe('Aurelia metrics', () => {
     expect(ids('mrr')).toEqual(['a', 'b', 'e'])
     expect(ids('activos')).toEqual(['a', 'b'])
     expect(ids('trial')).toEqual(['d'])
+  })
+
+  it('excludes Aurelia and MDK internal accounts from altas', () => {
+    const withInternal = [
+      ...clients,
+      client({ id: 'i1', status: 'active', startedAt: '2026-11-06T00:00:00Z', name: 'Aurelia Demo', mrr: 100 }),
+      client({ id: 'i2', status: 'trial', startedAt: '2026-11-07T00:00:00Z', name: 'Prueba', email: 'ops@madketing.io' }),
+      client({ id: 'i3', status: 'active', startedAt: '2026-11-08T00:00:00Z', name: 'Equipo MDK', mrr: 100 }),
+    ]
+    expect(computePeriodMetrics(withInternal, november).altas).toBe(2)
+    expect(selectKpiClients('altas', withInternal, november).map((row) => row.id)).toEqual(['b', 'd'])
+    expect(computeMonthlySeries(withInternal, 1, new Date('2026-11-19T12:00:00Z'))[0].altas).toBe(2)
+  })
+
+  it('detects internal accounts by name or email only on whole words', () => {
+    expect(isInternalAccount({ name: 'Soy Aurelia', email: null })).toBe(true)
+    expect(isInternalAccount({ name: 'Cliente', email: 'hola@soyaurelia.com' })).toBe(true)
+    expect(isInternalAccount({ name: 'Cliente', email: 'admin@mdk.com.ar' })).toBe(true)
+    expect(isInternalAccount({ name: 'Ferretería Admdker', email: 'ventas@ferre.com' })).toBe(false)
   })
 
   it('builds a monthly series ending in the current month', () => {
