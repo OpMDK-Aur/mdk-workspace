@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { useCopilot } from './use-copilot'
 import type { ContextAssessment, ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
 import { PROFILE_FIELD_LABEL } from '@/lib/conexa/copilot/profile-fields'
-import { describeOperation, executionLines, PLATFORM_LABEL, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
+import { describeOperation, executionLines, PLATFORM_LABEL, readableEvidenceExcerpt, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
 
 type Client = {
   id: string
@@ -275,7 +275,7 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
     {fullPanel && <div className="absolute inset-0 z-40 flex min-h-0 flex-col bg-white">{fullContent}</div>}
 
     <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden sm:max-w-xl">
         {selected && <RecommendationDetail item={selected} readonly={selected.status !== 'draft'} onRestore={selected.status === 'discarded' ? async () => { await copilot.restore(selected.id); setSelected(null); toast.success('Recomendación restaurada como borrador') } : undefined} />}
       </DialogContent>
     </Dialog>
@@ -527,7 +527,7 @@ function RecommendationCard({ item, onSelect, onEdit, onEditWithChat, onPublish,
     <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold leading-snug"><button type="button" onClick={onSelect} className="text-left hover:text-[#c55208]">{item.title}</button></h3><div className="mt-2 flex flex-wrap items-center gap-1.5">{item.platforms.length ? item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="rounded-full bg-[#f2f2f0] px-2 py-1 text-[9px] text-[#555]">Basada en contexto</span>}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[9px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} />{item.operation && <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f5ec] px-2 py-1 text-[9px] font-semibold text-[#1b6b38]"><Zap className="size-2.5" aria-hidden="true" />Ejecutable</span>}</div></div><span className="shrink-0 rounded-full bg-[#fff4e9] px-2 py-1 text-[9px] font-semibold text-[#a8440c]">{STATUS_LABEL[item.status]}</span></div>
     <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-[#555]">{item.description}</p>
     <button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-[#a8440c]">Fundamento <ChevronDown className={cn('size-3 transition-transform', evidenceOpen && 'rotate-180')} /></button>
-    {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-[#fafaf9] p-3"><p className="text-[11px] leading-relaxed text-[#555]">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[10px] leading-relaxed text-[#666]"><span className="font-semibold">{evidence.label}: </span>{evidence.excerpt}</li>)}</ul></div>}
+    {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-[#fafaf9] p-3"><p className="text-[11px] leading-relaxed text-[#555]">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="line-clamp-3 border-l-2 border-[#f97316] pl-2 text-[10px] leading-relaxed text-[#666] [overflow-wrap:anywhere]"><span className="font-semibold">{evidence.label}: </span>{readableEvidenceExcerpt(evidence)}</li>)}</ul></div>}
     <div className="mt-3"><p className="text-[10px] font-semibold text-[#555]">Acciones sugeridas</p><ol className="mt-1 list-decimal pl-4 text-[10px] leading-relaxed text-[#666]">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></div>
     <p className="mt-2 text-[10px] text-[#555]"><span className="font-semibold">Impacto esperado:</span> {item.expected_impact}</p>
     <div className="mt-3 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-[#a8440c]">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-[#5a3a22]">{describeOperation(item.operation)}</span></> : manualOnly ? <><span className="font-semibold text-[#5a3a22]">Acción manual:</span> <span className="text-[#666]">{item.non_executable_reason}</span></> : <span className="text-[#777]">Al publicar, Conexa buscará en Meta Ads o Google Ads la entidad que corresponde y te mostrará el cambio exacto antes de ejecutarlo.</span>}</div>
@@ -543,12 +543,45 @@ function HistoryPanel({ items, loading, error, filters, search, onSearch, onStat
   </div>
 }
 
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="flex min-w-0 flex-col gap-2">
+    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[#8a8a85]">{title}</h3>
+    {children}
+  </section>
+}
+
 function RecommendationDetail({ item, readonly, onRestore }: { item: Recommendation; readonly: boolean; onRestore?: () => void }) {
-  return <>
-    <DialogHeader><DialogTitle>{item.title}</DialogTitle><DialogDescription>{readonly ? `${STATUS_LABEL[item.status]} · vista de solo lectura` : 'Detalle de la recomendación'}</DialogDescription></DialogHeader>
-    <div className="flex flex-col gap-3 text-sm"><div className="flex flex-wrap gap-1.5">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div><p className="whitespace-pre-wrap text-xs leading-relaxed">{item.description}</p><section><h3 className="mb-1 text-xs font-semibold">Fundamento</h3><p className="text-xs leading-relaxed text-[#666]">{item.rationale}</p><ul className="mt-2 flex flex-col gap-2">{item.evidence.map((evidence) => <li key={evidence.id} className="border-l-2 border-[#f97316] pl-2 text-[11px] leading-relaxed"><b>{evidence.label}: </b>{evidence.excerpt}</li>)}</ul></section><section><h3 className="mb-1 text-xs font-semibold">Acciones sugeridas</h3><ol className="list-decimal pl-5 text-xs leading-relaxed">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></section><p className="text-xs"><b>Impacto esperado:</b> {item.expected_impact}</p>{item.operation && <p className="rounded-md bg-[#fff8f2] p-3 text-xs"><b>Acción en {PLATFORM_LABEL[item.operation.platform]}:</b> {describeOperation(item.operation)}</p>}{!item.operation && item.non_executable_reason && <p className="rounded-md bg-[#fafaf9] p-3 text-xs"><b>Acción manual:</b> {item.non_executable_reason}</p>}{item.execution_result && <div className="rounded-md bg-[#f4faf6] p-3 text-xs text-[#1b6b38]"><p className="font-semibold">Ejecutado el {new Date(item.execution_result.executedAt).toLocaleString('es-AR')}</p><ExecutionSummary item={item} /></div>}{item.discard_reason && <p className="rounded-md bg-[#f5f5f4] p-3 text-xs"><b>Motivo del descarte:</b> {item.discard_reason}</p>}</div>
+  const closedAt = item.status === 'published' ? item.published_at : item.status === 'discarded' ? item.discarded_at : null
+  return <div className="flex min-w-0 flex-col gap-5 [overflow-wrap:anywhere]">
+    <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
+      <DialogTitle className="text-pretty text-lg leading-snug">{item.title}</DialogTitle>
+      <DialogDescription className="text-xs">{readonly ? `${STATUS_LABEL[item.status]}${closedAt ? ` el ${new Date(closedAt).toLocaleString('es-AR')}` : ''} · vista de solo lectura` : 'Detalle de la recomendación'}</DialogDescription>
+      <div className="flex flex-wrap gap-1.5 pt-1">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div>
+    </DialogHeader>
+
+    <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.description}</p>
+
+    {item.execution_result && <div className="flex flex-col gap-1 rounded-lg border border-[#cfe9d8] bg-[#f4faf6] p-3 text-xs text-[#1b6b38]"><p className="font-semibold">Ejecutado el {new Date(item.execution_result.executedAt).toLocaleString('es-AR')}</p><ExecutionSummary item={item} /></div>}
+    {item.operation && <div className="rounded-lg border border-[#f3dcc9] bg-[#fff8f2] p-3 text-xs leading-relaxed"><p className="font-semibold text-[#a8440c]">Acción en {PLATFORM_LABEL[item.operation.platform]}</p><p className="mt-1 text-[#5a3a22]">{describeOperation(item.operation)}</p></div>}
+    {!item.operation && item.non_executable_reason && <div className="rounded-lg bg-[#fafaf9] p-3 text-xs leading-relaxed"><p className="font-semibold">Acción manual</p><p className="mt-1 text-[#666]">{item.non_executable_reason}</p></div>}
+    {item.discard_reason && <div className="rounded-lg bg-[#f5f5f4] p-3 text-xs leading-relaxed"><p className="font-semibold">Motivo del descarte</p><p className="mt-1 text-[#666]">{item.discard_reason}</p></div>}
+
+    <DetailSection title="Fundamento">
+      <p className="text-xs leading-relaxed text-[#555]">{item.rationale}</p>
+      {item.evidence.length > 0 && <ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="min-w-0 rounded-md border border-[#eeeeeb] bg-[#fafaf9] px-3 py-2">
+        <p className="text-[11px] font-semibold leading-snug text-[#202020]">{evidence.label}</p>
+        <p className="mt-0.5 line-clamp-3 text-[11px] leading-relaxed text-[#666]">{readableEvidenceExcerpt(evidence)}</p>
+      </li>)}</ul>}
+    </DetailSection>
+
+    {item.suggested_actions.length > 0 && <DetailSection title="Acciones sugeridas">
+      <ol className="flex list-decimal flex-col gap-1 pl-5 text-xs leading-relaxed">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol>
+    </DetailSection>}
+
+    {item.expected_impact && <DetailSection title="Impacto esperado"><p className="text-xs leading-relaxed">{item.expected_impact}</p></DetailSection>}
+
     {onRestore && <DialogFooter><Button onClick={onRestore}>Restaurar como borrador</Button></DialogFooter>}
-  </>
+  </div>
 }
 
 function EditRecommendationDialog({ item, onCancel, onSave }: { item: Recommendation; onCancel: () => void; onSave: (patch: Recommendation) => Promise<void> }) {
