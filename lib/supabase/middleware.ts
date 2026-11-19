@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { homeForAccess, isDashboardPathAllowed, resolveUnitAccess } from '@/lib/business-units'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -60,10 +61,11 @@ export async function updateSession(request: NextRequest) {
     // Skip onboarding check for API routes
     if (!request.nextUrl.pathname.startsWith('/api')) {
       try {
-        // Check if user has completed onboarding with timeout
+        // Check if user has completed onboarding with timeout.
+        // `*` keeps this working before `unidades_negocio` exists in the table.
         const { data: colaborador } = await supabase
           .from('colaboradores')
-          .select('onboarding_completado')
+          .select('*, roles(nombre)')
           .eq('id', user.id)
           .single()
           .abortSignal(AbortSignal.timeout(3000)) // 3 second timeout
@@ -73,6 +75,17 @@ export async function updateSession(request: NextRequest) {
           const url = request.nextUrl.clone()
           url.pathname = '/onboarding'
           return NextResponse.redirect(url)
+        }
+
+        // Each business unit only sees its own section of the dashboard.
+        if (colaborador) {
+          const access = resolveUnitAccess(colaborador.roles?.nombre, colaborador.unidades_negocio)
+          if (!isDashboardPathAllowed(request.nextUrl.pathname, access)) {
+            const url = request.nextUrl.clone()
+            url.pathname = homeForAccess(access)
+            url.search = ''
+            return NextResponse.redirect(url)
+          }
         }
       } catch {
         // If query times out or fails, allow access to avoid blocking user

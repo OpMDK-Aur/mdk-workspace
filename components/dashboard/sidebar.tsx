@@ -8,6 +8,7 @@ import type { User } from '@supabase/supabase-js'
 import type { Profile } from '@/lib/types'
 import { createClient, getAuthUser } from '@/lib/supabase/client'
 import { isMaster, canSeeSection } from '@/lib/permissions'
+import { resolveUnitAccess } from '@/lib/business-units'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -87,7 +88,7 @@ interface NavSection {
 }
 
 const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles }
-const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem, moduleId: 'aurelia', badge: 'nuevo', badgeUntil: '2027-01-15' }
+const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem, badge: 'nuevo', badgeUntil: '2027-01-15' }
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
@@ -177,6 +178,7 @@ export function Sidebar({
   const userRole = profile?.role_name || profile?.role || 'Usuario'
   const userModulos = profile?.modulos_habilitados || []
   const userIsMaster = isMaster(userRole)
+  const unitAccess = resolveUnitAccess(profile?.role_name, profile?.unidades_negocio)
 
   // Fetch unread notification count
   useEffect(() => {
@@ -431,26 +433,28 @@ export function Sidebar({
             <div className="p-2 space-y-4">
               {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
-                {renderNavItem(conexaItem, true)}
-                {renderNavItem(aureliaItem, true)}
-                {mainItems.map(item => renderNavItem(item, true))}
-                {tareasSubItems.map(item => renderNavItem(item, true))}
+                {unitAccess.mdk && renderNavItem(conexaItem, true)}
+                {unitAccess.aurelia && renderNavItem(aureliaItem, true)}
+                {unitAccess.mdk && mainItems.map(item => renderNavItem(item, true))}
+                {unitAccess.mdk && tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
 
               {/* Primary items (Clientes, Performance, Agentes) */}
-              <div className="space-y-1 pt-2 border-t border-border">
-                {primaryItems.map(item => renderNavItem(item, true))}
-              </div>
+              {unitAccess.mdk && (
+                <div className="space-y-1 pt-2 border-t border-border">
+                  {primaryItems.map(item => renderNavItem(item, true))}
+                </div>
+              )}
 
               {/* Admin section - for Master users or users with admin module access */}
-              {(userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
+              {unitAccess.mdk && (userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {adminItems.map(item => renderNavItem(item, true))}
                 </div>
               )}
 
               {/* Integraciones section */}
-              {(userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
+              {unitAccess.mdk && (userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {platformItems.map(item => renderNavItem(item, true))}
                 </div>
@@ -584,9 +588,10 @@ export function Sidebar({
               <div className="p-4 space-y-4">
                 {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
-                  {renderNavItem(conexaItem)}
-                  {renderNavItem(aureliaItem)}
+                  {unitAccess.mdk && renderNavItem(conexaItem)}
+                  {unitAccess.aurelia && renderNavItem(aureliaItem)}
                   {/* Tareas as collapsible parent */}
+                  {unitAccess.mdk && (
                   <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
                     <div className="flex items-center">
                       <Link
@@ -634,15 +639,18 @@ export function Sidebar({
                       ))}
                     </CollapsibleContent>
                   </Collapsible>
+                  )}
                 </div>
 
                 {/* Primary items (Clientes, Performance, Agentes) */}
-                <div className="space-y-1">
-                  {primaryItems.map(item => renderNavItem(item))}
-                </div>
+                {unitAccess.mdk && (
+                  <div className="space-y-1">
+                    {primaryItems.map(item => renderNavItem(item))}
+                  </div>
+                )}
 
                 {/* Administration section - ONLY for Master users */}
-                {(userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
+                {unitAccess.mdk && (userIsMaster || adminItems.some(item => item.moduleId && userModulos.includes(item.moduleId))) && (
                   <div className="space-y-1">
                     <Collapsible open={adminOpen} onOpenChange={setAdminOpen}>
                       <div className="flex items-center">
@@ -689,7 +697,7 @@ export function Sidebar({
                 )}
 
                 {/* Integraciones section */}
-                {(userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
+                {unitAccess.mdk && (userIsMaster || canSeeSection(userRole, userModulos, 'plataformas')) && (
                   <div className="space-y-1">
                     <Collapsible open={platformsOpen} onOpenChange={setPlatformsOpen}>
                       <div className="flex items-center">

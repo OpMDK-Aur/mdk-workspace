@@ -1,7 +1,8 @@
 'use client'
 
 import { useDeferredValue, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Play, Search, Square } from 'lucide-react'
+import { formatDuration } from '@/lib/aurelia/time-shared'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,8 +25,16 @@ const STATUS_STYLES: Record<SubscriptionStatus, string> = {
 
 const FILTER_ORDER: StatusFilter[] = ['all', 'active', 'trial', 'past_due', 'churned', 'other']
 
+export type ClientsTableTime = {
+  secondsByClient: Map<string, number>
+  runningClientId: string | null
+  pending: boolean
+  onToggleTimer: (client: AureliaClient) => void
+}
+
 /** `bare` la muestra sin tarjeta y respeta el orden recibido (lo usa el detalle de cada indicador). */
-export function AureliaClientsTable({ clients, currency, bare = false }: { clients: AureliaClient[]; currency: string; bare?: boolean }) {
+export function AureliaClientsTable({ clients, currency, bare = false, time, onOpenClient }: { clients: AureliaClient[]; currency: string; bare?: boolean; time?: ClientsTableTime; onOpenClient?: (client: AureliaClient) => void }) {
+  const columnCount = 9 + (time ? 2 : 0)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
@@ -80,20 +89,29 @@ export function AureliaClientsTable({ clients, currency, bare = false }: { clien
                 <TableHead>Fin de prueba</TableHead>
                 <TableHead>Baja</TableHead>
                 <TableHead className="text-right">MRR</TableHead>
+                {time && <TableHead className="text-right">Tiempo</TableHead>}
+                {time && <TableHead><span className="sr-only">Medir tiempo</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {visible.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">Ningún cliente coincide con los filtros.</TableCell>
+                  <TableCell colSpan={columnCount} className="py-10 text-center text-sm text-muted-foreground">Ningún cliente coincide con los filtros.</TableCell>
                 </TableRow>
               ) : visible.map((client) => (
                 <TableRow key={client.id}>
                   <TableCell className="max-w-64">
-                    <div className="flex flex-col">
-                      <span className="truncate font-medium">{client.name}</span>
-                      {client.email && <span className="truncate text-xs text-muted-foreground">{client.email}</span>}
-                    </div>
+                    {onOpenClient ? (
+                      <button type="button" onClick={() => onOpenClient(client)} className="flex max-w-full flex-col rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span className="truncate font-medium">{client.name}</span>
+                        {client.email && <span className="truncate text-xs text-muted-foreground">{client.email}</span>}
+                      </button>
+                    ) : (
+                      <div className="flex flex-col">
+                        <span className="truncate font-medium">{client.name}</span>
+                        {client.email && <span className="truncate text-xs text-muted-foreground">{client.email}</span>}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{client.phone || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm">{client.planName ?? client.planSlug ?? '—'}</TableCell>
@@ -107,6 +125,25 @@ export function AureliaClientsTable({ clients, currency, bare = false }: { clien
                   <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">{formatDate(client.trialEndAt)}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">{formatDate(client.churnedAt)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right text-sm font-medium tabular-nums">{client.mrr ? formatMoney(client.mrr, currency) : '—'}</TableCell>
+                  {time && (
+                    <TableCell className="whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground">
+                      {time.secondsByClient.get(client.id) ? formatDuration(time.secondsByClient.get(client.id)!) : '—'}
+                    </TableCell>
+                  )}
+                  {time && (
+                    <TableCell className="w-10">
+                      <Button
+                        size="icon"
+                        variant={time.runningClientId === client.id ? 'default' : 'ghost'}
+                        className="size-8"
+                        disabled={time.pending}
+                        onClick={() => time.onToggleTimer(client)}
+                        aria-label={time.runningClientId === client.id ? `Detener tiempo en ${client.name}` : `Medir tiempo en ${client.name}`}
+                      >
+                        {time.runningClientId === client.id ? <Square className="size-3.5 fill-current" /> : <Play className="size-3.5" />}
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

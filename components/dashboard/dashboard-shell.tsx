@@ -8,6 +8,7 @@ import type { Profile } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { ActiveTimerBar } from '@/components/time-tracking/active-timer-bar'
 import { NotificationAlertProvider } from './notification-alert'
+import { resolveUnitAccess } from '@/lib/business-units'
 
 interface DashboardShellProps {
   user: User
@@ -45,7 +46,7 @@ export function DashboardShell({ user, profile, children }: DashboardShellProps)
         profile={profile}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <ActiveTimerBar />
+        {resolveUnitAccess(profile?.role_name, profile?.unidades_negocio).mdk && <ActiveTimerBar />}
         <main className="flex-1 overflow-auto relative">
           {children}
         </main>

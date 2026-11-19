@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { KPI_DETAIL, formatMoney, type AureliaClient, type KpiKey } from '@/lib/aurelia/metrics'
 import { AureliaClientsTable } from './aurelia-clients-table'
 
-export function AureliaKpiSheet({ kpi, clients, currency, periodLabel, onClose }: { kpi: KpiKey | null; clients: AureliaClient[]; currency: string; periodLabel: string; onClose: () => void }) {
+export function AureliaKpiSheet({ kpi, clients, currency, periodLabel, onClose, onOpenClient }: { kpi: KpiKey | null; clients: AureliaClient[]; currency: string; periodLabel: string; onClose: () => void; onOpenClient: (client: AureliaClient) => void }) {
   const detail = kpi ? KPI_DETAIL[kpi] : null
   const isPeriodKpi = kpi === 'altas' || kpi === 'bajas' || kpi === 'netas' || kpi === 'churn'
   const totalMrr = clients.reduce((sum, client) => sum + client.mrr, 0)
@@ -19,7 +19,7 @@ export function AureliaKpiSheet({ kpi, clients, currency, periodLabel, onClose }
           </SheetDescription>
         </SheetHeader>
         <div className="p-4">
-          {kpi && <AureliaClientsTable key={kpi} bare clients={clients} currency={currency} />}
+          {kpi && <AureliaClientsTable key={kpi} bare clients={clients} currency={currency} onOpenClient={onOpenClient} />}
         </div>
       </SheetContent>
     </Sheet>
