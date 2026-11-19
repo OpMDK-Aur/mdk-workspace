@@ -172,7 +172,7 @@ export type KpiKey = 'mrr' | 'altas' | 'activaciones' | 'bajas' | 'netas' | 'act
 export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> = {
   mrr: { title: 'Clientes que suman MRR', description: 'Suscripciones activas o con pago pendiente, ordenadas por MRR.' },
   altas: { title: 'Altas del período', description: 'Clientes cuya primera suscripción empezó en el período (sin cuentas internas de Aurelia y MDK).' },
-  activaciones: { title: 'Activaciones del período', description: 'Clientes que empezaron a pagar en el período, aunque se hayan dado de alta antes (fecha estimada con su historial de suscripciones).' },
+  activaciones: { title: 'Activaciones del período', description: 'Clientes que activaron su plan actual en el período, aunque se hayan dado de alta antes (fecha estimada con su suscripción vigente).' },
   past_due: { title: 'Clientes con pago pendiente', description: 'Suscripción vigente con un cobro sin acreditar.' },
   bajas: { title: 'Bajas del período', description: 'Clientes cuya suscripción finalizó en el período.' },
   netas: { title: 'Altas y bajas del período', description: 'Altas menos bajas: los dos grupos que forman el neto.' },

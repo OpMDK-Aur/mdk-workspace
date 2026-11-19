@@ -33,15 +33,17 @@ function activationOf(row: SubscriptionHistoryRow, now: number): string | null {
 }
 
 /**
- * Fecha estimada en que el cliente empezó a pagar: la primera suscripción
- * cobrada de su historial. El CRM no guarda el cambio de estado, así que si
- * una misma suscripción pasó de prueba a activa sin fecha de fin de prueba,
- * se usa su fecha de creación.
+ * Fecha estimada en que el cliente activó su plan actual: la de la suscripción
+ * cobrada más reciente (`history` viene de la más nueva a la más vieja, igual
+ * que el criterio del estado vigente). El CRM no guarda el cambio de estado,
+ * así que si una misma suscripción pasó de prueba a activa sin fecha de fin de
+ * prueba, se usa su fecha de creación.
  */
 export function estimateActivation(history: SubscriptionHistoryRow[], now = Date.now()): string | null {
-  return history
-    .filter((row) => isPaidSubscription(row, now))
-    .map((row) => activationOf(row, now))
-    .filter((value): value is string => Boolean(value) && !Number.isNaN(ts(value)))
-    .sort((a, b) => ts(a) - ts(b))[0] ?? null
+  for (const row of history) {
+    if (!isPaidSubscription(row, now)) continue
+    const activation = activationOf(row, now)
+    if (activation && !Number.isNaN(ts(activation))) return activation
+  }
+  return null
 }

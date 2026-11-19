@@ -105,7 +105,7 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
       {!onlyActive && (
         <ToggleGroup type="single" size="sm" variant="outline" value={status} onValueChange={(value) => { if (value) { setStatus(value as StatusFilter); setPage(1) } }} className="flex-wrap justify-start" aria-label="Filtrar por estado">
           {FILTER_ORDER.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
-            <ToggleGroupItem key={key} value={key} className="gap-1.5 px-3 text-xs">
+            <ToggleGroupItem key={key} value={key} className="min-w-fit flex-none gap-1.5 whitespace-nowrap px-3 text-xs">
               {key === 'all' ? 'Todos' : STATUS_LABELS[key]}
               <span className="tabular-nums text-muted-foreground">{counts[key].toLocaleString('es-AR')}</span>
             </ToggleGroupItem>

@@ -20,6 +20,14 @@ describe('estimateActivation', () => {
     expect(estimateActivation(history, now)).toBe('2026-11-19T12:00:00Z')
   })
 
+  it('uses the most recent paid subscription, not the first one', () => {
+    const history = [
+      row({ createdAt: '2026-11-19T12:00:00Z' }),
+      row({ status: 'churned', rawStatus: 'canceled', trialEndAt: '2026-04-30T00:00:00Z', endedAt: '2026-08-01T00:00:00Z' }),
+    ]
+    expect(estimateActivation(history, now)).toBe('2026-11-19T12:00:00Z')
+  })
+
   it('ignores free plans before the upgrade', () => {
     const history = [row({ createdAt: '2026-11-19T12:00:00Z' }), row({ monthlyPrice: 0, status: 'churned', endedAt: '2026-11-19T12:00:00Z' })]
     expect(estimateActivation(history, now)).toBe('2026-11-19T12:00:00Z')
