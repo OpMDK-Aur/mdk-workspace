@@ -71,10 +71,17 @@ export type DecisionRecord = {
 export type RecommendationSource = 'chat' | 'scan' | 'manual'
 
 /** Líneas legibles del resultado, compatibles con filas anteriores a la migración. */
+/** Identifica en la plataforma la campaña que creó Publicar (queda en pausa, así que no aparece entre las activas). */
+export function createdCampaignNote(step?: Partial<PlanStepResult> | null) {
+  const campaignId = step?.created?.campaignId
+  if (!campaignId) return ''
+  return ` · creada en pausa, ID de campaña ${campaignId}`
+}
+
 export function executionLines(result: ExecutionResult | null) {
   if (!result) return []
   if ('manual' in result) return ['Marcada como hecha manualmente']
-  if ('steps' in result) return result.steps.map((item) => `${item.entityName}: ${item.beforeLabel} → ${item.afterLabel}${item.outcome === 'failed' ? ' (falló)' : item.outcome === 'skipped' ? ' (ya aplicado)' : ''}`)
+  if ('steps' in result) return result.steps.map((item) => `${item.entityName}: ${item.beforeLabel} → ${item.afterLabel}${createdCampaignNote(item)}${item.outcome === 'failed' ? ' (falló)' : item.outcome === 'skipped' ? ' (ya aplicado)' : ''}`)
   return [`${result.entityName}: ${result.before} → ${result.after}`]
 }
 

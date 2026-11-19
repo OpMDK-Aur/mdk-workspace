@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { useCopilot } from './use-copilot'
 import type { ContextAssessment, ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
 import { PROFILE_FIELD_LABEL } from '@/lib/conexa/copilot/profile-fields'
-import { describeOperation, executionLines, PLATFORM_LABEL, readableEvidenceExcerpt, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
+import { createdCampaignNote, describeOperation, executionLines, PLATFORM_LABEL, readableEvidenceExcerpt, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
 
 type Client = {
   id: string
@@ -643,7 +643,7 @@ function PlanSteps({ steps }: { steps: PlanStep[] }) {
 function ExecutionSummary({ item, compact = false }: { item: Recommendation; compact?: boolean }) {
   const decisions = (item.decisions ?? []).filter((decision: DecisionRecord) => decision.action === 'publish')
   const lines = decisions.length
-    ? decisions.map((decision) => ({ key: decision.id, text: `${decision.payload?.step?.entityName ?? 'Entidad'}: ${decision.value_before?.label ?? String(decision.value_before?.value ?? '')} → ${decision.value_after?.label ?? String(decision.value_after?.value ?? '')}`, failed: decision.outcome === 'failed', who: decision.user_name }))
+    ? decisions.map((decision) => ({ key: decision.id, text: `${decision.payload?.step?.entityName ?? 'Entidad'}: ${decision.value_before?.label ?? String(decision.value_before?.value ?? '')} → ${decision.value_after?.label ?? String(decision.value_after?.value ?? '')}${createdCampaignNote(decision.payload?.step)}`, failed: decision.outcome === 'failed', who: decision.user_name }))
     : executionLines(item.execution_result).map((text, index) => ({ key: String(index), text, failed: text.endsWith('(falló)'), who: null as string | null | undefined }))
   if (!lines.length) return null
   return <span className={cn('flex flex-col gap-1', compact ? 'mt-1.5 rounded-md bg-[#f4faf6] px-2 py-1.5 text-[10px] leading-relaxed text-[#1b6b38]' : 'mt-1 text-xs')}>{lines.map((line) => <span key={line.key} className={cn('block', line.failed && 'text-[#b42318]')}>{line.text}{line.failed && decisions.length ? ' (falló)' : ''}{!compact && line.who ? ` · ${line.who}` : ''}</span>)}</span>
