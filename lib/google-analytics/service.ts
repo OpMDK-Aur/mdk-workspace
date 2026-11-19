@@ -28,9 +28,13 @@ export function getBuenosAiresLastSevenDays() {
   return { dateFrom, dateTo, timeZone: 'America/Argentina/Buenos_Aires' }
 }
 
-function createAuth() {
+export type GoogleAnalyticsAuthOptions = { accessToken?: string | null }
+
+// Con `accessToken` consulta como el usuario que conectó su Google Analytics;
+// sin él usa la conexión compartida de la agencia.
+function createAuth(options: GoogleAnalyticsAuthOptions = {}) {
   const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET)
-  auth.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })
+  auth.setCredentials(options.accessToken ? { access_token: options.accessToken } : { refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN })
   return auth
 }
 
@@ -89,10 +93,10 @@ function mergeRecordsByDimensions(chunks: Array<Array<Record<string, string | nu
   return [...merged.values()]
 }
 
-export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsReport> {
+export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: string, dateTo: string, authOptions: GoogleAnalyticsAuthOptions = {}): Promise<GoogleAnalyticsReport> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
-  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth(authOptions) })
   const base = { dateRanges: [{ startDate: dateFrom, endDate: dateTo }] }
   // Nota sobre dimensiones/métricas: "sessionCampaignName" (Campaña de la
   // sesión), "unifiedPagePathScreen" (Ruta de página y clase de pantalla),
@@ -150,10 +154,10 @@ export async function getGoogleAnalyticsReport(propertyId: string, dateFrom: str
   return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, reports, errors }
 }
 
-export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom: string, dateTo: string, pagePath: string) {
+export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom: string, dateTo: string, pagePath: string, authOptions: GoogleAnalyticsAuthOptions = {}) {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
-  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth(authOptions) })
   const baseMetrics = ['screenPageViews', 'activeUsers', 'sessions', 'engagedSessions']
   const optionalMetrics = ['newUsers', 'engagementRate', 'averageSessionDuration', 'bounceRate', 'eventCount', 'keyEvents', 'ecommercePurchases', 'purchaseRevenue']
   const request = (metrics: string[]) => analyticsData.properties.runReport({
@@ -184,10 +188,10 @@ export async function getGoogleAnalyticsPageMetrics(propertyId: string, dateFrom
   return { propertyId: normalizedProperty, dateRange: { start: dateFrom, end: dateTo }, pagePath, metricsUsed, warnings, rows, totals }
 }
 
-export async function getGoogleAnalyticsSales(propertyId: string, dateFrom: string, dateTo: string): Promise<GoogleAnalyticsSales> {
+export async function getGoogleAnalyticsSales(propertyId: string, dateFrom: string, dateTo: string, authOptions: GoogleAnalyticsAuthOptions = {}): Promise<GoogleAnalyticsSales> {
   const normalizedProperty = propertyId.replace(/^properties\//, '')
   if (!/^\d+$/.test(normalizedProperty)) throw new Error('La propiedad de Google Analytics no tiene un ID válido.')
-  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth() })
+  const analyticsData = google.analyticsdata({ version: 'v1beta', auth: createAuth(authOptions) })
   const response = await analyticsData.properties.runReport({
     property: `properties/${normalizedProperty}`,
     requestBody: {
