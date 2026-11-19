@@ -22,7 +22,8 @@ export default async function DashboardLayout({
   // Get colaborador data
   const { data: colaborador } = await supabase
     .from('colaboradores')
-    .select('id, nombre, apellido, email, rol_id, puesto, activo, avatar_url, theme, accent_hue, onboarding_completado, modulos_habilitados, roles(id, nombre), departamentos(id, nombre)')
+    // `*` instead of a column list so the shell keeps loading before `unidades_negocio` is migrated.
+    .select('*, roles(id, nombre), departamentos(id, nombre)')
     .eq('id', user.id)
     .maybeSingle()
 
