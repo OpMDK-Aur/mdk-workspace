@@ -178,6 +178,7 @@ const operationSchema = z.discriminatedUnion('kind', [
 const googleOperationSchema = z.discriminatedUnion('kind', [
   z.object({ platform: z.literal('google_ads'), kind: z.literal('set_status'), customerId: z.string().regex(/^\d{3,20}$/), campaignId: z.string().regex(/^\d{1,30}$/), entityName: z.string().max(200), status: z.enum(['ENABLED', 'PAUSED']) }),
   z.object({ platform: z.literal('google_ads'), kind: z.literal('set_daily_budget'), customerId: z.string().regex(/^\d{3,20}$/), campaignId: z.string().regex(/^\d{1,30}$/), entityName: z.string().max(200), dailyBudget: z.number().positive() }),
+  z.object({ platform: z.literal('google_ads'), kind: z.literal('create_campaign'), customerId: z.string().regex(/^\d{3,20}$/), templateCampaignId: z.string().regex(/^\d{1,30}$/), templateCampaignName: z.string().max(200), campaignName: z.string().trim().min(1).max(120), dailyBudget: z.number().positive(), adGroups: z.array(z.object({ id: z.string().regex(/^\d{1,30}$/), name: z.string().max(200) })).min(1).max(3) }),
 ])
 
 /** Valida la forma de una operación guardada antes de ejecutarla. */
