@@ -8,6 +8,9 @@ import type { Profile } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { ActiveTimerBar } from '@/components/time-tracking/active-timer-bar'
 import { NotificationAlertProvider } from './notification-alert'
+import { AURELIA_HOME, resolveUnitAccess } from '@/lib/business-units'
+import { AureliaTimerBar } from '@/components/aurelia/aurelia-timer-bar'
+import { usePathname } from 'next/navigation'
 
 interface DashboardShellProps {
   user: User
@@ -17,6 +20,10 @@ interface DashboardShellProps {
 
 export function DashboardShell({ user, profile, children }: DashboardShellProps) {
   const { setTheme } = useTheme()
+  const pathname = usePathname()
+  const unitAccess = resolveUnitAccess(profile?.role_name, profile?.unidades_negocio)
+  // En las pantallas de Aurelia (o para quien es solo de Aurelia) el timer mide sobre clientes del CRM de Aurelia.
+  const showAureliaTimer = unitAccess.aurelia && (pathname.startsWith(AURELIA_HOME) || !unitAccess.mdk)
   const accentHue = profile?.accent_hue ?? 55
   const accentStyles = {
     '--primary': `oklch(0.7 0.18 ${accentHue})`,
@@ -45,7 +52,7 @@ export function DashboardShell({ user, profile, children }: DashboardShellProps)
         profile={profile}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <ActiveTimerBar />
+        {showAureliaTimer ? <AureliaTimerBar /> : unitAccess.mdk && <ActiveTimerBar />}
         <main className="flex-1 overflow-auto relative">
           {children}
         </main>
