@@ -36,9 +36,12 @@ export const STATUS_LABELS: Record<SubscriptionStatus, string> = {
 
 export const PAYING_STATUSES: SubscriptionStatus[] = ['active', 'past_due']
 
-export type PeriodKey = 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_12m'
+export type PeriodKey = 'today' | 'last_7' | 'last_14' | 'this_month' | 'last_month' | 'last_30' | 'last_90' | 'this_year' | 'last_12m'
 
 export const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
+  { value: 'today', label: 'Hoy' },
+  { value: 'last_7', label: 'Últimos 7 días' },
+  { value: 'last_14', label: 'Últimos 14 días' },
   { value: 'this_month', label: 'Este mes' },
   { value: 'last_month', label: 'Mes anterior' },
   { value: 'last_30', label: 'Últimos 30 días' },
@@ -53,6 +56,9 @@ export function resolvePeriod(key: PeriodKey, now = new Date()): DateRange {
   const startOfMonth = (year: number, month: number) => new Date(year, month, 1)
   const daysAgo = (days: number) => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - days + 1); return date }
   switch (key) {
+    case 'today': return { start: daysAgo(1), end: now }
+    case 'last_7': return { start: daysAgo(7), end: now }
+    case 'last_14': return { start: daysAgo(14), end: now }
     case 'this_month': return { start: startOfMonth(now.getFullYear(), now.getMonth()), end: now }
     case 'last_month': return { start: startOfMonth(now.getFullYear(), now.getMonth() - 1), end: startOfMonth(now.getFullYear(), now.getMonth()) }
     case 'last_30': return { start: daysAgo(30), end: now }
@@ -62,10 +68,16 @@ export function resolvePeriod(key: PeriodKey, now = new Date()): DateRange {
   }
 }
 
-/** Período inmediatamente anterior y de la misma duración, para comparar. */
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Período anterior de la misma duración, para comparar. Un período de menos de
+ * un día (Hoy) se compara con ayer hasta la misma hora.
+ */
 export function previousRange(range: DateRange): DateRange {
   const length = range.end.getTime() - range.start.getTime()
-  return { start: new Date(range.start.getTime() - length), end: range.start }
+  const shift = Math.max(length, DAY_MS)
+  return { start: new Date(range.start.getTime() - shift), end: new Date(range.end.getTime() - shift) }
 }
 
 const time = (value: string | null) => (value ? new Date(value).getTime() : Number.NaN)
