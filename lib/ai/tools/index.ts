@@ -728,11 +728,11 @@ const getGoogleTagManagerReportTool: ToolDefinition = {
   async execute(_input, context: ExecutionContext) {
     if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
     const supabase = createAdminClient()
-    const { data: client, error } = await supabase.from('clientes').select('tag_manager_container_id').eq('id', context.clientId).single()
+    const { data: client, error } = await supabase.from('clientes').select('nombre_del_negocio, tag_manager_container_id').eq('id', context.clientId).single()
     if (error || !client?.tag_manager_container_id) return { available: false, message: 'El cliente no tiene un contenedor de Google Tag Manager asignado en la configuración de plataforma.' }
     context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'running', label: 'Consultando Google Tag Manager...' })
     try {
-      const report = await getGoogleTagManagerReport(client.tag_manager_container_id)
+      const report = await getGoogleTagManagerReport(client.tag_manager_container_id, { clientName: client.nombre_del_negocio })
       context.emitActivity?.({ agentSlug: 'supervisor', toolKey: 'get_google_tag_manager_report', status: 'completed', label: 'Información de Google Tag Manager recibida' })
       return { available: true, source: 'Google Tag Manager', ...report }
     } catch (cause) {

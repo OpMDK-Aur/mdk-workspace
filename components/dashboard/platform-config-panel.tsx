@@ -455,7 +455,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [analyticsDropdown, setAnalyticsDropdown] = useState<string | null>(null)
   const [tagSearch, setTagSearch] = useState('')
   const [tagDropdown, setTagDropdown] = useState<string | null>(null)
-  const [tagPage, setTagPage] = useState(1)
+  const [tagSearchedTerm, setTagSearchedTerm] = useState('')
   const [tagHasMore, setTagHasMore] = useState(false)
   const [tagLoading, setTagLoading] = useState(false)
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
@@ -515,25 +515,37 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     return () => window.clearTimeout(timeout)
   }, [crmClientSearchInput])
 
-  async function fetchTagContainers(page = 1) {
+  async function fetchTagContainers(search = '') {
     setTagLoading(true)
+    setTagManagerError(null)
     try {
-      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'force-cache' })
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      const response = await fetch(`/api/google/tag-manager/accounts?${params.toString()}`)
       const data = await response.json()
-      if (response.status === 429) {
-        setTagManagerError(data.error || 'Google Tag Manager está temporalmente limitado por cuota')
-        return
-      }
       if (!response.ok || data.error) throw new Error(data.error || 'No se pudieron cargar los contenedores de Tag Manager')
-      setTagContainers(previous => page === 1 ? (data.accounts ?? []) : [...previous, ...(data.accounts ?? [])])
-      setTagPage(data.page ?? page)
-      setTagHasMore(Boolean(data.hasMore))
+      const found: typeof tagContainers = data.accounts ?? []
+      setTagContainers(previous => {
+        const byId = new globalThis.Map(previous.map(container => [container.containerId, container] as const))
+        for (const container of found) byId.set(container.containerId, container)
+        return [...byId.values()]
+      })
+      setTagHasMore(Boolean(data.truncated))
+      setTagSearchedTerm(search)
     } catch (error) {
       setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager')
     } finally {
       setTagLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!tagDropdown) return
+    const term = tagSearch.trim()
+    if (term.length < 2) return
+    const timeout = window.setTimeout(() => fetchTagContainers(term), 400)
+    return () => window.clearTimeout(timeout)
+  }, [tagSearch, tagDropdown]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     getClientCrmAccounts(clients.map(client => client.id)).then(result => {
@@ -560,7 +572,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
       })
       .catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar las propiedades de Analytics'))
 
-    fetchTagContainers(1)
+    fetchTagContainers()
 
   }, [])
 
@@ -1227,9 +1239,11 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                             <span>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</span>
                           </button>
                         ))}
-                        {tagLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando contenedores...</p>}
-                        {!tagLoading && tagHasMore && <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchTagContainers(tagPage + 1)}>Ver más</button>}
-                        {!tagLoading && tagContainers.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{tagManagerError || 'No se encontraron contenedores'}</p>}
+                        {tagLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Buscando contenedores...</p>}
+                        {!tagLoading && tagManagerError && <p className="px-3 py-2 text-xs text-amber-600">{tagManagerError}</p>}
+                        {!tagLoading && !tagManagerError && tagSearch.trim().length < 2 && <p className="px-3 py-2 text-xs text-muted-foreground">Escribí el nombre de la cuenta de GTM o el ID (GTM-XXXX) para buscar.</p>}
+                        {!tagLoading && !tagManagerError && tagHasMore && tagSearchedTerm === tagSearch.trim() && <p className="px-3 py-2 text-xs text-muted-foreground">Hay más cuentas que coinciden. Escribí un nombre más específico.</p>}
+                        {!tagLoading && !tagManagerError && tagSearch.trim().length >= 2 && tagSearchedTerm === tagSearch.trim() && !tagContainers.some(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())) && <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron contenedores</p>}
                       </div>
                     )}
                   </div>
