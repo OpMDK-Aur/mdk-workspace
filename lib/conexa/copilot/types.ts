@@ -10,6 +10,14 @@ export type ChatRole = 'user' | 'assistant'
 
 export type RecommendationEvidence = { id: string; label: string; excerpt: string }
 
+/** Las evidencias viejas guardaban el JSON crudo que recibió el modelo; en pantalla se reemplaza por una descripción. */
+export function readableEvidenceExcerpt(evidence: RecommendationEvidence) {
+  const text = evidence.excerpt.trim()
+  if (!/^[[{]/.test(text)) return text
+  if (evidence.id === 'profile') return 'Datos del formulario de Contexto del cliente.'
+  return 'Métricas de la plataforma en el período analizado.'
+}
+
 export type RecommendationOperation =
   | { platform: 'meta'; kind: 'set_status'; level: 'campaign' | 'adset' | 'ad'; entityId: string; entityName: string; status: 'ACTIVE' | 'PAUSED' }
   | { platform: 'meta'; kind: 'set_daily_budget'; level: 'campaign' | 'adset'; entityId: string; entityName: string; dailyBudget: number }
@@ -63,10 +71,17 @@ export type DecisionRecord = {
 export type RecommendationSource = 'chat' | 'scan' | 'manual'
 
 /** Líneas legibles del resultado, compatibles con filas anteriores a la migración. */
+/** Identifica en la plataforma la campaña que creó Publicar (queda en pausa, así que no aparece entre las activas). */
+export function createdCampaignNote(step?: Partial<PlanStepResult> | null) {
+  const campaignId = step?.created?.campaignId
+  if (!campaignId) return ''
+  return ` · creada en pausa, ID de campaña ${campaignId}`
+}
+
 export function executionLines(result: ExecutionResult | null) {
   if (!result) return []
   if ('manual' in result) return ['Marcada como hecha manualmente']
-  if ('steps' in result) return result.steps.map((item) => `${item.entityName}: ${item.beforeLabel} → ${item.afterLabel}${item.outcome === 'failed' ? ' (falló)' : item.outcome === 'skipped' ? ' (ya aplicado)' : ''}`)
+  if ('steps' in result) return result.steps.map((item) => `${item.entityName}: ${item.beforeLabel} → ${item.afterLabel}${createdCampaignNote(item)}${item.outcome === 'failed' ? ' (falló)' : item.outcome === 'skipped' ? ' (ya aplicado)' : ''}`)
   return [`${result.entityName}: ${result.before} → ${result.after}`]
 }
 

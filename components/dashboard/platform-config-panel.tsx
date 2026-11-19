@@ -455,10 +455,12 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   const [analyticsDropdown, setAnalyticsDropdown] = useState<string | null>(null)
   const [tagSearch, setTagSearch] = useState('')
   const [tagDropdown, setTagDropdown] = useState<string | null>(null)
-  const [tagPage, setTagPage] = useState(1)
+  const [tagSearchedTerm, setTagSearchedTerm] = useState('')
   const [tagHasMore, setTagHasMore] = useState(false)
   const [tagLoading, setTagLoading] = useState(false)
   const [googleResourcesError, setGoogleResourcesError] = useState<string | null>(null)
+  const [analyticsConnection, setAnalyticsConnection] = useState<{ connected: boolean; email: string | null; expired: boolean } | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [tagManagerError, setTagManagerError] = useState<string | null>(null)
   const [crmClients, setCrmClients] = useState<CrmClient[]>([])
   const [crmClientsPage, setCrmClientsPage] = useState(1)
@@ -515,25 +517,65 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     return () => window.clearTimeout(timeout)
   }, [crmClientSearchInput])
 
-  async function fetchTagContainers(page = 1) {
-    setTagLoading(true)
+  async function fetchAnalyticsProperties(refresh = false) {
+    setAnalyticsLoading(true)
+    setGoogleResourcesError(null)
     try {
-      const response = await fetch(`/api/google/tag-manager/accounts?page=${page}`, { cache: 'force-cache' })
+      const response = await fetch(`/api/google/analytics/accounts${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' })
       const data = await response.json()
-      if (response.status === 429) {
-        setTagManagerError(data.error || 'Google Tag Manager está temporalmente limitado por cuota')
-        return
-      }
+      setAnalyticsConnection({ connected: Boolean(data.connected), email: data.email ?? null, expired: Boolean(data.expired) })
+      setAnalyticsProperties(data.accounts ?? [])
+      if (data.error) setGoogleResourcesError(data.error)
+    } catch {
+      setGoogleResourcesError('No se pudieron cargar las propiedades de Analytics')
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }
+
+  function connectAnalytics() {
+    const returnTo = `${window.location.pathname}${window.location.search}`
+    window.location.href = `/api/auth/google-analytics?return=${encodeURIComponent(returnTo)}`
+  }
+
+  async function disconnectAnalytics() {
+    if (!window.confirm('¿Desconectar tu cuenta de Google Analytics? Vas a dejar de ver tus propiedades GA4.')) return
+    await fetch('/api/auth/google-analytics', { method: 'DELETE' })
+    setAnalyticsConnection({ connected: false, email: null, expired: false })
+    setAnalyticsProperties([])
+  }
+
+  async function fetchTagContainers(search = '') {
+    setTagLoading(true)
+    setTagManagerError(null)
+    try {
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      const response = await fetch(`/api/google/tag-manager/accounts?${params.toString()}`)
+      const data = await response.json()
       if (!response.ok || data.error) throw new Error(data.error || 'No se pudieron cargar los contenedores de Tag Manager')
-      setTagContainers(previous => page === 1 ? (data.accounts ?? []) : [...previous, ...(data.accounts ?? [])])
-      setTagPage(data.page ?? page)
-      setTagHasMore(Boolean(data.hasMore))
+      const found: typeof tagContainers = data.accounts ?? []
+      setTagContainers(previous => {
+        const byId = new globalThis.Map(previous.map(container => [container.containerId, container] as const))
+        for (const container of found) byId.set(container.containerId, container)
+        return [...byId.values()]
+      })
+      setTagHasMore(Boolean(data.truncated))
+      setTagSearchedTerm(search)
     } catch (error) {
       setTagManagerError(error instanceof Error ? error.message : 'No se pudieron cargar los contenedores de Tag Manager')
     } finally {
       setTagLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!tagDropdown) return
+    const term = tagSearch.trim()
+    if (term.length < 2) return
+    const timeout = window.setTimeout(() => fetchTagContainers(term), 400)
+    return () => window.clearTimeout(timeout)
+  }, [tagSearch, tagDropdown]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     getClientCrmAccounts(clients.map(client => client.id)).then(result => {
@@ -552,15 +594,18 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
 
   useEffect(() => {
   fetchCrmClients()
-  fetch('/api/google/analytics/accounts')
-      .then(response => response.json())
-      .then(data => {
-        if (data.error) throw new Error(data.error)
-        setAnalyticsProperties(data.accounts ?? [])
-      })
-      .catch(error => setGoogleResourcesError(error instanceof Error ? error.message : 'No se pudieron cargar las propiedades de Analytics'))
-
-    fetchTagContainers(1)
+    fetchAnalyticsProperties()
+    fetchTagContainers()
+    const gaError = new URLSearchParams(window.location.search).get('ga_error')
+    if (gaError) {
+      const messages: Record<string, string> = {
+        denied: 'Cancelaste la conexión con Google Analytics.',
+        scope: 'No se otorgó el permiso de lectura de Google Analytics. Volvé a conectar y aceptá todos los permisos.',
+        db: 'No se pudo guardar tu conexión con Google Analytics.',
+        state: 'La conexión con Google Analytics expiró. Intentá de nuevo.',
+      }
+      setGoogleResourcesError(messages[gaError] ?? 'No se pudo conectar Google Analytics. Intentá de nuevo.')
+    }
 
   }, [])
 
@@ -1201,12 +1246,29 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-border">
                 <div className="space-y-2">
                   <Label className="text-sm flex items-center gap-2"><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-orange-500 text-white text-[10px] font-bold">GA</span> Google Analytics 4</Label>
+                  {!analyticsLoading && analyticsConnection && (!analyticsConnection.connected || analyticsConnection.expired) && (
+                    <div className="flex flex-col gap-2 rounded-md border border-dashed border-border p-3">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {analyticsConnection.expired ? 'Tu conexión con Google Analytics venció o no tiene permisos. Volvé a conectarla para ver tus propiedades.' : 'Conectá tu cuenta de Google para ver las propiedades GA4 a las que tenés acceso.'}
+                      </p>
+                      <Button type="button" size="sm" variant="outline" className="self-start" onClick={connectAnalytics}>{analyticsConnection.expired ? 'Volver a conectar' : 'Conectar mi Google Analytics'}</Button>
+                    </div>
+                  )}
+                  {!analyticsLoading && analyticsConnection?.connected && !analyticsConnection.expired && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span>Conectado como <span className="font-medium text-foreground">{analyticsConnection.email ?? 'tu cuenta de Google'}</span> · {analyticsProperties.length} propiedades</span>
+                      <button type="button" className="font-medium text-primary hover:underline" onClick={() => fetchAnalyticsProperties(true)}>Actualizar</button>
+                      <button type="button" className="font-medium text-primary hover:underline" onClick={connectAnalytics}>Cambiar cuenta</button>
+                      <button type="button" className="font-medium text-muted-foreground hover:text-foreground hover:underline" onClick={disconnectAnalytics}>Desconectar</button>
+                    </div>
+                  )}
+                  {analyticsLoading && <p className="text-xs text-muted-foreground">Cargando tus propiedades GA4...</p>}
                   <div className="relative" data-ga4-selector>
                     <div className="flex flex-wrap gap-1 mb-1">
                       {(analyticsSelection[client.id] ?? []).map(propertyId => <Badge key={propertyId} variant="secondary" className="gap-1">{analyticsProperties.find(property => property.propertyId === propertyId)?.propertyName ?? propertyId}<button type="button" onClick={() => setAnalyticsSelection(prev => ({ ...prev, [client.id]: (prev[client.id] ?? []).filter(id => id !== propertyId) }))} aria-label="Quitar propiedad GA4">×</button></Badge>)}
                     </div>
                     <Input className="h-9" placeholder="Buscar propiedad GA4..." value={analyticsDropdown === client.id ? analyticsSearch : ''} onFocus={() => setAnalyticsDropdown(client.id)} onChange={event => { setAnalyticsDropdown(client.id); setAnalyticsSearch(event.target.value) }} />
-                    {analyticsDropdown === client.id && <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">{analyticsProperties.filter(property => !(analyticsSelection[client.id] ?? []).includes(property.propertyId)).filter(property => `${property.propertyName} ${property.accountName} ${property.propertyId}`.toLocaleLowerCase().includes(analyticsSearch.toLocaleLowerCase())).map(property => <button key={property.propertyId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setAnalyticsSelection(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? []), property.propertyId] })); setAnalyticsSearch('') }}>{property.propertyName} · {property.accountName}</button>)}{analyticsProperties.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron propiedades</p>}</div>}
+                    {analyticsDropdown === client.id && <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">{analyticsProperties.filter(property => !(analyticsSelection[client.id] ?? []).includes(property.propertyId)).filter(property => `${property.propertyName} ${property.accountName} ${property.propertyId}`.toLocaleLowerCase().includes(analyticsSearch.toLocaleLowerCase())).map(property => <button key={property.propertyId} type="button" className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setAnalyticsSelection(prev => ({ ...prev, [client.id]: [...(prev[client.id] ?? []), property.propertyId] })); setAnalyticsSearch('') }}>{property.propertyName} · {property.accountName}</button>)}{analyticsProperties.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{analyticsConnection?.connected ? 'Tu cuenta de Google no tiene propiedades GA4' : 'Conectá tu Google Analytics para ver tus propiedades'}</p>}</div>}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1227,9 +1289,11 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                             <span>{container.containerName} · {container.publicId || container.containerId} · {container.accountName}</span>
                           </button>
                         ))}
-                        {tagLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando contenedores...</p>}
-                        {!tagLoading && tagHasMore && <button type="button" className="w-full rounded-sm px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent" onClick={() => fetchTagContainers(tagPage + 1)}>Ver más</button>}
-                        {!tagLoading && tagContainers.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{tagManagerError || 'No se encontraron contenedores'}</p>}
+                        {tagLoading && <p className="px-3 py-2 text-xs text-muted-foreground">Buscando contenedores...</p>}
+                        {!tagLoading && tagManagerError && <p className="px-3 py-2 text-xs text-amber-600">{tagManagerError}</p>}
+                        {!tagLoading && !tagManagerError && tagSearch.trim().length < 2 && <p className="px-3 py-2 text-xs text-muted-foreground">Escribí el nombre de la cuenta de GTM o el ID (GTM-XXXX) para buscar.</p>}
+                        {!tagLoading && !tagManagerError && tagHasMore && tagSearchedTerm === tagSearch.trim() && <p className="px-3 py-2 text-xs text-muted-foreground">Hay más cuentas que coinciden. Escribí un nombre más específico.</p>}
+                        {!tagLoading && !tagManagerError && tagSearch.trim().length >= 2 && tagSearchedTerm === tagSearch.trim() && !tagContainers.some(container => `${container.containerName} ${container.publicId} ${container.accountName}`.toLocaleLowerCase().includes(tagSearch.toLocaleLowerCase())) && <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron contenedores</p>}
                       </div>
                     )}
                   </div>
