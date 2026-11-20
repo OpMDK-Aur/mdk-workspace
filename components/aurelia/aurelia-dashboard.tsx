@@ -30,8 +30,10 @@ import { AureliaKpiGrid } from './aurelia-kpi-grid'
 import { AureliaGrowthChart } from './aurelia-growth-chart'
 import { AureliaPlanBreakdown } from './aurelia-plan-breakdown'
 import { AureliaClientsTable } from './aurelia-clients-table'
+import { AureliaOnboardingPanel } from './aurelia-onboarding-panel'
+import type { AureliaOnboardingData } from '@/lib/aurelia/onboarding-shared'
 
-export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
+export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaDataset; onboarding: AureliaOnboardingData }) {
   const [period, setPeriod] = useState<PeriodKey>('this_month')
   const [customRange, setCustomRange] = useState(() => ({ from: todayInArgentina().slice(0, 8) + '01', to: todayInArgentina() }))
   const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
@@ -147,6 +149,8 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
           <AureliaTimeSummary data={timeData} secondsByClient={periodSeconds} clients={dataset.clients} periodLabel={periodLabel} onOpenClient={openClient} />
         </div>
       </div>
+
+      <AureliaOnboardingPanel clients={dataset.clients} onboarding={onboarding} onOpenClient={openClient} />
 
       <AureliaClientsTable clients={dataset.clients} currency={dataset.currency} time={tableTime} onOpenClient={openClient} range={computed.range} rangeLabel={periodLabel} />
     </div>
