@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import useSWR from 'swr'
-import { AlertCircle, ArrowDownToLine, Check, ChevronDown, FilePlus2, FileText, LayoutDashboard, LoaderCircle, Maximize2, Minimize2, Paperclip, Pencil, RefreshCw, RotateCcw, Send, Trash2, X } from 'lucide-react'
+import { ArrowDownToLine, Check, ChevronDown, FilePlus2, FileText, LayoutDashboard, LoaderCircle, Maximize2, Minimize2, Paperclip, Pencil, RefreshCw, RotateCcw, Send, Trash2, X } from 'lucide-react'
 import { DashboardConfigSchema, type DashboardConfig } from '@/lib/conexa/dashboard-presets'
 import { DashboardBlockRenderer, getDashboardBlockRows } from './dashboard-block-renderer'
 import { DashboardHistory } from './dashboard-history'
@@ -11,6 +11,12 @@ import { cn } from '@/lib/utils'
 import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { MessageContent } from '@/components/chat/message-content'
 import { useDismiss } from './use-dismiss'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from 'sonner'
+import { ContextStatus } from '@/components/conexa/copilot/context-status'
+import { useClientContext } from '@/components/conexa/copilot/use-client-context'
 
 type Platform = { name: string; key: string; color: string; iconUrl: string | null; connected: boolean; detail: string }
 type MetricMap = Record<string, Array<{ label: string; value: number }>>
@@ -18,8 +24,7 @@ type DashboardRecord = { id: string; client_id: string; name: string; config: Da
 type ChatResponse = { kind: 'answer' | 'clarification' | 'proposal'; text: string; summary: string | null; config: DashboardConfig | null }
 type ChatAttachment = { filename: string; mediaType: string }
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; response?: ChatResponse; attachments?: ChatAttachment[] }
-type Props = { clientId: string | null; clientName: string | null; userId: string | null; period: string; platforms: Platform[]; metrics: MetricMap; platformData: Record<string, unknown>; loading: boolean; updatedAt: number | null; onRefresh: () => void; onConnections: () => void; defaultDashboard: (hiddenPlatforms: string[]) => ReactNode; filterBar?: ReactNode; contextStatus?: ContextStatus; onOpenContext?: () => void }
-type ContextStatus = 'no-client' | 'loading' | 'complete' | 'missing'
+type Props = { clientId: string | null; clientName: string | null; userId: string | null; period: string; platforms: Platform[]; metrics: MetricMap; platformData: Record<string, unknown>; loading: boolean; updatedAt: number | null; onRefresh: () => void; onConnections: () => void; defaultDashboard: (hiddenPlatforms: string[]) => ReactNode; filterBar?: ReactNode; onCompleteContext?: () => void }
 const jsonFetcher = async (url: string) => { const response = await dashboardApiFetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar la información.'); return payload }
 const dateLabel = (date: Date) => new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
 const DASHBOARD_FILE_LIMIT = 5
@@ -81,7 +86,7 @@ function chatMessage(row: Record<string, unknown>): ChatMessage | null {
   return { id: String(row.id), role: row.role, content: row.content, attachments }
 }
 
-export function DashboardWorkspace({ clientId, clientName, userId, period, platforms, metrics, platformData, loading, updatedAt, onRefresh, onConnections, defaultDashboard, filterBar, contextStatus = 'no-client', onOpenContext }: Props) {
+export function DashboardWorkspace({ clientId, clientName, userId, period, platforms, metrics, platformData, loading, updatedAt, onRefresh, onConnections, defaultDashboard, filterBar, onCompleteContext }: Props) {
   const [selectedBoardId, setSelectedBoardId] = useState('default')
   const [draftConfig, setDraftConfig] = useState<DashboardConfig | null>(null)
   const [proposalConfig, setProposalConfig] = useState<DashboardConfig | null>(null)
@@ -118,19 +123,37 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
   const { data: messageResult, error: messagesError, mutate: mutateMessages } = useSWR<{ conversationId: string; messages: Record<string, unknown>[] }>(messagesUrl, jsonFetcher, { revalidateOnFocus: false, revalidateOnMount: true })
   const conversationId = messageResult?.conversationId ?? null
   const [resettingChat, setResettingChat] = useState(false)
-  // El chat del tablero comparte el hilo con Chat / Análisis: resetear archiva el
+  const [resetOpen, setResetOpen] = useState(false)
+  const [manualContextOpen, setManualContextOpen] = useState(false)
+  const [manualContext, setManualContext] = useState('')
+  const clientContext = useClientContext(clientId)
+  // El chat del tablero comparte el hilo con Chat / Análisis: reiniciar archiva el
   // hilo actual (queda en el historial) y arranca uno nuevo para este cliente.
   const resetChat = async () => {
-    if (!clientId || resettingChat || !window.confirm('¿Empezar un chat nuevo? El chat actual queda guardado en el historial.')) return
+    if (!clientId || resettingChat) return
     setResettingChat(true)
     try {
       const response = await dashboardApiFetch('/api/ai/conversations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, newDiagnostic: true }) })
       const payload = await response.json().catch(() => null)
-      if (response.ok && payload?.conversation?.id) await mutateMessages({ conversationId: payload.conversation.id, messages: Array.isArray(payload.messages) ? payload.messages : [] }, { revalidate: false })
-      else await mutateMessages()
+      if (!response.ok || !payload?.conversation?.id) throw new Error(payload?.error ?? 'No se pudo reiniciar el chat')
+      await mutateMessages({ conversationId: payload.conversation.id, messages: Array.isArray(payload.messages) ? payload.messages : [] }, { revalidate: false })
+      setResetOpen(false)
+      toast.success('Chat reiniciado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo reiniciar el chat')
     } finally {
       setResettingChat(false)
     }
+  }
+  const saveManualContext = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (manualContext.trim().length < 3) return
+    try {
+      await clientContext.addContext(manualContext.trim())
+      setManualContext('')
+      setManualContextOpen(false)
+      toast.success('Contexto guardado para este cliente')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contexto') }
   }
   const boards = boardResult?.dashboards ?? []
   const messages = useMemo(() => (messageResult?.messages ?? []).map(chatMessage).filter((item): item is ChatMessage => Boolean(item)), [messageResult])
@@ -390,16 +413,7 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
 
   const chatPanel = <section className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-card" aria-label="Chat Conexa">
     {panelHeader('chat', 'Chat Conexa', <span className="text-sm font-bold">✦</span>, 'Colapsar Chat Conexa')}
-    {(!collapsed.chat || fullPanel === 'chat') && <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-      {contextStatus !== 'no-client' && <button type="button" onClick={onOpenContext} disabled={!onOpenContext} title="Abrir Contexto del cliente" className={cn('flex h-7 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-medium transition-colors', contextStatus === 'missing' ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20' : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground')}>
-        {contextStatus === 'loading' ? <LoaderCircle className="size-3 animate-spin" aria-hidden="true" /> : contextStatus === 'complete' ? <Check className="size-3" aria-hidden="true" /> : <AlertCircle className="size-3" aria-hidden="true" />}
-        {contextStatus === 'missing' ? 'Completar contexto' : 'Contexto'}
-      </button>}
-      <button type="button" onClick={resetChat} disabled={!clientId || !userId || chatBusy || resettingChat} title="Resetear chat" aria-label="Resetear chat" className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
-        <RotateCcw className={cn('size-3', resettingChat && 'animate-spin')} aria-hidden="true" />
-        Resetear
-      </button>
-    </div>}
+    {(!collapsed.chat || fullPanel === 'chat') && clientId && <ContextStatus assessment={clientContext.assessment} unavailable={clientContext.unavailable} busy={chatBusy} competitors={clientContext.competitors} onAddManual={() => setManualContextOpen(true)} onComplete={() => onCompleteContext?.()} />}
     {messagesError && <p role="alert" className="border-b border-primary/30 bg-primary/10 px-3 py-2 text-[10px] text-primary">{messagesError.message}</p>}
     {!userId && <p role="status" className="border-b border-primary/30 bg-primary/10 px-3 py-2 text-[10px] text-primary">Iniciá sesión con tu usuario de MDK para editar tableros. <a href="/auth/login" className="font-semibold underline">Iniciar sesión</a></p>}
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -419,7 +433,10 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
         <button type="submit" disabled={(!input.trim() && attachments.length === 0) || chatBusy || !clientId || !userId || !conversationId} aria-label="Enviar mensaje" className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-40"><Send className="size-3.5" /></button>
       </div>
       {attachmentError && <p role="alert" className="text-[10px] text-destructive">{attachmentError}</p>}
-      <p className="text-[9px] leading-4 text-muted-foreground">Conexa solo edita el tablero. Los archivos no guardados no se conservan como originales.</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[9px] leading-4 text-muted-foreground">Conexa solo edita el tablero. Los archivos no guardados no se conservan como originales.</p>
+        {messages.length > 0 && <button type="button" onClick={() => setResetOpen(true)} disabled={chatBusy} className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><RotateCcw className="size-3" aria-hidden="true" />Reiniciar chat</button>}
+      </div>
     </form>
   </section>
 
@@ -451,6 +468,18 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
       })}
     </div>
     {fullPanel && <div className="absolute inset-0 z-40 flex min-h-0 flex-col bg-card">{fullContent}</div>}
+    <Dialog open={resetOpen} onOpenChange={(open) => { if (!resettingChat) setResetOpen(open) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Reiniciar chat</DialogTitle><DialogDescription>Empieza una conversación nueva con Conexa para este cliente. La actual queda en el historial de Chat / Análisis. El contexto guardado y los tableros no se tocan.</DialogDescription></DialogHeader>
+        <DialogFooter><Button variant="outline" disabled={resettingChat} onClick={() => setResetOpen(false)}>Cancelar</Button><Button disabled={resettingChat} onClick={() => void resetChat()} className="bg-primary text-background hover:bg-primary">{resettingChat ? <><LoaderCircle className="size-3.5 animate-spin" />Reiniciando…</> : 'Reiniciar'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={manualContextOpen} onOpenChange={setManualContextOpen}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Agregar contexto del cliente</DialogTitle><DialogDescription>Este dato se suma al contexto de Recomendaciones, sin modificar el formulario existente del cliente.</DialogDescription></DialogHeader>
+        <form onSubmit={saveManualContext} className="flex flex-col gap-3"><label htmlFor="dashboard-manual-context" className="text-xs font-medium">Contexto para tener en cuenta</label><Textarea id="dashboard-manual-context" value={manualContext} maxLength={2000} onChange={(event) => setManualContext(event.target.value)} placeholder="Objetivos, estacionalidad, promociones o restricciones…" /><DialogFooter><Button type="button" variant="outline" onClick={() => setManualContextOpen(false)}>Cancelar</Button><Button type="submit" disabled={manualContext.trim().length < 3}>Guardar contexto</Button></DialogFooter></form>
+      </DialogContent>
+    </Dialog>
     {reportOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="dashboard-save-report-title"><form onSubmit={saveReport} className="w-full max-w-md rounded-xl bg-card p-5 shadow-xl"><header className="mb-4 flex items-start justify-between gap-3"><div><h2 id="dashboard-save-report-title" className="text-base font-semibold text-foreground">Guardar informe</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Se guardará una copia fija del tablero, sus datos, período y cliente.</p></div><button type="button" onClick={() => setReportOpen(false)} aria-label="Cerrar" className="rounded-md p-1.5 hover:bg-muted"><X className="size-4" /></button></header><label htmlFor="dashboard-report-name" className="text-xs font-medium text-muted-foreground">Nombre del informe</label><input id="dashboard-report-name" autoFocus required maxLength={180} value={reportName} onChange={(event) => setReportName(event.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-primary" />{reportError && <p role="alert" className="mt-2 text-xs text-destructive">{reportError}</p>}<footer className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReportOpen(false)} className="rounded-md border border-border px-3 py-2 text-xs font-medium text-muted-foreground">Cancelar</button><button type="submit" disabled={reportBusy || !reportName.trim()} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{reportBusy && <LoaderCircle className="size-3.5 animate-spin" />}{reportBusy ? 'Guardando…' : 'Guardar snapshot'}</button></footer></form></div>}
   </div>
 }
