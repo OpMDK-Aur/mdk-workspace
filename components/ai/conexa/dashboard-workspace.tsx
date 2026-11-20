@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import useSWR from 'swr'
-import { ArrowDownToLine, Check, ChevronDown, FilePlus2, FileText, LayoutDashboard, LoaderCircle, Maximize2, Minimize2, Paperclip, Pencil, RefreshCw, Send, Trash2, X } from 'lucide-react'
+import { AlertCircle, ArrowDownToLine, Check, ChevronDown, FilePlus2, FileText, LayoutDashboard, LoaderCircle, Maximize2, Minimize2, Paperclip, Pencil, RefreshCw, RotateCcw, Send, Trash2, X } from 'lucide-react'
 import { DashboardConfigSchema, type DashboardConfig } from '@/lib/conexa/dashboard-presets'
 import { DashboardBlockRenderer, getDashboardBlockRows } from './dashboard-block-renderer'
 import { DashboardHistory } from './dashboard-history'
@@ -18,7 +18,8 @@ type DashboardRecord = { id: string; client_id: string; name: string; config: Da
 type ChatResponse = { kind: 'answer' | 'clarification' | 'proposal'; text: string; summary: string | null; config: DashboardConfig | null }
 type ChatAttachment = { filename: string; mediaType: string }
 type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; response?: ChatResponse; attachments?: ChatAttachment[] }
-type Props = { clientId: string | null; clientName: string | null; userId: string | null; period: string; platforms: Platform[]; metrics: MetricMap; platformData: Record<string, unknown>; loading: boolean; updatedAt: number | null; onRefresh: () => void; onConnections: () => void; defaultDashboard: (hiddenPlatforms: string[]) => ReactNode; filterBar?: ReactNode }
+type Props = { clientId: string | null; clientName: string | null; userId: string | null; period: string; platforms: Platform[]; metrics: MetricMap; platformData: Record<string, unknown>; loading: boolean; updatedAt: number | null; onRefresh: () => void; onConnections: () => void; defaultDashboard: (hiddenPlatforms: string[]) => ReactNode; filterBar?: ReactNode; contextStatus?: ContextStatus; onOpenContext?: () => void }
+type ContextStatus = 'no-client' | 'loading' | 'complete' | 'missing'
 const jsonFetcher = async (url: string) => { const response = await dashboardApiFetch(url); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error ?? 'No se pudo cargar la información.'); return payload }
 const dateLabel = (date: Date) => new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
 const DASHBOARD_FILE_LIMIT = 5
@@ -80,7 +81,7 @@ function chatMessage(row: Record<string, unknown>): ChatMessage | null {
   return { id: String(row.id), role: row.role, content: row.content, attachments }
 }
 
-export function DashboardWorkspace({ clientId, clientName, userId, period, platforms, metrics, platformData, loading, updatedAt, onRefresh, onConnections, defaultDashboard, filterBar }: Props) {
+export function DashboardWorkspace({ clientId, clientName, userId, period, platforms, metrics, platformData, loading, updatedAt, onRefresh, onConnections, defaultDashboard, filterBar, contextStatus = 'no-client', onOpenContext }: Props) {
   const [selectedBoardId, setSelectedBoardId] = useState('default')
   const [draftConfig, setDraftConfig] = useState<DashboardConfig | null>(null)
   const [proposalConfig, setProposalConfig] = useState<DashboardConfig | null>(null)
@@ -116,6 +117,21 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
   const { data: boardResult, error: boardError, mutate: mutateBoards } = useSWR<{ dashboards: DashboardRecord[] }>(boardUrl, jsonFetcher, { revalidateOnFocus: false })
   const { data: messageResult, error: messagesError, mutate: mutateMessages } = useSWR<{ conversationId: string; messages: Record<string, unknown>[] }>(messagesUrl, jsonFetcher, { revalidateOnFocus: false, revalidateOnMount: true })
   const conversationId = messageResult?.conversationId ?? null
+  const [resettingChat, setResettingChat] = useState(false)
+  // El chat del tablero comparte el hilo con Chat / Análisis: resetear archiva el
+  // hilo actual (queda en el historial) y arranca uno nuevo para este cliente.
+  const resetChat = async () => {
+    if (!clientId || resettingChat || !window.confirm('¿Empezar un chat nuevo? El chat actual queda guardado en el historial.')) return
+    setResettingChat(true)
+    try {
+      const response = await dashboardApiFetch('/api/ai/conversations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, newDiagnostic: true }) })
+      const payload = await response.json().catch(() => null)
+      if (response.ok && payload?.conversation?.id) await mutateMessages({ conversationId: payload.conversation.id, messages: Array.isArray(payload.messages) ? payload.messages : [] }, { revalidate: false })
+      else await mutateMessages()
+    } finally {
+      setResettingChat(false)
+    }
+  }
   const boards = boardResult?.dashboards ?? []
   const messages = useMemo(() => (messageResult?.messages ?? []).map(chatMessage).filter((item): item is ChatMessage => Boolean(item)), [messageResult])
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? null
@@ -374,6 +390,16 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
 
   const chatPanel = <section className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-card" aria-label="Chat Conexa">
     {panelHeader('chat', 'Chat Conexa', <span className="text-sm font-bold">✦</span>, 'Colapsar Chat Conexa')}
+    {(!collapsed.chat || fullPanel === 'chat') && <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+      {contextStatus !== 'no-client' && <button type="button" onClick={onOpenContext} disabled={!onOpenContext} title="Abrir Contexto del cliente" className={cn('flex h-7 shrink-0 items-center gap-1 rounded-full border px-2 text-[10px] font-medium transition-colors', contextStatus === 'missing' ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20' : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground')}>
+        {contextStatus === 'loading' ? <LoaderCircle className="size-3 animate-spin" aria-hidden="true" /> : contextStatus === 'complete' ? <Check className="size-3" aria-hidden="true" /> : <AlertCircle className="size-3" aria-hidden="true" />}
+        {contextStatus === 'missing' ? 'Completar contexto' : 'Contexto'}
+      </button>}
+      <button type="button" onClick={resetChat} disabled={!clientId || !userId || chatBusy || resettingChat} title="Resetear chat" aria-label="Resetear chat" className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50">
+        <RotateCcw className={cn('size-3', resettingChat && 'animate-spin')} aria-hidden="true" />
+        Resetear
+      </button>
+    </div>}
     {messagesError && <p role="alert" className="border-b border-primary/30 bg-primary/10 px-3 py-2 text-[10px] text-primary">{messagesError.message}</p>}
     {!userId && <p role="status" className="border-b border-primary/30 bg-primary/10 px-3 py-2 text-[10px] text-primary">Iniciá sesión con tu usuario de MDK para editar tableros. <a href="/auth/login" className="font-semibold underline">Iniciar sesión</a></p>}
     <div className="min-h-0 flex-1 overflow-y-auto p-3">

@@ -6,7 +6,7 @@ export const CONEXA_PATH = '/dashboard/conexa'
 export const CONEXA_VIEW_PARAM = 'vista'
 
 export const CONEXA_VIEWS = {
-  dashboard: 'Dashboard',
+  tablero: 'Tablero',
   recomendaciones: 'Recomendaciones',
   aprobaciones: 'Aprobaciones',
   'meta-ads': 'Meta Ads',
@@ -21,9 +21,9 @@ export const CONEXA_VIEWS = {
 } as const
 
 export type ConexaViewSlug = keyof typeof CONEXA_VIEWS
-export const DEFAULT_CONEXA_VIEW: ConexaViewSlug = 'dashboard'
+export const DEFAULT_CONEXA_VIEW: ConexaViewSlug = 'tablero'
 
-export const CONEXA_WORK_LINKS: ConexaViewSlug[] = ['dashboard', 'recomendaciones', 'aprobaciones']
+export const CONEXA_WORK_LINKS: ConexaViewSlug[] = ['tablero', 'recomendaciones', 'aprobaciones']
 export const CONEXA_PLATFORM_LINKS: ConexaViewSlug[] = ['meta-ads', 'google-ads', 'google-analytics', 'tag-manager', 'crm']
 export const CONEXA_CLIENT_LINKS: ConexaViewSlug[] = ['contexto', 'supervisor']
 
