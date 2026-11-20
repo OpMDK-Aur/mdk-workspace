@@ -40,6 +40,10 @@ describe('validación sin red', () => {
     expect(await verifyConnectorCredentials('kommo', { subdomain: 'mi empresa!', token: 't' })).toMatchObject({ ok: false })
   })
 
+  it('exige un Advertiser ID numérico en TikTok', async () => {
+    expect(await verifyConnectorCredentials('tiktok', { token: 't', advertiserId: 'abc' })).toMatchObject({ ok: false })
+  })
+
   it('bloquea hosts internos en cPanel', async () => {
     expect(await verifyConnectorCredentials('donweb', { host: '127.0.0.1', username: 'u', token: 't' })).toMatchObject({ ok: false })
     expect(await verifyConnectorCredentials('donweb', { host: 'localhost', username: 'u', token: 't' })).toMatchObject({ ok: false })

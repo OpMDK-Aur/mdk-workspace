@@ -113,6 +113,7 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
 
   const groups = [
     { key: 'google', title: 'Google', description: 'Cada persona conecta su propia cuenta de Google.' },
+    { key: 'social', title: 'Publicidad y redes', description: null },
     { key: 'crm', title: 'CRM', description: 'Al conectar te pedimos los datos de acceso a la API.' },
     { key: 'hosting', title: 'Hosting, dominios y email', description: null },
     { key: 'other', title: 'Otras apps', description: null },

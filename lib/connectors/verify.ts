@@ -83,6 +83,25 @@ function assertHttpsUrl(value: string) {
 export async function verifyConnectorCredentials(id: ConnectorId, input: Record<string, string>): Promise<VerifyResult> {
   try {
     switch (id) {
+      case 'instagram': {
+        const token = input.token.trim()
+        // Tokens de "Instagram API con login de Instagram"; si es un token de Facebook Login, se prueba contra Graph.
+        let result = await getJson(`https://graph.instagram.com/v21.0/me?fields=user_id,username&access_token=${encodeURIComponent(token)}`, {})
+        if (result.ok) return { ok: true, label: result.body?.username ? `@${result.body.username}` : 'Cuenta de Instagram', values: { token, api: 'instagram' } }
+        result = await getJson(`https://graph.facebook.com/v21.0/me?fields=name&access_token=${encodeURIComponent(token)}`, {})
+        if (!result.ok) return { ok: false, error: rejected(result.status, 'Instagram') }
+        return { ok: true, label: result.body?.name ?? 'Cuenta de Instagram', values: { token, api: 'facebook' } }
+      }
+      case 'tiktok': {
+        const advertiserId = input.advertiserId.trim()
+        if (!/^\d{6,25}$/.test(advertiserId)) return { ok: false, error: 'El Advertiser ID tiene que ser solo números.' }
+        const query = new URLSearchParams({ advertiser_ids: JSON.stringify([advertiserId]), fields: JSON.stringify(['name', 'advertiser_id']) })
+        const result = await getJson(`https://business-api.tiktok.com/open_api/v1.3/advertiser/info/?${query}`, { 'Access-Token': input.token.trim() })
+        // TikTok responde 200 incluso con errores; el resultado real viene en `code` (0 = OK).
+        if (!result.ok || result.body?.code !== 0) return { ok: false, error: result.ok ? `TikTok rechazó el token o el Advertiser ID (${result.body?.message ?? 'sin detalle'}).` : rejected(result.status, 'TikTok') }
+        const advertiser = result.body?.data?.list?.[0]
+        return { ok: true, label: advertiser?.name ? `${advertiser.name} (${advertiserId})` : `Advertiser ${advertiserId}`, values: { token: input.token.trim(), advertiserId } }
+      }
       case 'gohighlevel': {
         const locationId = input.locationId.trim()
         const result = await getJson(`https://services.leadconnectorhq.com/locations/${encodeURIComponent(locationId)}`, { Authorization: `Bearer ${input.token.trim()}`, Version: '2021-07-28' })

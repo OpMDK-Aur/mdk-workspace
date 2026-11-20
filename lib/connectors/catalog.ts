@@ -1,5 +1,6 @@
 export type ConnectorId =
   | 'google_ads' | 'google_analytics' | 'google_sheets' | 'google_calendar' | 'google_docs' | 'meta_ads' | 'discord'
+  | 'instagram' | 'tiktok'
   | 'gohighlevel' | 'aurelia_crm' | 'kommo' | 'hubspot' | 'fidelity' | 'tecnom'
   | 'hostinger' | 'hostinger_email' | 'donweb' | 'cloudflare'
 
@@ -13,7 +14,7 @@ export type CredentialField = {
   defaultValue?: string
 }
 
-export type ConnectorGroup = 'google' | 'crm' | 'hosting' | 'other'
+export type ConnectorGroup = 'google' | 'social' | 'crm' | 'hosting' | 'other'
 
 export type ConnectorDefinition = {
   id: ConnectorId
@@ -89,7 +90,7 @@ export const CONNECTORS: ConnectorDefinition[] = [
     name: 'Meta',
     description: 'Cuentas publicitarias y fanpages de Facebook e Instagram.',
     logos: ['/connectors/meta.svg'],
-    group: 'other',
+    group: 'social',
     platform: 'meta_ads',
     connectPath: '/api/auth/meta',
     fallbackLabel: 'Sin tu cuenta se usa el token de la agencia.',
@@ -102,6 +103,37 @@ export const CONNECTORS: ConnectorDefinition[] = [
     group: 'other',
     platform: null,
     connectPath: null,
+  },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    description: 'Perfil, publicaciones e insights de una cuenta profesional.',
+    logos: ['/connectors/instagram.svg'],
+    group: 'social',
+    kind: 'credentials',
+    platform: 'instagram',
+    connectPath: null,
+    verifies: true,
+    helpUrl: 'https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/get-started',
+    fields: [
+      { name: 'token', label: 'Token de acceso de Instagram', type: 'password', placeholder: 'IGAA…', help: 'Token de la API de Instagram (cuenta profesional). Dura 60 días y se puede renovar.' },
+    ],
+  },
+  {
+    id: 'tiktok',
+    name: 'TikTok',
+    description: 'Campañas, anuncios y resultados de TikTok Ads.',
+    logos: ['/connectors/tiktok.svg'],
+    group: 'social',
+    kind: 'credentials',
+    platform: 'tiktok',
+    connectPath: null,
+    verifies: true,
+    helpUrl: 'https://business-api.tiktok.com/portal/docs?id=1738373164380162',
+    fields: [
+      { name: 'token', label: 'Access token de TikTok for Business', type: 'password', help: 'Se genera al autorizar tu app en TikTok for Business (Marketing API).' },
+      { name: 'advertiserId', label: 'Advertiser ID', type: 'text', placeholder: '7012345678901234567', help: 'Lo ves en TikTok Ads Manager, arriba a la derecha.' },
+    ],
   },
   {
     id: 'gohighlevel',
