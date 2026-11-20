@@ -54,11 +54,10 @@ import {
   Smile,
   FileText,
   Megaphone,
-  Database,
   ListChecks,
   Gem,
 } from 'lucide-react'
-import { LinkedServicesIcon, ManageAccountsIcon } from '@/components/icons/material-symbols'
+import { LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
 
@@ -450,12 +449,10 @@ export function Sidebar({
                 </div>
               )}
 
-              {/* Integraciones section */}
-              {unitAccess.mdk && (
-                <div className="space-y-1 pt-2 border-t border-border">
-                  {platformItems.map(item => renderNavItem(item, true))}
-                </div>
-              )}
+              {/* Integraciones section: visible para todos los usuarios */}
+              <div className="space-y-1 pt-2 border-t border-border">
+                {platformItems.map(item => renderNavItem(item, true))}
+              </div>
             </div>
           </ScrollArea>
 
@@ -693,8 +690,8 @@ export function Sidebar({
                   </div>
                 )}
 
-                {/* Integraciones section */}
-                {unitAccess.mdk && (
+                {/* Integraciones section: visible para todos los usuarios */}
+                {(
                   <div className="space-y-1">
                     <Collapsible open={platformsOpen} onOpenChange={setPlatformsOpen}>
                       <div className="flex items-center">
@@ -704,7 +701,7 @@ export function Sidebar({
                             platformsOpen ? 'text-foreground' : 'text-foreground hover:bg-muted'
                           )}
                         >
-                          <Database className="h-4 w-4" />
+                          <SdkIcon className="h-4 w-4" />
                           <span>Integraciones</span>
                         </div>
                         <CollapsibleTrigger asChild>
