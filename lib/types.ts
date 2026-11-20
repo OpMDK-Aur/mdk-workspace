@@ -503,6 +503,15 @@ export type TaskPriority = 'alta' | 'media' | 'baja'
 // TaskType is now dynamic - it's the UUID of tipo_de_tareas
 export type TaskType = string
 
+/** Reunión de Google Calendar vinculada a la tarea (importada o agendada desde MDK). */
+export interface TaskMeeting {
+  eventId: string
+  start: Date | null
+  end: Date | null
+  calendarUrl: string | null
+  meetUrl: string | null
+}
+
 export interface TaskCustomField {
   label: string
   type: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'multiselect'
@@ -605,6 +614,7 @@ export interface Task {
   quotation: TaskQuotation | null
   // Service Map integration
   hitoPoe: string | null // UUID reference to hitos_catalogo
+  meeting?: TaskMeeting | null
   createdById: string | null
   createdByName: string
   createdByAvatar?: string | null

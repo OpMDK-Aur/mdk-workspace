@@ -1,10 +1,11 @@
 'use client'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { MessageSquare, Map, FileText, Paperclip } from 'lucide-react'
+import { MessageSquare, Map, FileText, Paperclip, AudioLines } from 'lucide-react'
 import { ClientServiceMap } from './client-service-map'
 import { ClientMinutas } from './client-minutas'
 import { ClientAdjuntos } from './client-adjuntos'
+import { ClientTranscripts } from './client-transcripts'
 import type { ClientPlan, UnidadNegocio } from '@/lib/types'
 
 interface CurrentUser {
@@ -50,6 +51,10 @@ export function ClientActivityTabs({
           <FileText className="h-3.5 w-3.5" />
           Minutas
         </TabsTrigger>
+        <TabsTrigger value="transcripciones" className="gap-1.5 text-xs">
+          <AudioLines className="h-3.5 w-3.5" />
+          Transcripciones
+        </TabsTrigger>
         {showServiceMap && (
           <TabsTrigger value="service-map" className="gap-1.5 text-xs">
             <Map className="h-3.5 w-3.5" />
@@ -72,6 +77,10 @@ export function ClientActivityTabs({
 
       <TabsContent value="minutas" className="mt-4">
         <ClientMinutas clientId={clientId} currentUser={currentUser} />
+      </TabsContent>
+
+      <TabsContent value="transcripciones" className="mt-4">
+        <ClientTranscripts clientId={clientId} currentUserId={currentUser?.id} />
       </TabsContent>
 
       {showServiceMap && (
