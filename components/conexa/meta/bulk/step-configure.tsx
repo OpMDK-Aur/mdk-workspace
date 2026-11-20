@@ -19,8 +19,8 @@ import { NewDestinationDialog, type MetaAccountOption } from './new-destination-
 // Kept outside the component so going back and forth between steps doesn't ask for the same copy again.
 const autoCopyTried = new Set<string>()
 
-const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white'
-const ISSUE_COLOR = { warn: 'text-[#a86412]', info: 'text-[#888]', error: 'text-[#c23b3b]' } as const
+const fieldClass = 'border-border bg-card text-[12px] text-foreground placeholder:text-muted-foreground dark:bg-card'
+const ISSUE_COLOR = { warn: 'text-primary', info: 'text-muted-foreground', error: 'text-destructive' } as const
 
 type CopyField = 'primaryText' | 'headline'
 type ApplyField = CopyField | 'adsetId'
@@ -41,10 +41,10 @@ function CopyActions({ value, applyLabel, onApply }: { value: string; applyLabel
 
   return (
     <div className="flex items-center gap-3">
-      <button type="button" disabled={empty} onClick={copy} className="text-[10px] font-semibold text-[#555] hover:text-[#141414] hover:underline disabled:text-[#ccc] disabled:no-underline">
+      <button type="button" disabled={empty} onClick={copy} className="text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:underline disabled:text-muted-foreground disabled:no-underline">
         {copied ? 'Copiado' : 'Copiar'}
       </button>
-      <button type="button" disabled={empty} onClick={onApply} className="text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#ccc] disabled:no-underline">
+      <button type="button" disabled={empty} onClick={onApply} className="text-[10px] font-semibold text-primary hover:underline disabled:text-muted-foreground disabled:no-underline">
         {applyLabel}
       </button>
     </div>
@@ -94,14 +94,14 @@ function CampaignAdsetPicker({ row, adsets, currentAdset, applyLabel, onChange, 
         </SelectContent>
       </Select>
       {campaign && (
-        <div className="flex flex-col gap-0.5 text-[11px] leading-relaxed text-[#777]">
+        <div className="flex flex-col gap-0.5 text-[11px] leading-relaxed text-muted-foreground">
           <span>
-            <span className="font-semibold text-[#444]">Objetivo: </span>
+            <span className="font-semibold text-muted-foreground">Objetivo: </span>
             {objectiveLabel(currentAdset?.objective ?? campaign.objective)}
           </span>
           {destination && (
             <span className="truncate" title={destination.value}>
-              <span className="font-semibold text-[#444]">{`${destination.label}: `}</span>
+              <span className="font-semibold text-muted-foreground">{`${destination.label}: `}</span>
               {destination.value}
             </span>
           )}
@@ -112,7 +112,7 @@ function CampaignAdsetPicker({ row, adsets, currentAdset, applyLabel, onChange, 
         disabled={!currentAdset}
         onClick={onApply}
         title={currentAdset ? `${currentAdset.campaignName} › ${currentAdset.name}` : 'Elegí un conjunto para aplicarlo'}
-        className="self-start text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#ccc] disabled:no-underline"
+        className="self-start text-[10px] font-semibold text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
       >
         {`${applyLabel} (campaña y conjunto)`}
       </button>
@@ -147,9 +147,9 @@ function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, o
   const draft = isDraft(row)
 
   return (
-    <tr className={cn('border-b border-[#f0f0ed] align-top', selected && 'bg-[#5B5FE8]/[0.03]')}>
+    <tr className={cn('border-b border-border align-top', selected && 'bg-primary/[0.03]')}>
       <td className="px-3 py-3">
-        <Checkbox checked={selected} onCheckedChange={() => toggleSelected(row.id)} aria-label={`Seleccionar ${row.baseName}`} className="border-[#bbb] bg-white" />
+        <Checkbox checked={selected} onCheckedChange={() => toggleSelected(row.id)} aria-label={`Seleccionar ${row.baseName}`} className="border-border bg-card" />
       </td>
       <td className="px-3 py-3">
         <div className="flex items-end gap-1.5">{row.assets.map((asset) => <AssetThumb key={asset.id} asset={asset} />)}</div>
@@ -162,17 +162,17 @@ function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, o
           title="Nombre del anuncio en Meta"
           className={cn('h-8 w-[230px] font-mono text-[11px]', fieldClass)}
         />
-        <p className="mt-1 text-[11px] text-[#777]">{derivePlacement(row.assets)}</p>
-        <p className={cn('text-[11px]', draft ? 'text-[#5B5FE8]' : 'text-[#999]')}>{draft ? 'Sugerido por Conexa' : `${row.assets.length} ${row.assets.length === 1 ? 'archivo' : 'archivos'}`}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">{derivePlacement(row.assets)}</p>
+        <p className={cn('text-[11px]', draft ? 'text-primary' : 'text-muted-foreground')}>{draft ? 'Sugerido por Conexa' : `${row.assets.length} ${row.assets.length === 1 ? 'archivo' : 'archivos'}`}</p>
       </td>
       <td className="px-3 py-3">
         {row.planAdId ? (
           <div className="w-[200px]">
-            <p className="text-[11.5px] font-semibold text-[#141414]">{row.planDestination?.campaignName}</p>
-            {row.planDestination?.campaignId && <p className="font-mono text-[10px] text-[#999]">{`Campaña ID ${row.planDestination.campaignId}`}</p>}
-            <p className="mt-1 text-[11px] text-[#777]">{row.planDestination?.adsetName}</p>
-            {row.planDestination?.adsetId && <p className="font-mono text-[10px] text-[#999]">{`Conjunto ID ${row.planDestination.adsetId}`}</p>}
-            <p className="mt-1 text-[10px] text-[#999]">
+            <p className="text-[11.5px] font-semibold text-foreground">{row.planDestination?.campaignName}</p>
+            {row.planDestination?.campaignId && <p className="font-mono text-[10px] text-muted-foreground">{`Campaña ID ${row.planDestination.campaignId}`}</p>}
+            <p className="mt-1 text-[11px] text-muted-foreground">{row.planDestination?.adsetName}</p>
+            {row.planDestination?.adsetId && <p className="font-mono text-[10px] text-muted-foreground">{`Conjunto ID ${row.planDestination.adsetId}`}</p>}
+            <p className="mt-1 text-[10px] text-muted-foreground">
               {row.planDestination?.accountId ? `Cuenta act_${row.planDestination.accountId.replace(/^act_/, '')} · según el plan` : 'Destino según el plan de carga'}
             </p>
           </div>
@@ -197,15 +197,15 @@ function Row({ row, index, adsets, clientId, clientName, selected, applyLabel, o
           className={cn('min-h-0 w-[280px] resize-none leading-relaxed', fieldClass)}
         />
         <div className="mt-1 flex items-center justify-between">
-          {row.aiGenerated ? <span className="text-[10px] font-semibold text-[#5B5FE8]">{'✦ Generado por IA'}</span> : <span />}
-          <span className={cn('font-mono text-[10px]', overLimit ? 'font-semibold text-[#a86412]' : 'text-[#999]')}>{`${row.primaryText.length}/${PRIMARY_TEXT_LIMIT}`}</span>
+          {row.aiGenerated ? <span className="text-[10px] font-semibold text-primary">{'✦ Generado por IA'}</span> : <span />}
+          <span className={cn('font-mono text-[10px]', overLimit ? 'font-semibold text-primary' : 'text-muted-foreground')}>{`${row.primaryText.length}/${PRIMARY_TEXT_LIMIT}`}</span>
         </div>
         {planId && row.planAdId && row.status !== 'done' && (
           <div className="mt-1 flex flex-col gap-0.5">
-            <button type="button" disabled={regenerating || writingCopy} onClick={regenerate} className="self-start text-[10px] font-semibold text-[#5B5FE8] hover:underline disabled:text-[#aaa] disabled:no-underline">
+            <button type="button" disabled={regenerating || writingCopy} onClick={regenerate} className="self-start text-[10px] font-semibold text-primary hover:underline disabled:text-muted-foreground disabled:no-underline">
               {regenerating || writingCopy ? 'Mirando el creativo…' : 'Regenerar'}
             </button>
-            {regenerateError && <span role="alert" className="text-[10px] text-[#c23b3b]">{regenerateError}</span>}
+            {regenerateError && <span role="alert" className="text-[10px] text-destructive">{regenerateError}</span>}
           </div>
         )}
         <div className="mt-1">
@@ -335,59 +335,59 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
 
   if (!rows.length) {
     return (
-      <div className="rounded-xl border border-[#dcdcd8] bg-white p-10 text-center">
-        <p className="mb-3 text-[12px] text-[#777]">Todavía no hay anuncios en el lote.</p>
-        <Button size="sm" onClick={() => setStep(1)} className="rounded-full bg-[#141414] text-[11px] text-white hover:bg-[#333]">Subir archivos</Button>
+      <div className="rounded-xl border border-border bg-card p-10 text-center">
+        <p className="mb-3 text-[12px] text-muted-foreground">Todavía no hay anuncios en el lote.</p>
+        <Button size="sm" onClick={() => setStep(1)} className="rounded-full bg-foreground text-[11px] text-background hover:bg-foreground">Subir archivos</Button>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="rounded-xl border border-[#5B5FE8]/25 bg-[#5B5FE8]/[0.06] px-4 py-3 text-[12px] text-[#3c3fb0]">
+      <p className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-3 text-[12px] text-primary">
         <span className="font-semibold">{'✦ Conexa'}</span>
         {` agrupó ${summary.files} ${summary.files === 1 ? 'archivo' : 'archivos'} en ${rows.length} ${rows.length === 1 ? 'anuncio' : 'anuncios'} · ${summary.ready} listos · ${summary.review} para revisar · ${summary.drafts} en borrador`}
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-[#dcdcd8] bg-white px-4 py-3">
-        <span className="text-[11px] font-medium text-[#555]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-border bg-card px-4 py-3">
+        <span className="text-[11px] font-medium text-muted-foreground">
           {fromSheet
             ? `${selected.length} de ${rows.length} seleccionados · solo estos pasan a Aprobar y crear`
             : selected.length ? `${selected.length} seleccionados` : 'Sin selección: se aplica a todos'}
         </span>
-        <button type="button" onClick={() => setSelected(allSelected ? [] : rows.map((row) => row.id))} className="text-[11px] font-semibold text-[#5B5FE8] hover:underline">
+        <button type="button" onClick={() => setSelected(allSelected ? [] : rows.map((row) => row.id))} className="text-[11px] font-semibold text-primary hover:underline">
           {allSelected ? 'Quitar selección' : 'Seleccionar todos'}
         </button>
-        <Button size="sm" variant="outline" onClick={writeCopies} disabled={writing} className="h-8 rounded-full border-[#5B5FE8]/50 bg-white text-[11px] text-[#5B5FE8] hover:bg-[#5B5FE8]/5 hover:text-[#5B5FE8]">
+        <Button size="sm" variant="outline" onClick={writeCopies} disabled={writing} className="h-8 rounded-full border-primary/50 bg-card text-[11px] text-primary hover:bg-primary/5 hover:text-primary">
           {'✦ Escribir copies con Conexa'}
         </Button>
         <NewDestinationDialog clientId={clientId} clientName={clientName} accounts={accounts} adsets={adsets} onCreated={(adsetId) => updateRows(targetIds, { adsetId })} />
-        <button type="button" disabled={!selected.length} onClick={() => removeRows(selected)} className="ml-auto text-[11px] font-semibold text-[#c23b3b] hover:underline disabled:text-[#ccc] disabled:no-underline">
+        <button type="button" disabled={!selected.length} onClick={() => removeRows(selected)} className="ml-auto text-[11px] font-semibold text-destructive hover:underline disabled:text-muted-foreground disabled:no-underline">
           Quitar seleccionados
         </button>
       </div>
 
       {writing && (
-        <p className="flex items-center gap-2 text-[12px] text-[#5B5FE8]" role="status">
+        <p className="flex items-center gap-2 text-[12px] text-primary" role="status">
           <span className="animate-pulse" aria-hidden="true">{'✦'}</span>
           {planId ? 'Conexa está mirando cada creativo para escribir su copy…' : 'Conexa está escribiendo copies con el tono y los objetivos del cliente…'}
         </p>
       )}
 
       {!writing && writeErrors.length > 0 && (
-        <div role="alert" className="flex flex-col gap-1 rounded-xl border border-[#c23b3b]/25 bg-[#c23b3b]/[0.05] px-4 py-3 text-[11.5px] leading-relaxed text-[#9a2f2f]">
+        <div role="alert" className="flex flex-col gap-1 rounded-xl border border-destructive/25 bg-destructive/[0.05] px-4 py-3 text-[11.5px] leading-relaxed text-[#9a2f2f]">
           <span className="font-semibold">{`No pude escribir ${writeErrors.length} ${writeErrors.length === 1 ? 'copy' : 'copies'}; esas filas quedaron como estaban:`}</span>
           {writeErrors.map((message) => <span key={message}>{message}</span>)}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-[#dcdcd8] bg-white">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1240px] text-left text-[11px] text-[#141414]">
-            <thead className="border-b border-[#eee] bg-[#fafaf8] text-[10px] text-[#777]">
+          <table className="w-full min-w-[1240px] text-left text-[11px] text-foreground">
+            <thead className="border-b border-border bg-muted text-[10px] text-muted-foreground">
               <tr>
                 <th className="w-10 px-3 py-3">
-                  <Checkbox checked={allSelected} onCheckedChange={(checked) => setSelected(checked ? rows.map((row) => row.id) : [])} aria-label="Seleccionar todos" className="border-[#bbb] bg-white" />
+                  <Checkbox checked={allSelected} onCheckedChange={(checked) => setSelected(checked ? rows.map((row) => row.id) : [])} aria-label="Seleccionar todos" className="border-border bg-card" />
                 </th>
                 {['Piezas', 'Anuncio', 'Campaña y conjunto', 'Texto principal', 'Título', 'CTA', 'Estado'].map((header) => <th key={header} className="px-3 py-3 font-semibold">{header}</th>)}
               </tr>
@@ -400,8 +400,8 @@ export function StepConfigure({ clientId, clientName, adsets, accounts }: { clie
       </div>
 
       <div className="flex items-center justify-between">
-        <Button size="sm" variant="outline" onClick={() => setStep(fromSheet ? 'plan' : 1)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{fromSheet ? '← Volver al plan de carga' : '← Sumar más archivos'}</Button>
-        <Button size="sm" disabled={fromSheet && !selected.length} onClick={() => setStep(3)} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+        <Button size="sm" variant="outline" onClick={() => setStep(fromSheet ? 'plan' : 1)} className="h-9 rounded-full border-border bg-card px-4 text-[11.5px] text-foreground hover:bg-muted hover:text-foreground">{fromSheet ? '← Volver al plan de carga' : '← Sumar más archivos'}</Button>
+        <Button size="sm" disabled={fromSheet && !selected.length} onClick={() => setStep(3)} className="h-9 rounded-full bg-foreground px-5 text-[11.5px] text-background hover:bg-foreground">
           {fromSheet ? (selected.length ? `Continuar con ${selected.length} ${selected.length === 1 ? 'anuncio' : 'anuncios'} →` : 'Seleccioná al menos un anuncio') : 'Revisar y publicar →'}
         </Button>
       </div>

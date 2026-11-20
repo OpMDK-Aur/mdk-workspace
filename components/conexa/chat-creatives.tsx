@@ -86,7 +86,7 @@ function CreativeImage({ creative, large = false }: { creative: RankedCreative; 
     <>
       <div className="absolute inset-0" style={{ background: stripedBackground }} aria-hidden="true" />
       {refreshing && creative.format && (
-        <span className="absolute inset-0 flex items-center justify-center font-mono text-[11px] text-[#5C5C5C]" aria-hidden="true">{creative.format}</span>
+        <span className="absolute inset-0 flex items-center justify-center font-mono text-[11px] text-muted-foreground" aria-hidden="true">{creative.format}</span>
       )}
       {showImage && (
         <img
@@ -105,26 +105,26 @@ function CreativeImage({ creative, large = false }: { creative: RankedCreative; 
 
 function CreativeTile({ creative, metric, onOpen }: { creative: RankedCreative; metric: CreativeMetric; onOpen: () => void }) {
   return (
-    <article className="overflow-hidden rounded-[14px] border border-[#E6E6E3] bg-white">
+    <article className="overflow-hidden rounded-[14px] border border-border bg-card">
       <button
         type="button"
         onClick={onOpen}
-        className="relative block aspect-square w-full overflow-hidden bg-[#F5F5F3] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#141414]"
+        className="relative block aspect-square w-full overflow-hidden bg-muted focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foreground"
         aria-label={`Ver creativo ${creative.name} en grande`}
       >
         <CreativeImage creative={creative} />
-        <span className="absolute left-2 top-2 rounded-full bg-[#141414] px-2 py-0.5 text-[11px] font-semibold text-white">{`#${creative.rank}`}</span>
+        <span className="absolute left-2 top-2 rounded-full bg-foreground px-2 py-0.5 text-[11px] font-semibold text-background">{`#${creative.rank}`}</span>
         {creative.format && (
-          <span className="absolute right-2 top-2 rounded-[5px] bg-white/90 px-2 py-[3px] font-mono text-[11px] text-[#5C5C5C]">{creative.format}</span>
+          <span className="absolute right-2 top-2 rounded-[5px] bg-card/90 px-2 py-[3px] font-mono text-[11px] text-muted-foreground">{creative.format}</span>
         )}
       </button>
       <div className="p-3">
-        <p className="text-[18px] font-bold tabular-nums text-[#141414]">{formatMetric(metric, creative.value, creative.currency)}</p>
-        <p className="text-[11.5px] text-[#6B6B6B]">{METRIC_LABELS[metric]}</p>
-        <div className="mt-2 flex justify-between gap-2 border-t border-[#F5F5F3] pt-2 text-[11.5px] tabular-nums text-[#5C5C5C]">
+        <p className="text-[18px] font-bold tabular-nums text-foreground">{formatMetric(metric, creative.value, creative.currency)}</p>
+        <p className="text-[11.5px] text-muted-foreground">{METRIC_LABELS[metric]}</p>
+        <div className="mt-2 flex justify-between gap-2 border-t border-border pt-2 text-[11.5px] tabular-nums text-muted-foreground">
           {secondaryMetrics(creative, metric).map((item) => <span key={item.metric}>{item.text}</span>)}
         </div>
-        <p className="mt-2 truncate text-[11px] text-[#9A9A9A]" title={creative.campaign ? `${creative.name} · ${creative.campaign}` : creative.name}>
+        <p className="mt-2 truncate text-[11px] text-muted-foreground" title={creative.campaign ? `${creative.name} · ${creative.campaign}` : creative.name}>
           {creative.campaign ? `${creative.name} · ${creative.campaign}` : creative.name}
         </p>
       </div>
@@ -133,7 +133,7 @@ function CreativeTile({ creative, metric, onOpen }: { creative: RankedCreative; 
 }
 
 function StateMessage({ children }: { children: string }) {
-  return <p className="mt-2.5 rounded-[14px] border border-[#E6E6E3] bg-white p-6 text-center text-[12px] text-[#9A9A9A]">{children}</p>
+  return <p className="mt-2.5 rounded-[14px] border border-border bg-card p-6 text-center text-[12px] text-muted-foreground">{children}</p>
 }
 
 function isTopCreativesResult(value: unknown): value is TopCreativesResult {
@@ -144,7 +144,7 @@ export function ChatCreativesSkeleton() {
   return (
     <div className="mt-2.5 grid grid-cols-3 gap-2.5" aria-busy="true">
       <span className="sr-only">Cargando creativos</span>
-      {[0, 1, 2].map((n) => <div key={n} className="aspect-square animate-pulse rounded-[14px] bg-[#F5F5F3]" />)}
+      {[0, 1, 2].map((n) => <div key={n} className="aspect-square animate-pulse rounded-[14px] bg-muted" />)}
     </div>
   )
 }
@@ -165,15 +165,15 @@ export function ChatCreatives({ data }: { data: unknown }) {
         ))}
       </div>
       <Dialog open={opened !== null} onOpenChange={(open) => { if (!open) setOpenId(null) }}>
-        <DialogContent className="max-w-2xl bg-white p-4 text-[#141414]">
+        <DialogContent className="max-w-2xl bg-card p-4 text-foreground">
           {opened && (
             <div className="flex flex-col gap-3">
-              <div className="relative aspect-square w-full overflow-hidden rounded-[10px] bg-[#F5F5F3]">
+              <div className="relative aspect-square w-full overflow-hidden rounded-[10px] bg-muted">
                 <CreativeImage creative={opened} large />
               </div>
               <div className="flex flex-col gap-0.5">
-                <DialogTitle className="text-[14px] font-semibold text-[#141414]">{opened.name}</DialogTitle>
-                <DialogDescription className="text-[12px] text-[#6B6B6B]">
+                <DialogTitle className="text-[14px] font-semibold text-foreground">{opened.name}</DialogTitle>
+                <DialogDescription className="text-[12px] text-muted-foreground">
                   {`${METRIC_LABELS[data.metric]} ${formatMetric(data.metric, opened.value, opened.currency)}${opened.campaign ? ` · ${opened.campaign}` : ''}`}
                 </DialogDescription>
               </div>

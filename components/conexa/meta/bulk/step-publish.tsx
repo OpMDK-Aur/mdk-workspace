@@ -16,17 +16,17 @@ import { Panel, StateBadge } from './bulk-shared'
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: 'amber' }) {
   return (
-    <div className={cn('rounded-xl border bg-white p-4', tone === 'amber' ? 'border-[#f0d9b0]' : 'border-[#dcdcd8]')}>
-      <p className="text-[11px] text-[#777]">{label}</p>
-      <p className={cn('mt-1 text-[24px] font-bold tabular-nums', tone === 'amber' ? 'text-[#a86412]' : 'text-[#141414]')}>{value}</p>
+    <div className={cn('rounded-xl border bg-card p-4', tone === 'amber' ? 'border-[#f0d9b0]' : 'border-border')}>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className={cn('mt-1 text-[24px] font-bold tabular-nums', tone === 'amber' ? 'text-primary' : 'text-foreground')}>{value}</p>
     </div>
   )
 }
 
 function Check({ tone, children }: { tone: 'ok' | 'warn' | 'muted'; children: React.ReactNode }) {
-  const mark = { ok: { symbol: '✓', className: 'bg-[#e8f6ef] text-[#1e7d55]' }, warn: { symbol: '!', className: 'bg-[#fdf3e1] text-[#a86412]' }, muted: { symbol: '•', className: 'bg-[#f0f0ed] text-[#888]' } }[tone]
+  const mark = { ok: { symbol: '✓', className: 'bg-status-verde/10 text-status-verde' }, warn: { symbol: '!', className: 'bg-[#fdf3e1] text-primary' }, muted: { symbol: '•', className: 'bg-muted text-muted-foreground' } }[tone]
   return (
-    <li className="flex items-start gap-2.5 text-[12px] leading-relaxed text-[#333]">
+    <li className="flex items-start gap-2.5 text-[12px] leading-relaxed text-foreground">
       <span className={cn('mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', mark.className)} aria-hidden="true">{mark.symbol}</span>
       {children}
     </li>
@@ -36,8 +36,8 @@ function Check({ tone, children }: { tone: 'ok' | 'warn' | 'muted'; children: Re
 function NameLine({ label, value }: { label: string; value: string }) {
   return (
     <p className="flex min-w-0 gap-2 text-[11.5px]">
-      <span className="w-[68px] shrink-0 text-[#888]">{label}</span>
-      <span className="truncate font-mono text-[#141414]" title={value}>{value}</span>
+      <span className="w-[68px] shrink-0 text-muted-foreground">{label}</span>
+      <span className="truncate font-mono text-foreground" title={value}>{value}</span>
     </p>
   )
 }
@@ -168,22 +168,22 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
           {tree.length ? (
             <ul className="flex flex-col gap-3">
               {tree.map((campaign) => (
-                <li key={campaign.key} className="rounded-lg border border-[#eee] p-3">
-                  <p className="flex items-center gap-2 text-[11px] text-[#888]">
+                <li key={campaign.key} className="rounded-lg border border-border p-3">
+                  <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     Campaña
-                    {campaign.isNew && <span className="rounded-full bg-[#5B5FE8]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#3c3fb0]">Nueva</span>}
+                    {campaign.isNew && <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Nueva</span>}
                   </p>
-                  <p className={cn('truncate font-mono text-[12px] font-semibold', campaign.key === 'missing' ? 'text-[#a86412]' : 'text-[#141414]')} title={campaign.name}>{campaign.name}</p>
-                  <ul className="mt-2 flex flex-col gap-2 border-l border-[#e6e6e3] pl-3">
+                  <p className={cn('truncate font-mono text-[12px] font-semibold', campaign.key === 'missing' ? 'text-primary' : 'text-foreground')} title={campaign.name}>{campaign.name}</p>
+                  <ul className="mt-2 flex flex-col gap-2 border-l border-border pl-3">
                     {campaign.adsets.map((adset) => (
                       <li key={adset.key}>
-                        <p className="flex items-center gap-2 text-[11px] text-[#888]">
+                        <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
                           Conjunto
-                          {adset.isNew && <span className="rounded-full bg-[#5B5FE8]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#3c3fb0]">Nuevo</span>}
+                          {adset.isNew && <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Nuevo</span>}
                         </p>
-                        <p className="truncate font-mono text-[11.5px] text-[#141414]" title={adset.name}>{adset.name}</p>
-                        <ul className="mt-1 flex flex-col gap-0.5 border-l border-[#e6e6e3] pl-3">
-                          {adset.ads.map((name, index) => <li key={`${name}-${index}`} className="truncate font-mono text-[11px] text-[#555]" title={name}>{name}</li>)}
+                        <p className="truncate font-mono text-[11.5px] text-foreground" title={adset.name}>{adset.name}</p>
+                        <ul className="mt-1 flex flex-col gap-0.5 border-l border-border pl-3">
+                          {adset.ads.map((name, index) => <li key={`${name}-${index}`} className="truncate font-mono text-[11px] text-muted-foreground" title={name}>{name}</li>)}
                         </ul>
                       </li>
                     ))}
@@ -191,10 +191,10 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
                 </li>
               ))}
             </ul>
-          ) : <p className="text-[12px] text-[#999]">No hay anuncios listos para publicar.</p>}
+          ) : <p className="text-[12px] text-muted-foreground">No hay anuncios listos para publicar.</p>}
         </Panel>
 
-        <Panel title={<>{'Controles de '}<span className="text-[#5B5FE8]">{'✦ Conexa'}</span></>}>
+        <Panel title={<>{'Controles de '}<span className="text-primary">{'✦ Conexa'}</span></>}>
           <ul className="flex flex-col gap-2">
             <Check tone={missingAdset ? 'warn' : 'ok'}>{missingAdset ? 'Hay anuncios sin conjunto: elegilos en el paso anterior.' : 'Todos los anuncios tienen campaña y conjunto.'}</Check>
             {!needsLink
@@ -211,23 +211,23 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
       <Panel title="Publicar en Meta Ads">
         {phase === 'publishing' ? (
           <div className="flex flex-col gap-2" role="status">
-            <p className="text-[12px] text-[#333]">{`Subiendo archivo y creando anuncio ${Math.min(progress + 1, publishTotal)} de ${publishTotal}…`}</p>
-            <Progress value={publishTotal ? (progress / publishTotal) * 100 : 0} className="h-2 bg-[#5B5FE8]/15 [&>[data-slot=progress-indicator]]:bg-[#5B5FE8]" />
+            <p className="text-[12px] text-foreground">{`Subiendo archivo y creando anuncio ${Math.min(progress + 1, publishTotal)} de ${publishTotal}…`}</p>
+            <Progress value={publishTotal ? (progress / publishTotal) * 100 : 0} className="h-2 bg-primary/15 [&>[data-slot=progress-indicator]]:bg-primary" />
           </div>
         ) : phase === 'finished' ? (
           <div className="flex flex-col gap-4">
             {groups.done.length > 0 && (
-              <div className="rounded-lg border border-[#bfe5d2] bg-[#e8f6ef] p-4">
-                <p className="text-[13px] font-semibold text-[#1e7d55]">{`✓ ${groups.done.length} ${groups.done.length === 1 ? 'anuncio creado' : 'anuncios creados'} en Meta Ads, ${statusLabel}`}</p>
+              <div className="rounded-lg border border-[#bfe5d2] bg-status-verde/10 p-4">
+                <p className="text-[13px] font-semibold text-status-verde">{`✓ ${groups.done.length} ${groups.done.length === 1 ? 'anuncio creado' : 'anuncios creados'} en Meta Ads, ${statusLabel}`}</p>
                 <ul className="mt-3 flex flex-col gap-2">
                   {groups.done.map((row) => row.published && (
-                    <li key={row.id} className="flex items-start justify-between gap-3 rounded-md bg-white/70 p-2.5">
+                    <li key={row.id} className="flex items-start justify-between gap-3 rounded-md bg-card/70 p-2.5">
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <NameLine label="Campaña" value={row.published.campaignName} />
                         <NameLine label="Conjunto" value={row.published.adsetName} />
                         <NameLine label="Anuncio" value={row.published.adName} />
                       </div>
-                      <a href={`https://adsmanager.facebook.com/adsmanager/manage/ads?act=${row.published.accountId.replace(/^act_/, '')}&selected_ad_ids=${row.metaAdId}`} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[#1e7d55] hover:underline">
+                      <a href={`https://adsmanager.facebook.com/adsmanager/manage/ads?act=${row.published.accountId.replace(/^act_/, '')}&selected_ad_ids=${row.metaAdId}`} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-status-verde hover:underline">
                         Ver en Ads Manager<ExternalLink className="size-3" aria-hidden="true" />
                       </a>
                     </li>
@@ -238,12 +238,12 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
             {groups.errors.length > 0 && (
               <ul className="flex flex-col gap-2">
                 {groups.errors.map((row) => (
-                  <li key={row.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#f3cccc] bg-[#fdf6f6] px-3 py-2.5">
+                  <li key={row.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#f3cccc] bg-muted px-3 py-2.5">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2"><StateBadge state="error" /><span className="truncate font-mono text-[11px] text-[#141414]">{nameOf(row)}</span></div>
-                      <p className="mt-1 text-[11px] text-[#c23b3b]">{row.error}</p>
+                      <div className="flex items-center gap-2"><StateBadge state="error" /><span className="truncate font-mono text-[11px] text-foreground">{nameOf(row)}</span></div>
+                      <p className="mt-1 text-[11px] text-destructive">{row.error}</p>
                     </div>
-                    <Button size="sm" variant="outline" disabled={retrying.includes(row.id)} onClick={() => retry(row)} className="h-8 shrink-0 rounded-full border-[#dcdcd8] bg-white text-[11px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">
+                    <Button size="sm" variant="outline" disabled={retrying.includes(row.id)} onClick={() => retry(row)} className="h-8 shrink-0 rounded-full border-border bg-card text-[11px] text-foreground hover:bg-muted hover:text-foreground">
                       {retrying.includes(row.id) ? 'Reintentando…' : 'Reintentar'}
                     </Button>
                   </li>
@@ -251,47 +251,47 @@ export function StepPublish({ clientId, clientName, adsets, destinationUrl, page
               </ul>
             )}
             <div className="flex gap-4">
-              <button type="button" onClick={reset} className="text-[12px] font-semibold text-[#5B5FE8] hover:underline">Nueva carga</button>
-              {groups.ready.filter((row) => row.status !== 'error').length > 0 && <button type="button" onClick={() => setPublishPhase('idle', 0)} className="text-[12px] font-semibold text-[#333] hover:underline">Publicar los restantes</button>}
+              <button type="button" onClick={reset} className="text-[12px] font-semibold text-primary hover:underline">Nueva carga</button>
+              {groups.ready.filter((row) => row.status !== 'error').length > 0 && <button type="button" onClick={() => setPublishPhase('idle', 0)} className="text-[12px] font-semibold text-foreground hover:underline">Publicar los restantes</button>}
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {needsLink && (
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="bulk-link" className="text-[11px] font-medium text-[#777]">URL de destino</label>
-                <Input id="bulk-link" type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://sitio-del-cliente.com/landing" className="h-9 max-w-[480px] border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white" />
+                <label htmlFor="bulk-link" className="text-[11px] font-medium text-muted-foreground">URL de destino</label>
+                <Input id="bulk-link" type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://sitio-del-cliente.com/landing" className="h-9 max-w-[480px] border-border bg-card text-[12px] text-foreground placeholder:text-muted-foreground dark:bg-card" />
               </div>
             )}
             {pages && pages.length > 1 && (
               <div>
-                <p className="mb-2 text-[11px] font-medium text-[#777]">Página de Facebook</p>
+                <p className="mb-2 text-[11px] font-medium text-muted-foreground">Página de Facebook</p>
                 <div role="radiogroup" aria-label="Página de Facebook" className="flex flex-wrap gap-1.5">
                   {pages.map((page) => (
-                    <button key={page.id} type="button" role="radio" aria-checked={pageId === page.id} onClick={() => setChosenPageId(page.id)} className={cn('rounded-full border px-3.5 py-1.5 text-[11.5px] font-medium', pageId === page.id ? 'border-[#141414] bg-[#141414] text-white' : 'border-[#dcdcd8] bg-white text-[#333] hover:bg-[#f5f5f3]')}>
+                    <button key={page.id} type="button" role="radio" aria-checked={pageId === page.id} onClick={() => setChosenPageId(page.id)} className={cn('rounded-full border px-3.5 py-1.5 text-[11.5px] font-medium', pageId === page.id ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-foreground hover:bg-muted')}>
                       {page.name}
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-[11.5px] text-[#777]">Todos los anuncios del lote se publican con esta página.</p>
+                <p className="mt-2 text-[11.5px] text-muted-foreground">Todos los anuncios del lote se publican con esta página.</p>
               </div>
             )}
             <div>
-              <p className="mb-2 text-[11px] font-medium text-[#777]">Estado al subir</p>
-              <div role="radiogroup" aria-label="Estado al subir" className="inline-flex rounded-full border border-[#dcdcd8] bg-[#f5f5f3] p-0.5">
+              <p className="mb-2 text-[11px] font-medium text-muted-foreground">Estado al subir</p>
+              <div role="radiogroup" aria-label="Estado al subir" className="inline-flex rounded-full border border-border bg-muted p-0.5">
                 {([['PAUSED', 'Pausado (recomendado)'], ['ACTIVE', 'Activo']] as const).map(([value, label]) => (
-                  <button key={value} type="button" role="radio" aria-checked={initialStatus === value} onClick={() => setInitialStatus(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', initialStatus === value ? 'bg-white text-[#141414] shadow-sm' : 'text-[#777]')}>
+                  <button key={value} type="button" role="radio" aria-checked={initialStatus === value} onClick={() => setInitialStatus(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', initialStatus === value ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
                     {label}
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-pretty text-[11.5px] leading-relaxed text-[#777]">
+              <p className="mt-2 text-pretty text-[11.5px] leading-relaxed text-muted-foreground">
                 {initialStatus === 'PAUSED' ? 'La campaña, el conjunto y el anuncio se crean pausados: aparecen en Ads Manager, no gastan y se activan con un clic.' : 'Los anuncios empiezan a entregar apenas Meta los apruebe y consumen presupuesto del conjunto.'}
               </p>
             </div>
             <div className="flex items-center justify-between">
-              <Button size="sm" variant="outline" onClick={() => setStep(2)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Volver a configurar'}</Button>
-              <Button size="sm" onClick={publish} disabled={!groups.ready.length || !linkOk || missingAdset} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+              <Button size="sm" variant="outline" onClick={() => setStep(2)} className="h-9 rounded-full border-border bg-card px-4 text-[11.5px] text-foreground hover:bg-muted hover:text-foreground">{'← Volver a configurar'}</Button>
+              <Button size="sm" onClick={publish} disabled={!groups.ready.length || !linkOk || missingAdset} className="h-9 rounded-full bg-foreground px-5 text-[11.5px] text-background hover:bg-foreground">
                 {`Subir ${groups.ready.length} ${groups.ready.length === 1 ? 'anuncio' : 'anuncios'} a Meta`}
               </Button>
             </div>
