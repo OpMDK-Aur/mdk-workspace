@@ -103,6 +103,7 @@ export async function updateSession(request: NextRequest) {
   if (isAuthPath && user) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard/conexa'
+    url.search = '?vista=inicio'
     return NextResponse.redirect(url)
   }
 
@@ -110,6 +111,7 @@ export async function updateSession(request: NextRequest) {
   if (request.nextUrl.pathname === '/') {
     const url = request.nextUrl.clone()
     url.pathname = user ? '/dashboard/conexa' : '/auth/login'
+    if (user) url.search = '?vista=inicio'
     return NextResponse.redirect(url)
   }
 
