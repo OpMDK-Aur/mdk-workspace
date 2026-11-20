@@ -836,6 +836,8 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     if (result.error) {
       setErrors(prev => ({ ...prev, [clientId]: result.error! }))
     } else {
+      const warning = 'warning' in result ? result.warning : undefined
+      setErrors(prev => ({ ...prev, [clientId]: warning ?? '' }))
       setSaved(prev => ({ ...prev, [clientId]: true }))
       setMatchResults(prev => ({ ...prev, [clientId]: { status: 'saved', candidates: [] } }))
       setGoogleMatchResults(prev => ({ ...prev, [clientId]: { status: 'saved', candidates: [] } }))
