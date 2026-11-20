@@ -29,12 +29,33 @@ interface CustomerClientRow {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { accessToken, error: tokenError } = await getGoogleAdsAccessToken()
+  // `?scope=user` (asignación de cuentas) lista con la cuenta de Google Ads que
+  // conectó el usuario; si no tiene o no puede leer el MCC, usa la de la agencia.
+  const userScope = new URL(request.url).searchParams.get('scope') === 'user'
+  if (userScope) {
+    const userToken = await getGoogleAdsAccessToken({ userId: user.id })
+    if (userToken.accessToken && userToken.source === 'user') {
+      const response = await listGoogleAdsAccounts(userToken.accessToken)
+      if (response.ok) {
+        const payload = await response.json()
+        return NextResponse.json({ ...payload, tokenSource: 'user' })
+      }
+    }
+  }
+  const response = await listGoogleAdsAccounts()
+  if (!userScope || !response.ok) return response
+  return NextResponse.json({ ...(await response.json()), tokenSource: 'agency' })
+}
+
+async function listGoogleAdsAccounts(preferredAccessToken?: string) {
+  const agencyToken = preferredAccessToken ? null : await getGoogleAdsAccessToken()
+  const accessToken = preferredAccessToken ?? agencyToken?.accessToken
+  const tokenError = agencyToken?.error
   const developerToken = getGoogleAdsDeveloperToken()
   const loginCustomerId = getGoogleAdsLoginCustomerId()
 

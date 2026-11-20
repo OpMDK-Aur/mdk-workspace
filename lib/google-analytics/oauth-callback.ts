@@ -24,7 +24,7 @@ export async function handleGoogleAnalyticsCallback(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin
   const [nonce, ...rest] = (requestUrl.searchParams.get('state') ?? '').slice(GOOGLE_ANALYTICS_STATE_PREFIX.length).split(':')
-  const returnTo = safeReturnPath(rest.join(':')) ?? '/dashboard/platform'
+  const returnTo = safeReturnPath(rest.join(':')) ?? '/dashboard/apps'
   const fail = (reason: string) => {
     const response = NextResponse.redirect(withStatus(returnTo, 'ga_error', reason, appUrl))
     response.cookies.delete({ name: STATE_COOKIE, path: GOOGLE_ANALYTICS_STATE_COOKIE_PATH })

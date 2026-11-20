@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { getGoogleCalendarAccessToken } from '@/lib/google-tokens'
+import { createClient } from '@/lib/supabase/server'
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -13,8 +14,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { event } = body
 
-    // Get valid token from environment variables
-    const { accessToken, error: tokenError } = await getGoogleCalendarAccessToken()
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+    // Primero el calendario que conectó el usuario; si no tiene, el de la agencia.
+    const { accessToken, error: tokenError } = await getGoogleCalendarAccessToken({ userId: user.id })
     
     if (!accessToken) {
       return NextResponse.json({ 

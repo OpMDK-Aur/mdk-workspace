@@ -437,7 +437,7 @@ interface ClientsPlatformConfigProps {
   isMaster?: boolean
 }
 
-export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlatformConfigProps) {
+export function ClientsPlatformConfig({ clients, isMaster = false, initialClientName }: ClientsPlatformConfigProps & { initialClientName?: string }) {
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [accountsError, setAccountsError] = useState<string | null>(null)
@@ -533,17 +533,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     }
   }
 
-  function connectAnalytics() {
-    const returnTo = `${window.location.pathname}${window.location.search}`
-    window.location.href = `/api/auth/google-analytics?return=${encodeURIComponent(returnTo)}`
-  }
-
-  async function disconnectAnalytics() {
-    if (!window.confirm('¿Desconectar tu cuenta de Google Analytics? Vas a dejar de ver tus propiedades GA4.')) return
-    await fetch('/api/auth/google-analytics', { method: 'DELETE' })
-    setAnalyticsConnection({ connected: false, email: null, expired: false })
-    setAnalyticsProperties([])
-  }
+  const connectorsHref = '/dashboard/apps#conector-google-analytics'
 
   async function fetchTagContainers(search = '') {
     setTagLoading(true)
@@ -650,7 +640,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
   }
 
   // Filters
-  const [filterClientName, setFilterClientName] = useState('__all__')
+  const [filterClientName, setFilterClientName] = useState(initialClientName || '__all__')
   const [filterProjectManager, setFilterProjectManager] = useState('__all__')
   const [filterAccountManager, setFilterAccountManager] = useState('__all__')
   const [filterConnected, setFilterConnected] = useState<'__all__' | 'connected' | 'not_connected'>('__all__')
@@ -753,7 +743,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
     setLoadingGoogleAccounts(true)
     setGoogleAccountsError(null)
     try {
-      const res = await fetch('/api/ads/google/accounts')
+      const res = await fetch('/api/ads/google/accounts?scope=user')
       const data = await res.json()
       if (data.error) { setGoogleAccountsError(data.error); setGoogleAccounts([]); return }
       const accounts: GoogleAccount[] = data.accounts ?? []
@@ -1253,15 +1243,14 @@ export function ClientsPlatformConfig({ clients, isMaster = false }: ClientsPlat
                       <p className="text-xs leading-relaxed text-muted-foreground">
                         {analyticsConnection.expired ? 'Tu conexión con Google Analytics venció o no tiene permisos. Volvé a conectarla para ver tus propiedades.' : 'Conectá tu cuenta de Google para ver las propiedades GA4 a las que tenés acceso.'}
                       </p>
-                      <Button type="button" size="sm" variant="outline" className="self-start" onClick={connectAnalytics}>{analyticsConnection.expired ? 'Volver a conectar' : 'Conectar mi Google Analytics'}</Button>
+                      <Button asChild size="sm" variant="outline" className="self-start"><a href={connectorsHref}>{analyticsConnection.expired ? 'Reconectar en Conectores' : 'Conectar en Conectores'}</a></Button>
                     </div>
                   )}
                   {!analyticsLoading && analyticsConnection?.connected && !analyticsConnection.expired && (
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <span>Conectado como <span className="font-medium text-foreground">{analyticsConnection.email ?? 'tu cuenta de Google'}</span> · {analyticsProperties.length} propiedades</span>
                       <button type="button" className="font-medium text-primary hover:underline" onClick={() => fetchAnalyticsProperties(true)}>Actualizar</button>
-                      <button type="button" className="font-medium text-primary hover:underline" onClick={connectAnalytics}>Cambiar cuenta</button>
-                      <button type="button" className="font-medium text-muted-foreground hover:text-foreground hover:underline" onClick={disconnectAnalytics}>Desconectar</button>
+                      <a href={connectorsHref} className="font-medium text-primary hover:underline">Cambiar cuenta en Conectores</a>
                     </div>
                   )}
                   {analyticsLoading && <p className="text-xs text-muted-foreground">Cargando tus propiedades GA4...</p>}
