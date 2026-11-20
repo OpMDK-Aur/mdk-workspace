@@ -16,7 +16,7 @@ import { COUNTRIES, OBJECTIVES, type BulkAdset, type NewDestination, type Object
 
 export type MetaAccountOption = { id: string; name: string }
 
-const fieldClass = 'border-[#dcdcd8] bg-white text-[12px] text-[#141414] placeholder:text-[#aaa] dark:bg-white'
+const fieldClass = 'border-border bg-card text-[12px] text-foreground placeholder:text-muted-foreground dark:bg-card'
 const tag = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')
 const month = () => new Date().toISOString().slice(0, 7)
 
@@ -86,21 +86,21 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="h-8 rounded-full border-[#dcdcd8] bg-white text-[11px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">
+        <Button size="sm" variant="outline" className="h-8 rounded-full border-border bg-card text-[11px] text-foreground hover:bg-muted hover:text-foreground">
           <Plus className="size-3.5" aria-hidden="true" />
           Nueva campaña / conjunto
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto bg-white text-[#141414] sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto bg-card text-foreground sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle>Nuevo destino en Meta</DialogTitle>
-          <DialogDescription className="text-[#777]">Se crea en Meta recién al publicar. Si no escribís un nombre, usamos la sugerencia.</DialogDescription>
+          <DialogDescription className="text-muted-foreground">Se crea en Meta recién al publicar. Si no escribís un nombre, usamos la sugerencia.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-5">
           {accounts.length > 1 && (
             <div className="flex flex-col gap-1.5">
-              <Label className="text-[11px] text-[#555]">Cuenta publicitaria</Label>
+              <Label className="text-[11px] text-muted-foreground">Cuenta publicitaria</Label>
               <Select value={activeAccount} onValueChange={(value) => { setAccountId(value); setExistingCampaignId(''); setPixelId('') }}>
                 <SelectTrigger className={cn('h-9', fieldClass)}><SelectValue /></SelectTrigger>
                 <SelectContent>{accounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}</SelectContent>
@@ -110,22 +110,22 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
 
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-2 text-[12px] font-semibold">Campaña</legend>
-            <div role="radiogroup" aria-label="Campaña" className="inline-flex w-fit rounded-full border border-[#dcdcd8] bg-[#f5f5f3] p-0.5">
+            <div role="radiogroup" aria-label="Campaña" className="inline-flex w-fit rounded-full border border-border bg-muted p-0.5">
               {([['new', 'Nueva'], ['existing', 'Existente']] as const).map(([value, label]) => (
-                <button key={value} type="button" role="radio" aria-checked={campaignMode === value} onClick={() => setCampaignMode(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', campaignMode === value ? 'bg-white text-[#141414] shadow-sm' : 'text-[#777]')}>{label}</button>
+                <button key={value} type="button" role="radio" aria-checked={campaignMode === value} onClick={() => setCampaignMode(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', campaignMode === value ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>{label}</button>
               ))}
             </div>
             {campaignMode === 'new' ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="dest-objective" className="text-[11px] text-[#555]">Objetivo</Label>
+                  <Label htmlFor="dest-objective" className="text-[11px] text-muted-foreground">Objetivo</Label>
                   <Select value={objective} onValueChange={(value) => setObjective(value as Objective)}>
                     <SelectTrigger id="dest-objective" className={cn('h-9', fieldClass)}><SelectValue /></SelectTrigger>
                     <SelectContent>{OBJECTIVES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="dest-campaign" className="text-[11px] text-[#555]">Nombre de la campaña</Label>
+                  <Label htmlFor="dest-campaign" className="text-[11px] text-muted-foreground">Nombre de la campaña</Label>
                   <Input id="dest-campaign" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder={suggestedCampaign} className={cn('h-9 font-mono', fieldClass)} />
                 </div>
               </div>
@@ -139,13 +139,13 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
 
           {showEngagementTarget && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] text-[#555]">Dónde ocurre la interacción</span>
-              <div role="radiogroup" aria-label="Dónde ocurre la interacción" className="inline-flex w-fit rounded-full border border-[#dcdcd8] bg-[#f5f5f3] p-0.5">
+              <span className="text-[11px] text-muted-foreground">Dónde ocurre la interacción</span>
+              <div role="radiogroup" aria-label="Dónde ocurre la interacción" className="inline-flex w-fit rounded-full border border-border bg-muted p-0.5">
                 {([['WHATSAPP', 'WhatsApp'], ['POST', campaignMode === 'existing' ? 'Según la campaña' : 'En la publicación']] as const).map(([value, label]) => (
-                  <button key={value} type="button" role="radio" aria-checked={engagementTarget === value} onClick={() => setEngagementTarget(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', engagementTarget === value ? 'bg-white text-[#141414] shadow-sm' : 'text-[#777]')}>{label}</button>
+                  <button key={value} type="button" role="radio" aria-checked={engagementTarget === value} onClick={() => setEngagementTarget(value)} className={cn('rounded-full px-4 py-1.5 text-[11.5px] font-medium', engagementTarget === value ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>{label}</button>
                 ))}
               </div>
-              <p className="text-pretty text-[11.5px] leading-relaxed text-[#777]">
+              <p className="text-pretty text-[11.5px] leading-relaxed text-muted-foreground">
                 {toWhatsapp
                   ? `El conjunto optimiza conversaciones y los anuncios abren WhatsApp: no hace falta URL de destino. La página de Facebook tiene que tener el número de WhatsApp vinculado${campaignMode === 'existing' ? ', y la campaña tiene que ser de Interacción' : ''}.`
                   : campaignMode === 'existing' ? 'El conjunto usa la optimización del objetivo de la campaña.' : 'Optimiza interacciones con la publicación (me gusta, comentarios, compartidos).'}
@@ -157,33 +157,33 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
             <legend className="mb-2 text-[12px] font-semibold">Conjunto de anuncios</legend>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="dest-adset" className="text-[11px] text-[#555]">Nombre del conjunto</Label>
+                <Label htmlFor="dest-adset" className="text-[11px] text-muted-foreground">Nombre del conjunto</Label>
                 <Input id="dest-adset" value={adsetName} onChange={(event) => setAdsetName(event.target.value)} placeholder={suggestedAdset} className={cn('h-9 font-mono', fieldClass)} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="dest-budget" className="text-[11px] text-[#555]">Presupuesto diario</Label>
+                <Label htmlFor="dest-budget" className="text-[11px] text-muted-foreground">Presupuesto diario</Label>
                 <Input id="dest-budget" type="number" min="1" inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="Ej. 5000" className={cn('h-9', fieldClass)} />
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] text-[#555]">Países</span>
+              <span className="text-[11px] text-muted-foreground">Países</span>
               <div className="flex flex-wrap gap-1.5">
                 {COUNTRIES.map((country) => (
-                  <button key={country.code} type="button" aria-pressed={countries.includes(country.code)} onClick={() => toggleCountry(country.code)} className={cn('rounded-full border px-2.5 py-1 text-[11px]', countries.includes(country.code) ? 'border-[#5B5FE8] bg-[#5B5FE8]/10 text-[#3c3fb0]' : 'border-[#dcdcd8] bg-white text-[#555]')}>{country.label}</button>
+                  <button key={country.code} type="button" aria-pressed={countries.includes(country.code)} onClick={() => toggleCountry(country.code)} className={cn('rounded-full border px-2.5 py-1 text-[11px]', countries.includes(country.code) ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground')}>{country.label}</button>
                 ))}
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="dest-age-min" className="text-[11px] text-[#555]">Edad mín.</Label>
+                <Label htmlFor="dest-age-min" className="text-[11px] text-muted-foreground">Edad mín.</Label>
                 <Input id="dest-age-min" type="number" min="18" max="65" value={ageMin} onChange={(event) => setAgeMin(event.target.value)} className={cn('h-9', fieldClass)} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="dest-age-max" className="text-[11px] text-[#555]">Edad máx.</Label>
+                <Label htmlFor="dest-age-max" className="text-[11px] text-muted-foreground">Edad máx.</Label>
                 <Input id="dest-age-max" type="number" min="18" max="65" value={ageMax} onChange={(event) => setAgeMax(event.target.value)} className={cn('h-9', fieldClass)} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-[11px] text-[#555]">Género</Label>
+                <Label className="text-[11px] text-muted-foreground">Género</Label>
                 <Select value={genders} onValueChange={(value) => setGenders(value as typeof genders)}>
                   <SelectTrigger className={cn('h-9', fieldClass)}><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="female">Mujeres</SelectItem><SelectItem value="male">Hombres</SelectItem></SelectContent>
@@ -191,7 +191,7 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label className="text-[11px] text-[#555]">{needsPixel ? 'Píxel (obligatorio para este objetivo)' : 'Píxel (opcional)'}</Label>
+              <Label className="text-[11px] text-muted-foreground">{needsPixel ? 'Píxel (obligatorio para este objetivo)' : 'Píxel (opcional)'}</Label>
               <Select value={pixelId || 'none'} onValueChange={(value) => setPixelId(value === 'none' ? '' : value)}>
                 <SelectTrigger className={cn('h-9', fieldClass)}><SelectValue placeholder={loadingPixels ? 'Cargando píxeles…' : 'Sin píxel'} /></SelectTrigger>
                 <SelectContent>
@@ -202,12 +202,12 @@ export function NewDestinationDialog({ clientId, clientName, accounts, adsets, o
             </div>
           </fieldset>
 
-          {error && <p role="alert" className="text-[12px] text-[#c23b3b]">{error}</p>}
+          {error && <p role="alert" className="text-[12px] text-destructive">{error}</p>}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full border-[#dcdcd8] bg-white text-[12px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">Cancelar</Button>
-          <Button onClick={save} className="rounded-full bg-[#141414] text-[12px] text-white hover:bg-[#333]">Agregar destino</Button>
+          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full border-border bg-card text-[12px] text-foreground hover:bg-muted hover:text-foreground">Cancelar</Button>
+          <Button onClick={save} className="rounded-full bg-foreground text-[12px] text-background hover:bg-foreground">Agregar destino</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

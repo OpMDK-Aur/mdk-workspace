@@ -72,9 +72,9 @@ function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: unknow
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
       {metrics.map((metric) => (
-        <div key={metric.label} className="min-w-0 rounded-xl border border-[#e6e6e3] bg-white px-3 py-3">
-          <p className="truncate text-[10px] text-[#858585]">{metric.label}</p>
-          <p className="mt-1.5 whitespace-nowrap text-[16px] font-semibold tracking-[-.03em] text-[#202020] tabular-nums">
+        <div key={metric.label} className="min-w-0 rounded-xl border border-border bg-card px-3 py-3">
+          <p className="truncate text-[10px] text-muted-foreground">{metric.label}</p>
+          <p className="mt-1.5 whitespace-nowrap text-[16px] font-semibold tracking-[-.03em] text-foreground tabular-nums">
             {metric.value === 'No disponible' ? metric.value : metric.percent ? `${decimalFormat(metric.value)}%` : metric.money ? moneyFormat(metric.value) : metric.decimal ? decimalFormat(metric.value) : numberFormat(metric.value)}
           </p>
         </div>
@@ -86,8 +86,8 @@ function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: unknow
 function FilterField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return (
     <label className="flex min-w-[140px] flex-1 flex-col gap-1">
-      <span className="text-[9px] font-semibold uppercase tracking-[.06em] text-[#858585]">{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-lg border border-[#e6e6e3] bg-white px-2.5 text-[11px] text-[#333] outline-none focus:border-[#5b5fe8]">
+      <span className="text-[9px] font-semibold uppercase tracking-[.06em] text-muted-foreground">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-2.5 text-[11px] text-foreground outline-none focus:border-primary">
         <option value="all">Todas</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
@@ -98,14 +98,14 @@ function FilterField({ label, value, options, onChange }: { label: string; value
 function SectionHeading({ title, detail }: { title: string; detail?: string }) {
   return (
     <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <h3 className="text-[12px] font-semibold text-[#2c2c2c]">{title}</h3>
-      {detail && <span className="text-[10px] text-[#888]">{detail}</span>}
+      <h3 className="text-[12px] font-semibold text-foreground">{title}</h3>
+      {detail && <span className="text-[10px] text-muted-foreground">{detail}</span>}
     </div>
   )
 }
 
 function EmptyPanel({ text = 'Sin datos disponibles para este período.' }: { text?: string }) {
-  return <div className="rounded-xl border border-dashed border-[#dededb] bg-white px-4 py-7 text-center text-[11px] text-[#858585]">{text}</div>
+  return <div className="rounded-xl border border-dashed border-border bg-card px-4 py-7 text-center text-[11px] text-muted-foreground">{text}</div>
 }
 
 function metaAccounts(data: DashboardRecord) {
@@ -153,7 +153,7 @@ function currentMonthToken() {
 }
 
 function BudgetMonthFilter({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
-  return <label className="flex min-w-[140px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-[#858585]">Mes</span><select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-lg border border-[#e6e6e3] bg-white px-2.5 text-[11px] text-[#333] outline-none focus:border-[#5b5fe8]"><option value="current">Mes actual</option><option value="all">Todos los meses</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+  return <label className="flex min-w-[140px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-muted-foreground">Mes</span><select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-2.5 text-[11px] text-foreground outline-none focus:border-primary"><option value="current">Mes actual</option><option value="all">Todos los meses</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
 }
 
 function argentinaMonth() {
@@ -470,11 +470,11 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
   }))
 
   return (
-    <section id="dashboard-platform-meta" className="scroll-mt-5 rounded-2xl border border-[#e6e6e3] bg-[#fafaf8] p-4 sm:p-5">
+    <section id="dashboard-platform-meta" className="scroll-mt-5 rounded-2xl border border-border bg-muted p-4 sm:p-5">
       <PlatformSectionHeader platform={platform} detail="Meta Ads · rendimiento y presupuesto" />
-      <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-[#e6e6e3] bg-white p-3">
+      <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3">
         <FilterField label="Cuenta" value={accountFilter} options={accountsList} onChange={setAccountFilter} />
-        <label className="flex min-w-[170px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-[#858585]">Campaña</span><input value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)} placeholder="Buscar campaña" className="h-9 rounded-lg border border-[#e6e6e3] px-2.5 text-[11px] outline-none focus:border-[#5b5fe8]" /></label>
+        <label className="flex min-w-[170px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-muted-foreground">Campaña</span><input value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)} placeholder="Buscar campaña" className="h-9 rounded-lg border border-border px-2.5 text-[11px] outline-none focus:border-primary" /></label>
         <FilterField label="Objetivo" value={objectiveFilter} options={objectives} onChange={setObjectiveFilter} />
         <FilterField label="Canal" value={channelFilter} options={channels} onChange={setChannelFilter} />
         <FilterField label="Estado" value={statusFilter} options={statuses} onChange={setStatusFilter} />
@@ -482,17 +482,17 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
         <FilterField label="Modelo" value={modelFilter} options={models} onChange={setModelFilter} />
         <FilterField label="Modalidad" value={modalityFilter} options={modalities} onChange={setModalityFilter} />
         {months.length > 0 && <BudgetMonthFilter value={monthFilter} options={months} onChange={setMonthFilter} />}
-        <button type="button" onClick={() => { setAccountFilter('all'); setCampaignFilter(''); setObjectiveFilter('all'); setChannelFilter('all'); setStatusFilter('all'); setBrandFilter('all'); setModelFilter('all'); setModalityFilter('all'); setMonthFilter('current') }} className="h-9 rounded-lg px-3 text-[11px] font-medium text-[#6a6a6a] underline underline-offset-2">Limpiar filtros</button>
+        <button type="button" onClick={() => { setAccountFilter('all'); setCampaignFilter(''); setObjectiveFilter('all'); setChannelFilter('all'); setStatusFilter('all'); setBrandFilter('all'); setModelFilter('all'); setModalityFilter('all'); setMonthFilter('current') }} className="h-9 rounded-lg px-3 text-[11px] font-medium text-muted-foreground underline underline-offset-2">Limpiar filtros</button>
       </div>
 
       <div className="mt-4 flex flex-col gap-4">
       {hasMetaData ? <MetricGrid metrics={kpis} /> : <EmptyPanel text="Sin datos disponibles para este cliente y período en Meta Ads." />}
       {hasMetaData && <DashboardDataTable title="Resultados por tipo" columns={[{ key: 'type', label: 'Tipo de resultado' }, { key: 'results', label: 'Resultados', format: 'number', right: true }, { key: 'spend', label: 'Inversión', format: 'money', right: true }, { key: 'cost', label: 'Costo por resultado', format: 'money', right: true }]} rows={resultTypeRows} emptyMessage="No se recibieron tipos de resultado para este período." />}
 
-      <div className="rounded-xl border border-[#e6e6e3] bg-white p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div><SectionHeading title="Evolución diaria por cuenta" detail={period} /><p className="text-[10px] text-[#878787]">Los datos se agrupan por cuenta publicitaria; el selector de cuenta filtra la serie.</p></div>
-          <select value={dailyMetric} onChange={(event) => setDailyMetric(event.target.value as 'spend' | 'results')} aria-label="Métrica de evolución diaria" className="h-8 rounded-lg border border-[#e6e6e3] bg-white px-2.5 text-[11px]">
+          <div><SectionHeading title="Evolución diaria por cuenta" detail={period} /><p className="text-[10px] text-muted-foreground">Los datos se agrupan por cuenta publicitaria; el selector de cuenta filtra la serie.</p></div>
+          <select value={dailyMetric} onChange={(event) => setDailyMetric(event.target.value as 'spend' | 'results')} aria-label="Métrica de evolución diaria" className="h-8 rounded-lg border border-border bg-card px-2.5 text-[11px]">
             <option value="spend">Inversión</option><option value="results">Resultados</option>
           </select>
         </div>
@@ -525,7 +525,7 @@ export function MetaDashboardSection({ platform, data, metrics, period, budget, 
         { key: 'cplAverage', label: 'CPL promedio', format: 'money', right: true }, { key: 'target', label: 'Objetivo', format: 'money', right: true },
       ]} rows={objectiveDetailRows} emptyMessage="El archivo no incluye objetivos CPL para estas cuentas." />
 
-      <div className="rounded-xl border border-[#e6e6e3] bg-white p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <SectionHeading title="Leads por provincia" detail="Meta solo informa esta dimensión cuando está disponible en la cuenta." />
         {regionLoading ? <EmptyPanel text="Cargando desglose regional…" /> : regionRows.length ? (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.5fr]">
@@ -597,7 +597,7 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
   const googleObjectiveRows = googleRawObjectives.map((row) => ({ account: display(field(row, 'Cuenta')), brand: display(field(row, 'Marca')), model: display(field(row, 'Modelos')), cplAverage: amount(row, 'CPL Promedio'), target: amount(row, 'OBJETIVO', 'Objetivo') }))
   const googleAlertItems = buildBudgetAlerts(googleBudgetSummary, googleRawObjectives, monthlyGoogleCampaigns)
   return (
-    <section id={`dashboard-platform-${platform.key}`} className="scroll-mt-5 rounded-2xl border border-[#e6e6e3] bg-[#fafaf8] p-4 sm:p-5">
+    <section id={`dashboard-platform-${platform.key}`} className="scroll-mt-5 rounded-2xl border border-border bg-muted p-4 sm:p-5">
       <PlatformSectionHeader platform={platform} detail={platform.key === 'analytics' ? 'Tráfico y eventos del sitio' : platform.key === 'crm' ? 'Resultados comerciales agregados' : platform.key === 'tag_manager' ? 'Contenedores, etiquetas y activadores' : 'Rendimiento de campañas'} />
       {unavailable ? (
         <EmptyPanel text="Sin datos disponibles para este cliente y período." />
@@ -622,8 +622,8 @@ export function GenericPlatformSection({ platform, data, metrics, period, budget
 <div className="flex flex-col gap-4">
             {tables.map((table) => <DashboardDataTable key={`${platform.key}-${table.title}`} title={table.title} columns={table.columns} rows={table.rows} emptyMessage={table.emptyMessage} />)}
           </div>
-          {platform.key === 'analytics' && <p className="rounded-lg border border-[#e6e6e3] bg-white px-3 py-2.5 text-[10px] leading-4 text-[#777]">Analytics mide tráfico y eventos del sitio; sus eventos clave no se suman a las conversiones de las plataformas publicitarias.</p>}
-          {platform.key === 'crm' && <p className="rounded-lg border border-[#e6e6e3] bg-white px-3 py-2.5 text-[10px] leading-4 text-[#777]">El CRM se muestra en forma agregada; no se incluyen nombres, teléfonos ni correos de contactos.</p>}
+          {platform.key === 'analytics' && <p className="rounded-lg border border-border bg-card px-3 py-2.5 text-[10px] leading-4 text-muted-foreground">Analytics mide tráfico y eventos del sitio; sus eventos clave no se suman a las conversiones de las plataformas publicitarias.</p>}
+          {platform.key === 'crm' && <p className="rounded-lg border border-border bg-card px-3 py-2.5 text-[10px] leading-4 text-muted-foreground">El CRM se muestra en forma agregada; no se incluyen nombres, teléfonos ni correos de contactos.</p>}
         </div>
       )}
     </section>
@@ -634,12 +634,12 @@ function PlatformSectionHeader({ platform, detail }: { platform: DashboardPlatfo
   return (
     <div className="mb-4 flex items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#ededeb] bg-white">
+        <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
           {platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-8 object-contain" /> : <platform.icon className="size-6 text-[#11A683]" aria-hidden="true" />}
         </span>
-        <div className="min-w-0"><h2 className="truncate text-[16px] font-semibold text-[#222]">{platform.name}</h2><p className="text-[10px] text-[#858585]">{detail}</p></div>
+        <div className="min-w-0"><h2 className="truncate text-[16px] font-semibold text-foreground">{platform.name}</h2><p className="text-[10px] text-muted-foreground">{detail}</p></div>
       </div>
-      <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium text-[#27845e]"><span className="size-1.5 rounded-full bg-[#1e9e6b]" aria-hidden="true" />Conectada</span>
+      <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium text-[#27845e]"><span className="size-1.5 rounded-full bg-status-verde" aria-hidden="true" />Conectada</span>
     </div>
   )
 }
@@ -652,8 +652,8 @@ function DailyPlatformChart({ platformKey, period, rows }: { platformKey: string
   const option = options.find((item) => item.key === metric) ?? options[0]
   const config = { [option.key]: { label: option.label, color: 'var(--chart-1)' } } satisfies ChartConfig
   return (
-    <div className="rounded-xl border border-[#e6e6e3] bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading title="Evolución diaria" detail={period} /><label className="flex items-center gap-2 text-[10px] text-[#777]">Métrica<select value={metric} onChange={(event) => setMetric(event.target.value)} className="h-8 rounded-lg border border-[#e6e6e3] bg-white px-2 text-[11px]">{options.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></div>
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading title="Evolución diaria" detail={period} /><label className="flex items-center gap-2 text-[10px] text-muted-foreground">Métrica<select value={metric} onChange={(event) => setMetric(event.target.value)} className="h-8 rounded-lg border border-border bg-card px-2 text-[11px]">{options.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label></div>
       <ChartContainer config={config} className="h-[220px] w-full">
         <LineChart accessibilityLayer data={rows} margin={{ left: 8, right: 10, top: 8 }}>
           <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -775,13 +775,13 @@ function genericTables(key: string, data: DashboardRecord): Array<{ title: strin
 function AlertGroups({ critical, attention }: { critical: Array<{title:string;description:string;account:string}>; attention: Array<{title:string;description:string;account:string}> }) {
   return (
     <section className="flex flex-col gap-3">
-      <details open className="overflow-hidden rounded-xl border border-[#f1c8c5] bg-white">
+      <details open className="overflow-hidden rounded-xl border border-[#f1c8c5] bg-card">
         <summary className="cursor-pointer px-4 py-3 text-[12px] font-semibold text-[#a63e38]">Críticas · {critical.length}</summary>
-        {critical.length ? <div className="border-t border-[#f7e1df] px-4 py-2">{critical.map((alert,index)=><p key={`${alert.title}-${index}`} className="border-b border-[#f5edec] py-2.5 text-[11px] text-[#494949]"><strong>{alert.title}</strong> · {alert.account} — {alert.description}</p>)}</div> : <p className="border-t border-[#f7e1df] px-4 py-3 text-[11px] text-[#818181]">No hay alertas críticas.</p>}
+        {critical.length ? <div className="border-t border-[#f7e1df] px-4 py-2">{critical.map((alert,index)=><p key={`${alert.title}-${index}`} className="border-b border-border py-2.5 text-[11px] text-foreground"><strong>{alert.title}</strong> · {alert.account} — {alert.description}</p>)}</div> : <p className="border-t border-[#f7e1df] px-4 py-3 text-[11px] text-muted-foreground">No hay alertas críticas.</p>}
       </details>
-      <details className="overflow-hidden rounded-xl border border-[#eee0b6] bg-white">
+      <details className="overflow-hidden rounded-xl border border-[#eee0b6] bg-card">
         <summary className="cursor-pointer px-4 py-3 text-[12px] font-semibold text-[#9a690b]">Atención · {attention.length}</summary>
-        {attention.length ? <div className="border-t border-[#f5edd5] px-4 py-2">{attention.map((alert,index)=><p key={`${alert.title}-${index}`} className="border-b border-[#f5f1e6] py-2.5 text-[11px] text-[#494949]"><strong>{alert.title}</strong> · {alert.account} — {alert.description}</p>)}</div> : <p className="border-t border-[#f5edd5] px-4 py-3 text-[11px] text-[#818181]">No hay alertas de atención.</p>}
+        {attention.length ? <div className="border-t border-[#f5edd5] px-4 py-2">{attention.map((alert,index)=><p key={`${alert.title}-${index}`} className="border-b border-[#f5f1e6] py-2.5 text-[11px] text-foreground"><strong>{alert.title}</strong> · {alert.account} — {alert.description}</p>)}</div> : <p className="border-t border-[#f5edd5] px-4 py-3 text-[11px] text-muted-foreground">No hay alertas de atención.</p>}
       </details>
     </section>
   )

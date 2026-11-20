@@ -83,11 +83,11 @@ export function DashboardFilterBar({ clientId, period, customRange, periodSelect
   const activeCount = DIMENSIONS.filter(({ key }) => filters[key].length > 0).length
 
   return (
-    <div ref={barRef} className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2" role="toolbar" aria-label="Filtros del tablero">
+    <div ref={barRef} className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2" role="toolbar" aria-label="Filtros del tablero">
       <div onPointerDownCapture={() => { setEditing(null); setAddOpen(false) }}>{periodSelector}</div>
       {visible.map(({ key, label, hint }) => (
         <div key={key} className="relative">
-          <div className={cn('flex items-center rounded-lg border text-[11px]', filters[key].length ? 'border-[#fbc59b] bg-[#fff5ec] text-[#7a3d0f]' : 'border-[#e6e6e3] bg-white text-[#5c5c5c]')}>
+          <div className={cn('flex items-center rounded-lg border text-[11px]', filters[key].length ? 'border-[#fbc59b] bg-[#fff5ec] text-[#7a3d0f]' : 'border-border bg-card text-muted-foreground')}>
             <button type="button" onClick={() => { setEditing((current) => current === key ? null : key); setAddOpen(false) }} aria-expanded={editing === key} aria-haspopup="listbox" className="flex max-w-[220px] items-center gap-1 py-1.5 pl-2.5 pr-1.5">
               <span className="font-semibold">{label}:</span>
               <span className="truncate">{summary(key)}</span>
@@ -100,15 +100,15 @@ export function DashboardFilterBar({ clientId, period, customRange, periodSelect
       ))}
       {available.length > 0 && (
         <div className="relative">
-          <button type="button" onClick={() => { setAddOpen((open) => !open); setEditing(null) }} aria-expanded={addOpen} className="flex items-center gap-1 rounded-lg border border-dashed border-[#d9d9d6] px-2.5 py-1.5 text-[11px] font-medium text-[#666] hover:border-[#F97316] hover:text-[#c2560c]"><Plus className="size-3" />Filtro</button>
+          <button type="button" onClick={() => { setAddOpen((open) => !open); setEditing(null) }} aria-expanded={addOpen} className="flex items-center gap-1 rounded-lg border border-dashed border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:border-primary hover:text-primary"><Plus className="size-3" />Filtro</button>
           {addOpen && (
-            <div className="absolute left-0 top-9 z-50 min-w-[190px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">
-              {available.map(({ key, label }) => <button type="button" key={key} onClick={() => { setAdded((current) => [...current, key]); setAddOpen(false); setEditing(key) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-[#f5f5f5]">{label}</button>)}
+            <div className="absolute left-0 top-9 z-50 min-w-[190px] rounded-[10px] border border-border bg-card p-1.5 shadow-lg">
+              {available.map(({ key, label }) => <button type="button" key={key} onClick={() => { setAdded((current) => [...current, key]); setAddOpen(false); setEditing(key) }} className="block w-full rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-muted">{label}</button>)}
             </div>
           )}
         </div>
       )}
-      {activeCount > 0 && <button type="button" onClick={() => { onChange(EMPTY_DASHBOARD_FILTERS); setAdded([]); setEditing(null) }} className="ml-auto text-[10px] text-[#888] underline underline-offset-2 hover:text-[#444]">Limpiar filtros</button>}
+      {activeCount > 0 && <button type="button" onClick={() => { onChange(EMPTY_DASHBOARD_FILTERS); setAdded([]); setEditing(null) }} className="ml-auto text-[10px] text-muted-foreground underline underline-offset-2 hover:text-muted-foreground">Limpiar filtros</button>}
     </div>
   )
 }
@@ -118,26 +118,26 @@ function FilterMenu({ label, hint, options, selected, loading, error, onToggle, 
   const normalized = query.trim().toLowerCase()
   const shown = options.filter((option) => option.label.toLowerCase().includes(normalized))
   return (
-    <div className="absolute left-0 top-9 z-50 w-[260px] rounded-[10px] border border-[#e6e6e3] bg-white p-1.5 shadow-lg">
-      {options.length > 6 && <label className="mb-1.5 flex items-center gap-1.5 rounded-md border border-[#e6e6e3] bg-[#fafaf8] px-2 py-1.5"><Search className="size-3 text-[#9a9a9a]" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${label.toLowerCase()}...`} aria-label={`Buscar ${label.toLowerCase()}`} className="w-full bg-transparent text-[11px] outline-none" /></label>}
+    <div className="absolute left-0 top-9 z-50 w-[260px] rounded-[10px] border border-border bg-card p-1.5 shadow-lg">
+      {options.length > 6 && <label className="mb-1.5 flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1.5"><Search className="size-3 text-muted-foreground" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${label.toLowerCase()}...`} aria-label={`Buscar ${label.toLowerCase()}`} className="w-full bg-transparent text-[11px] outline-none" /></label>}
       <div role="listbox" aria-multiselectable="true" aria-label={label} className="max-h-[240px] overflow-y-auto overscroll-contain">
-        {loading ? <p className="flex items-center gap-2 px-2.5 py-3 text-[11px] text-[#888]"><LoaderCircle className="size-3 animate-spin" />Cargando opciones...</p>
-          : error ? <p className="px-2.5 py-3 text-[11px] text-[#b42318]">{error}</p>
-          : shown.length === 0 ? <p className="px-2.5 py-3 text-[11px] text-[#9a9a9a]">{options.length ? 'Sin coincidencias' : 'No hay opciones para este cliente en el período.'}</p>
+        {loading ? <p className="flex items-center gap-2 px-2.5 py-3 text-[11px] text-muted-foreground"><LoaderCircle className="size-3 animate-spin" />Cargando opciones...</p>
+          : error ? <p className="px-2.5 py-3 text-[11px] text-destructive">{error}</p>
+          : shown.length === 0 ? <p className="px-2.5 py-3 text-[11px] text-muted-foreground">{options.length ? 'Sin coincidencias' : 'No hay opciones para este cliente en el período.'}</p>
           : shown.map((option) => {
             const checked = selected.includes(option.value)
             return (
-              <button type="button" role="option" aria-selected={checked} key={option.value} onClick={() => onToggle(option.value)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-[#f5f5f5]">
-                <span className={cn('flex size-3.5 shrink-0 items-center justify-center rounded border', checked ? 'border-[#F97316] bg-[#F97316] text-white' : 'border-[#cfcfcc] bg-white')}>{checked && <Check className="size-2.5" />}</span>
+              <button type="button" role="option" aria-selected={checked} key={option.value} onClick={() => onToggle(option.value)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] hover:bg-muted">
+                <span className={cn('flex size-3.5 shrink-0 items-center justify-center rounded border', checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>{checked && <Check className="size-2.5" />}</span>
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                {option.detail && <span className="shrink-0 text-[10px] text-[#9a9a9a]">{option.detail}</span>}
+                {option.detail && <span className="shrink-0 text-[10px] text-muted-foreground">{option.detail}</span>}
               </button>
             )
           })}
       </div>
-      <div className="mt-1 flex items-center justify-between gap-2 border-t border-[#eee] px-2.5 pt-1.5">
-        <span className="text-[10px] leading-4 text-[#9a9a9a]">{hint ?? (selected.length ? `${selected.length} seleccionadas` : 'Sin selección: se muestran todas')}</span>
-        {selected.length > 0 && <button type="button" onClick={onClear} className="shrink-0 text-[10px] font-medium text-[#c2560c]">Todas</button>}
+      <div className="mt-1 flex items-center justify-between gap-2 border-t border-border px-2.5 pt-1.5">
+        <span className="text-[10px] leading-4 text-muted-foreground">{hint ?? (selected.length ? `${selected.length} seleccionadas` : 'Sin selección: se muestran todas')}</span>
+        {selected.length > 0 && <button type="button" onClick={onClear} className="shrink-0 text-[10px] font-medium text-primary">Todas</button>}
       </div>
     </div>
   )

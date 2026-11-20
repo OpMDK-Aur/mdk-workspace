@@ -24,3 +24,19 @@ export function SdkIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+export function KeyboardArrowLeftIcon({ className }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z" />
+    </svg>
+  )
+}
+
+export function KeyboardArrowRightIcon({ className }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z" />
+    </svg>
+  )
+}

@@ -265,7 +265,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
 
   if (!clientId) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[#9a9a9a]">
+      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
         Seleccioná un cliente para empezar a chatear con Conexa.
       </div>
     )
@@ -273,7 +273,7 @@ export function ConexaSupervisorChat(props: ConexaChatProps) {
 
   if (isLoadingHistory) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 text-sm text-[#9a9a9a]">
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         Cargando conversación…
       </div>
@@ -572,22 +572,22 @@ function ConexaChatSession({
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
-      <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-[#E6E6E1] bg-white p-3">
+      <aside className="flex w-64 shrink-0 flex-col gap-3 border-r border-border bg-card p-3">
         <button
           type="button"
           onClick={onReset}
           disabled={!clientId || isResetting || !hasMessages}
-          className="flex h-9 items-center justify-center gap-2 rounded-full border border-[#E6E6E1] bg-white text-sm font-medium text-[#141414] transition-colors hover:border-[#5B5FE8] hover:text-[#5B5FE8] disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-9 items-center justify-center gap-2 rounded-full border border-border bg-card text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isResetting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}+ Nuevo análisis
         </button>
         <nav aria-label="Análisis anteriores" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {historyGroups.length === 0 ? (
-            <p className="px-2 py-6 text-center text-sm text-[#9a9a9a]">Todavía no hay análisis</p>
+            <p className="px-2 py-6 text-center text-sm text-muted-foreground">Todavía no hay análisis</p>
           ) : (
             historyGroups.map(([section, items]) => (
               <section key={section} className="flex flex-col gap-0.5">
-                <h3 className="px-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">{section}</h3>
+                <h3 className="px-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{section}</h3>
                 {items.map((item) => {
                   const isActive = item.id === conversationId
                   return (
@@ -600,7 +600,7 @@ function ConexaChatSession({
                       title={item.label}
                       className={cn(
                         'truncate rounded-md px-2 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed',
-                        isActive ? 'bg-[#eeefff] text-[#5B5FE8]' : 'text-[#141414] hover:bg-[#f4f4f1]',
+                        isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted',
                       )}
                     >
                       {item.label}
@@ -613,15 +613,15 @@ function ConexaChatSession({
         </nav>
       </aside>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
-        <div ref={scrollRef} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden bg-white p-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-card">
+        <div ref={scrollRef} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden bg-card p-4">
           {!hasMessages ? (
             <div className="m-auto flex max-w-md flex-col gap-4 text-center">
-              <p className="text-sm text-[#9a9a9a]">
+              <p className="text-sm text-muted-foreground">
                 Preguntale a Conexa por leads, inversión, conversiones, campañas o ventas de {clientName}. Indicá el período dentro de tu pregunta (por ejemplo, &quot;esta semana&quot; o &quot;el mes pasado&quot;); si no lo indicás, te lo va a pedir antes de responder.
               </p>
               <div className="flex flex-col gap-2 text-left">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a9a9a]">Últimas consultas del equipo</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Últimas consultas del equipo</p>
                 <div className="flex flex-col gap-2">
                   {suggestedQuestions.map((suggestion) => (
                     <button
@@ -629,20 +629,20 @@ function ConexaChatSession({
                       type="button"
                       disabled={!clientId}
                       onClick={() => handleSuggestionClick(suggestion)}
-                      className="group flex items-center gap-2 rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-left text-xs text-[#141414] transition-colors hover:border-[#5B5FE8] hover:bg-[#f4f4f1] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="group flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:border-primary hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <span>
                         {suggestion.includes('[período]') ? (
                           <>
                             {suggestion.split('[período]')[0]}
-                            <span className="rounded bg-[#eeefff] px-1.5 py-0.5 font-semibold text-[#5B5FE8]">[período]</span>
+                            <span className="rounded bg-primary/10 px-1.5 py-0.5 font-semibold text-primary">[período]</span>
                             {suggestion.split('[período]')[1]}
                           </>
                         ) : (
                           suggestion
                         )}
                       </span>
-                      <ChevronRight className="size-4 shrink-0 text-[#9a9a9a] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -667,10 +667,10 @@ function ConexaChatSession({
             ))
           )}
           {showActivityPanel && (
-            <div className="flex max-w-[80%] flex-col gap-1.5 self-start rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm">
+            <div className="flex max-w-[80%] flex-col gap-1.5 self-start rounded-lg border border-border bg-card px-3 py-2 text-sm">
               {activitySteps.length === 0 ? (
-                <span className="flex items-center gap-2 text-[#9a9a9a]">
-                  <MoreHorizontal className="size-4 animate-pulse text-[#9a9a9a]" aria-hidden="true" />
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <MoreHorizontal className="size-4 animate-pulse text-muted-foreground" aria-hidden="true" />
                   Pensando…
                 </span>
               ) : (
@@ -682,13 +682,13 @@ function ConexaChatSession({
                       key={`${step.eventId}-${index}`}
                       className={cn(
                         'flex items-center gap-2',
-                        isRunning ? 'text-[#141414]' : isError ? 'text-red-600' : 'text-[#9a9a9a]',
+                        isRunning ? 'text-foreground' : isError ? 'text-red-600' : 'text-muted-foreground',
                       )}
                     >
                       {isRunning ? (
-                        <MoreHorizontal className="size-4 shrink-0 animate-pulse text-[#5B5FE8]" aria-hidden="true" />
+                        <MoreHorizontal className="size-4 shrink-0 animate-pulse text-primary" aria-hidden="true" />
                       ) : (
-                        <Check className={cn('size-4 shrink-0', isError ? 'text-red-600' : 'text-[#5B5FE8]')} aria-hidden="true" />
+                        <Check className={cn('size-4 shrink-0', isError ? 'text-red-600' : 'text-primary')} aria-hidden="true" />
                       )}
                       {step.label}
                     </span>
@@ -699,25 +699,25 @@ function ConexaChatSession({
           )}
         </div>
   {(error || requestError || attachmentError) && (
-  <p className="border-t border-[#E6E6E1] px-4 py-2 text-sm text-red-600" role="alert">
+  <p className="border-t border-border px-4 py-2 text-sm text-red-600" role="alert">
   {attachmentError ?? requestError ?? error?.message ?? 'No se pudo procesar la conversación con Conexa.'}
   </p>
   )}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-[#E6E6E1] p-3">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-border p-3">
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {attachments.map((file, index) => (
                 <span
                   key={`${file.name}-${index}`}
-                  className="flex items-center gap-1.5 rounded-full border border-[#E6E6E1] bg-[#f4f4f1] px-2 py-1 text-xs text-[#141414]"
+                  className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-1 text-xs text-foreground"
                 >
-                  <FileText className="size-3.5 shrink-0 text-[#5B5FE8]" aria-hidden="true" />
+                  <FileText className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
                   <span className="max-w-[160px] truncate">{file.name}</span>
                   <button
                     type="button"
                     onClick={() => handleRemoveAttachment(index)}
                     aria-label={`Quitar ${file.name}`}
-                    className="rounded-full text-[#9a9a9a] hover:text-[#141414]"
+                    className="rounded-full text-muted-foreground hover:text-foreground"
                   >
                     <X className="size-3.5" aria-hidden="true" />
                   </button>
@@ -742,7 +742,7 @@ function ConexaChatSession({
               onClick={() => fileInputRef.current?.click()}
               disabled={!clientId || isBusy || attachments.length >= ATTACHMENT_MAX_COUNT}
               aria-label="Adjuntar archivo"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E6E6E1] bg-white text-[#141414] transition-colors hover:border-[#5B5FE8] hover:text-[#5B5FE8] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Paperclip className="size-4" aria-hidden="true" />
             </button>
@@ -760,14 +760,14 @@ function ConexaChatSession({
               placeholder={isCorrectingReport ? '¿Qué dato hay que corregir?' : 'Preguntale algo a Conexa...'}
               aria-label="Consulta para Conexa"
               disabled={!clientId || isBusy}
-              className="min-h-9 flex-1 resize-none rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm leading-6 text-[#141414] outline-none focus-visible:border-[#5B5FE8]"
+              className="min-h-9 flex-1 resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm leading-6 text-foreground outline-none focus-visible:border-primary"
             />
             {isBusy ? (
               <button
                 type="button"
                 onClick={() => stop()}
                 aria-label="Detener respuesta"
-                className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-[#141414] px-4 text-sm font-medium text-white"
+                className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background"
               >
                 <Square className="size-3.5 fill-current" aria-hidden="true" />
                 Detener
@@ -777,7 +777,7 @@ function ConexaChatSession({
                 type="submit"
                 disabled={!clientId || (!input.trim() && attachments.length === 0)}
                 aria-label="Enviar consulta"
-                className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-[#5B5FE8] px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="size-4" aria-hidden="true" />
                 Enviar
@@ -836,7 +836,7 @@ function ChatBubble({
       <div
         className={cn(
           'min-w-0 max-w-[80%] overflow-hidden break-words rounded-lg px-3 py-2 text-sm leading-6 [overflow-wrap:anywhere]',
-          isUser ? 'bg-[#5B5FE8] text-white' : 'w-full max-w-[95%] border border-[#E6E6E1] bg-white text-[#141414]',
+          isUser ? 'bg-primary text-primary-foreground' : 'w-full max-w-[95%] border border-border bg-card text-foreground',
         )}
       >
         {fileParts.length > 0 && (
@@ -846,7 +846,7 @@ function ChatBubble({
                 key={`${part.filename ?? 'archivo'}-${index}`}
                 className={cn(
                   'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs',
-                  isUser ? 'bg-white/15 text-white' : 'bg-[#f4f4f1] text-[#141414]',
+                  isUser ? 'bg-card/15 text-white' : 'bg-muted text-foreground',
                 )}
               >
                 <FileText className="size-3 shrink-0" aria-hidden="true" />
@@ -858,7 +858,7 @@ function ChatBubble({
         {isUser ? (
           <span className="whitespace-pre-wrap">{text}</span>
         ) : isStreaming && !text && !hasReport ? (
-          <span className="text-[#9a9a9a]">Pensando…</span>
+          <span className="text-muted-foreground">Pensando…</span>
         ) : (
           message.parts.map((part, i) => {
             if (part.type === 'text') return part.text ? <MessageContent key={i} content={part.text} /> : null
@@ -874,7 +874,7 @@ function ChatBubble({
             if (!sections) {
               return (
                 <div key={i} role="status" className="flex flex-col gap-1">
-                  <span className="text-[#9a9a9a]">Analizando datos…</span>
+                  <span className="text-muted-foreground">Analizando datos…</span>
                   <ChatKpisSkeleton />
                   <ChartSkeleton />
                 </div>
@@ -887,7 +887,7 @@ function ChatBubble({
                   const spec = section.chart ? parseChartSpec(section.chart) : null
                   return (
                     <section key={`${section.heading}-${index}`} className="flex min-w-0 flex-col gap-1.5">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9A9A9A]">{section.heading}</h3>
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{section.heading}</h3>
                       {section.text ? <MessageContent content={section.text} /> : null}
                       {spec ? <ChatChart spec={spec} /> : null}
                       {section.creatives ? <ChatCreatives data={section.creatives} /> : null}
@@ -904,14 +904,14 @@ function ChatBubble({
           <button
             type="button"
             onClick={onConfirmReport}
-            className="h-9 rounded-full border border-[#5B5FE8] bg-white px-4 text-sm font-medium text-[#5B5FE8] transition-colors hover:bg-[#eeefff]"
+            className="h-9 rounded-full border border-primary bg-card px-4 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
           >
             Sí, es correcta
           </button>
           <button
             type="button"
             onClick={onCorrectReport}
-            className="h-9 rounded-full border border-[#E6E6E1] bg-white px-4 text-sm font-medium text-[#141414] transition-colors hover:border-[#141414]"
+            className="h-9 rounded-full border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:border-foreground"
           >
             Corregir datos
           </button>
@@ -922,7 +922,7 @@ function ChatBubble({
           <button
             type="button"
             onClick={() => setClaudePromptOpen(true)}
-            className="inline-flex h-9 items-center gap-2 rounded-full bg-[#5B5FE8] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            className="inline-flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             <Sparkles className="size-3.5" aria-hidden="true" />
             Crear prompt para Claude
@@ -933,21 +933,21 @@ function ChatBubble({
                 <DialogTitle>Prompt para Claude</DialogTitle>
                 <DialogDescription>Armado solo con los datos que validaste para {clientName}.</DialogDescription>
               </DialogHeader>
-              <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#E6E6E1] bg-[#f4f4f1] p-3 font-mono text-xs leading-5 text-[#141414]">
+              <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-muted p-3 font-mono text-xs leading-5 text-foreground">
                 {claudePrompt}
               </pre>
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setClaudePromptOpen(false)}
-                  className="h-9 rounded-full border border-[#E6E6E1] bg-white px-4 text-sm font-medium text-[#141414] hover:border-[#141414]"
+                  className="h-9 rounded-full border border-border bg-card px-4 text-sm font-medium text-foreground hover:border-foreground"
                 >
                   Cerrar
                 </button>
                 <button
                   type="button"
                   onClick={copyClaudePrompt}
-                  className="h-9 rounded-full bg-[#5B5FE8] px-4 text-sm font-medium text-white hover:opacity-90"
+                  className="h-9 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90"
                 >
                   Copiar prompt
                 </button>
@@ -961,7 +961,7 @@ function ChatBubble({
           type="button"
           onClick={onEdit}
           aria-label="Editar mensaje"
-          className="-mt-1 flex items-center gap-1 text-xs text-[#9a9a9a] opacity-0 transition-opacity hover:text-[#5B5FE8] group-hover:opacity-100"
+          className="-mt-1 flex items-center gap-1 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
         >
           <Pencil className="size-3" aria-hidden="true" />
           Editar
@@ -992,7 +992,7 @@ function ChatBubble({
               <DialogTitle>Prompt para Claude Design</DialogTitle>
               <DialogDescription>Copialo y pegalo en Claude Design para generar la plantilla.</DialogDescription>
             </DialogHeader>
-            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[#E6E6E1] bg-[#f4f4f1] p-3 font-mono text-xs leading-5 text-[#141414]">
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-muted p-3 font-mono text-xs leading-5 text-foreground">
               {reportCta.prompt}
             </pre>
             <div className="flex justify-end gap-2">
@@ -1015,7 +1015,7 @@ function ChatBubble({
 }
 
 const CTA_CLASS =
-  'rounded-full border border-[#E6E6E1] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]'
+  'rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary hover:text-primary'
 const CLAUDE_DESIGN_URL = 'https://claude.ai/design'
 const REPORT_REQUEST = /\b(informe|reporte|report|prompt|claude design|cierre de mes)\b/i
 const PROMPT_REQUEST = /\b(prompt|claude design)\b/i
