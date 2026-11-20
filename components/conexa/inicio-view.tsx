@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import useSWR from 'swr'
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Plug, Quote, RefreshCw, Timer, Video } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Plug, Quote, RefreshCw, Settings2, Timer, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -186,6 +186,15 @@ function AlertsSection({ loading, alerts, onOpenClient, onChecked }: { loading: 
           ))}
         </div>
       )}
+      <div className="mt-1 flex border-t border-border pt-2">
+        <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-3 text-xs text-primary hover:text-primary">
+          <Link href="/dashboard/agentes/controller">
+            <Settings2 className="size-3.5" aria-hidden="true" />
+            Configurar alertas en el Controller
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </Link>
+        </Button>
+      </div>
     </SectionCard>
   )
 }
