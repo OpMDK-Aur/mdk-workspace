@@ -212,6 +212,14 @@ export async function getGoogleAdsAccessToken(options: { userId?: string } = {})
  * 1. First tries to read from plataformas_tokens table
  * 2. Falls back to environment variables if not found
  */
+/**
+ * Token del calendario que conectó esa persona, sin caer en el de la agencia.
+ * Se usa para leer su agenda: nunca hay que mezclarla con la de otra cuenta.
+ */
+export async function getUserGoogleCalendarAccessToken(userId: string): Promise<string | null> {
+  return getUserToken('google_calendar', userId)
+}
+
 export async function getGoogleCalendarAccessToken(options: { userId?: string } = {}): Promise<TokenResult> {
   // Con `userId` se usa primero el calendario que conectó esa persona.
   if (options.userId) {

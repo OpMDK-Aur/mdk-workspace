@@ -539,6 +539,9 @@ aside.sticky-activity {
   --tasks-baja-fg: #15803D;
   --tasks-type-bg: #FFF1E3;
   --tasks-type-fg: #C2410C;
+  --tasks-meet-bg: #E8F0FE;
+  --tasks-meet-fg: #1A56C4;
+  --tasks-meet-border: #B9CEF5;
 }
 .dark {
   --tasks-bg: #0A0A0B;
@@ -568,6 +571,9 @@ aside.sticky-activity {
   --tasks-baja-fg: #4ADE80;
   --tasks-type-bg: #2A1A0A;
   --tasks-type-fg: #FF9A3D;
+  --tasks-meet-bg: #10213F;
+  --tasks-meet-fg: #8AB4F8;
+  --tasks-meet-border: #23406F;
 }
 @keyframes tasks-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .tasks-skeleton { animation: tasks-pulse 1.2s ease-in-out infinite; background: var(--tasks-count); }

@@ -28,7 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Plus, Calendar, Search, MoreHorizontal, Download } from 'lucide-react'
+import { Plus, Calendar, CalendarSync, Search, MoreHorizontal, Download } from 'lucide-react'
+import { toast } from 'sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useConexaSuggestions, type ConexaSuggestion } from '@/hooks/use-conexa-suggestions'
 import { ConexaStrip } from './conexa-strip'
@@ -96,6 +97,30 @@ export function TaskBoard() {
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [newTaskMode, setNewTaskMode] = useState<'manual' | 'ai'>('manual')
   const [meetingOpen, setMeetingOpen] = useState(false)
+  const [importingMeetings, setImportingMeetings] = useState(false)
+
+  const importCalendarMeetings = async () => {
+    setImportingMeetings(true)
+    const toastId = toast.loading('Trayendo reuniones de Google Calendar…')
+    try {
+      const response = await fetch('/api/tasks/calendar-import', { method: 'POST' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toast.error(result.error ?? 'No se pudieron traer las reuniones.', {
+          id: toastId,
+          action: result.needsConnection ? { label: 'Ir a Conectores', onClick: () => router.push('/dashboard/apps#conector-google-calendar') } : undefined,
+        })
+        return
+      }
+      const parts = [result.created ? `${result.created} nuevas` : null, result.updated ? `${result.updated} actualizadas` : null].filter(Boolean)
+      toast.success(parts.length ? `Reuniones: ${parts.join(', ')}.` : 'No hay reuniones nuevas en los próximos 14 días.', { id: toastId })
+      if (result.created || result.updated) await loadTasks({ silent: true })
+    } catch {
+      toast.error('No se pudieron traer las reuniones.', { id: toastId })
+    } finally {
+      setImportingMeetings(false)
+    }
+  }
   const [prefill, setPrefill] = useState<NewTaskPrefill | null>(null)
   const [seguimientoItemId, setSeguimientoItemId] = useState<string | null>(null)
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus | null>(null)
@@ -433,6 +458,10 @@ export function TaskBoard() {
             <DropdownMenuItem onSelect={() => setMeetingOpen(true)}>
               <Calendar className="mr-2 h-4 w-4" />
               Agendar reunión
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={importingMeetings} onSelect={importCalendarMeetings}>
+              <CalendarSync className="mr-2 h-4 w-4" />
+              Traer reuniones del calendario
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => exportCsv(filteredTasks)}>
               <Download className="mr-2 h-4 w-4" />
