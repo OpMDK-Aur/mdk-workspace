@@ -54,12 +54,11 @@ import {
   Smile,
   FileText,
   Megaphone,
-  AppWindow,
   Database,
-  Webhook,
   ListChecks,
   Gem,
 } from 'lucide-react'
+import { LinkedServicesIcon, ManageAccountsIcon } from '@/components/icons/material-symbols'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
 
@@ -121,10 +120,8 @@ const adminItems: NavItem[] = [
 
 // Integraciones section (formerly Platforms)
 const platformItems: NavItem[] = [
-  { id: 'apps', name: 'Conectores', href: '/dashboard/apps', icon: AppWindow },
-  { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: Megaphone },
-  { id: 'crm', name: 'CRM', href: '/dashboard/crm', icon: Database, badge: 'proximamente' },
-  { id: 'webhooks', name: 'Webhooks', href: '/dashboard/webhooks', icon: Webhook },
+  { id: 'apps', name: 'Conectores', href: '/dashboard/apps', icon: LinkedServicesIcon },
+  { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: ManageAccountsIcon },
 ]
 
 export function Sidebar({
