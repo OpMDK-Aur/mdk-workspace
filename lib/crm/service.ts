@@ -40,7 +40,13 @@ export type CrmAcquisitionReport =
       vendorRows: CrmBreakdownRow[]
       teamRows: CrmBreakdownRow[]
       tagRows: CrmBreakdownRow[]
+      /** Contactos atribuidos con su campaña (del referral del primer mensaje inbound), con tope de filas. */
+      contactRows?: CrmAttributedContactRow[]
+      contactRowsTruncated?: boolean
     }
+
+export type CrmAttributedContactRow = { name: string | null; campaign: string; channel: string | null; tags: string[]; sales: number }
+const CONTACT_ROWS_LIMIT = 500
 
 const UNASSIGNED_CAMPAIGN = 'Sin campaña asignada'
 const UNASSIGNED_CHANNEL = 'Sin canal identificado'
@@ -120,7 +126,7 @@ function extractCampaignFromMessage(message: { metadata?: Record<string, unknown
   return campaign ?? adTitle ?? null
 }
 
-type ContactRecord = { contactId: string; tagNames: string[]; channelName: string | null; campaign: string | null }
+type ContactRecord = { contactId: string; name: string | null; tagNames: string[]; channelName: string | null; campaign: string | null }
 type OpportunityRecord = { contactId: string; vendorName: string; teamName: string; statusLabel: string; isWon: boolean }
 
 function passesContactFilters(record: ContactRecord, filters: Required<CrmAcquisitionFilters>): boolean {
@@ -185,7 +191,7 @@ async function getGhlAcquisitionReport(creds: GhlCreds, start: string, end: stri
   // "Sin campaña asignada" en lugar de descartarlos.
   for (const contact of contacts) {
     if (!contact.id) continue
-    contactRecords.set(contact.id, { contactId: contact.id, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign: campaignFromGhlContact(contact) })
+    contactRecords.set(contact.id, { contactId: contact.id, name: contact.name?.trim() || null, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign: campaignFromGhlContact(contact) })
   }
   const opportunityRecords: OpportunityRecord[] = opportunities
     .filter((row) => { const created = new Date(row.createdAt).getTime(); return row.contactId && created >= startMs && created < endMs })
@@ -238,7 +244,7 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
     }
 
     const [contactsRaw, opportunitiesRaw] = await Promise.all([
-      fetchAll('contacts', 'id,client_id,created_at'),
+      fetchAll('contacts', 'id,client_id,created_at,name'),
       fetchAll('opportunities', 'id,client_id,contact_id,assigned_user,assigned_team_id,status,amount,created_at'),
     ])
 
@@ -298,7 +304,8 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
 
     const attributedContactIds = contactIds.filter((id) => campaignByContact.has(id))
     const contactRecords = new Map<string, ContactRecord>()
-    for (const id of attributedContactIds) contactRecords.set(id, { contactId: id, tagNames: tagNamesByContact.get(id) ?? [], channelName: channelByContact.get(id) ?? null, campaign: campaignByContact.get(id) ?? null })
+    const contactNameById = new Map(contactsRaw.map((row) => [row.id as string, typeof row.name === 'string' && row.name.trim() ? row.name.trim() : null]))
+    for (const id of attributedContactIds) contactRecords.set(id, { contactId: id, name: contactNameById.get(id) ?? null, tagNames: tagNamesByContact.get(id) ?? [], channelName: channelByContact.get(id) ?? null, campaign: campaignByContact.get(id) ?? null })
 
     const opportunityRecords: OpportunityRecord[] = opportunitiesRaw.filter((row) => row.contact_id).map((row) => ({
       contactId: row.contact_id,
@@ -373,8 +380,17 @@ function aggregateReport(attributedContactIds: string[], contactRecords: Map<str
 
     const toRows = (groups: Map<string, { contacts: Set<string>; sales: number }>): CrmBreakdownRow[] => [...groups.entries()].map(([label, value]) => ({ label, contacts: value.contacts.size, sales: value.sales })).sort((a, b) => b.contacts - a.contacts)
 
+    const contactRows: CrmAttributedContactRow[] = eligibleContactIds
+      .map((id) => {
+        const record = contactRecords.get(id)!
+        return { name: record.name, campaign: record.campaign ?? UNASSIGNED_CAMPAIGN, channel: record.channelName, tags: record.tagNames, sales: salesByContact(id) }
+      })
+      .sort((a, b) => a.campaign.localeCompare(b.campaign) || (a.name ?? '').localeCompare(b.name ?? ''))
+
     return {
       available: true,
+      contactRows: contactRows.slice(0, CONTACT_ROWS_LIMIT),
+      contactRowsTruncated: contactRows.length > CONTACT_ROWS_LIMIT,
       totals: { contacts: eligibleContactIds.length, sales: eligibleContactIds.reduce((sum, id) => sum + salesByContact(id), 0) },
       filterOptions,
       campaignRows: toRows(campaignGroups),
