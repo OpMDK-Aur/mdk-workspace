@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
-import { AR_TIME_ZONE, CONNECTION_LABELS, missingConnections, type ConnectionKey, type InicioConnection, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseAt, phraseStartIndex, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
+import { checkSummary, type AlertCheckSummary, AR_TIME_ZONE, CONNECTION_LABELS, missingConnections, type ConnectionKey, type InicioConnection, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseAt, phraseStartIndex, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
 
 const fetchInicio = async (url: string) => {
   const response = await dashboardApiFetch(url)
@@ -22,7 +22,7 @@ const timeFormat = new Intl.DateTimeFormat('es-AR', { timeZone: AR_TIME_ZONE, ho
 const dayFormat = new Intl.DateTimeFormat('es-AR', { timeZone: AR_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long' })
 
 export function InicioView({ onOpenClient }: { onOpenClient: (clientId: string) => void }) {
-  const { data, error, isLoading } = useSWR('/api/conexa/inicio', fetchInicio, { refreshInterval: 60_000, revalidateOnFocus: true })
+  const { data, error, isLoading, mutate } = useSWR('/api/conexa/inicio', fetchInicio, { refreshInterval: 60_000, revalidateOnFocus: true })
   const timerRunning = useTimerStore((state) => state.isRunning)
   const { day } = todayRange()
   const name = firstName(data?.nombre)
@@ -48,7 +48,7 @@ export function InicioView({ onOpenClient }: { onOpenClient: (clientId: string) 
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
           <TasksSection loading={isLoading && !data} tasks={data?.tareas ?? []} overdue={data?.vencidas ?? 0} />
-          <AlertsSection loading={isLoading && !data} alerts={data?.alertas ?? []} onOpenClient={onOpenClient} />
+          <AlertsSection loading={isLoading && !data} alerts={data?.alertas ?? []} onOpenClient={onOpenClient} onChecked={() => mutate()} />
         </div>
         <ConnectionsSection loading={isLoading && !data} connections={data?.conexiones ?? []} />
         </>}
@@ -122,10 +122,40 @@ function TasksSection({ loading, tasks, overdue }: { loading: boolean; tasks: In
   )
 }
 
-function AlertsSection({ loading, alerts, onOpenClient }: { loading: boolean; alerts: InicioAlert[]; onOpenClient: (clientId: string) => void }) {
+function AlertsSection({ loading, alerts, onOpenClient, onChecked }: { loading: boolean; alerts: InicioAlert[]; onOpenClient: (clientId: string) => void; onChecked: () => Promise<unknown> }) {
   const groups = groupAlerts(alerts)
+  const [checking, setChecking] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const checkNow = async () => {
+    setChecking(true)
+    setResult(null)
+    try {
+      const response = await dashboardApiFetch('/api/conexa/inicio/alertas', { method: 'POST' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'No se pudieron revisar las alertas.')
+      await onChecked()
+      setResult({ ok: true, text: checkSummary(payload.resumen as AlertCheckSummary) })
+    } catch (err) {
+      setResult({ ok: false, text: err instanceof Error ? err.message : 'No se pudieron revisar las alertas.' })
+    } finally {
+      setChecking(false)
+    }
+  }
+
   return (
-    <SectionCard title="Revisá por favor estas cuentas" icon={<AlertTriangle className="size-4" aria-hidden="true" />} action={alerts.length ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{alerts.length}</span> : undefined}>
+    <SectionCard title="Revisá por favor estas cuentas" icon={<AlertTriangle className="size-4" aria-hidden="true" />} action={
+      <div className="flex items-center gap-2">
+        {alerts.length > 0 && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{alerts.length}</span>}
+        <Button type="button" variant="outline" size="sm" onClick={checkNow} disabled={checking || loading} className="h-7 gap-1.5 px-2.5 text-xs">
+          <RefreshCw className={cn('size-3.5', checking && 'animate-spin')} aria-hidden="true" />
+          {checking ? 'Revisando…' : 'Revisar ahora'}
+        </Button>
+      </div>
+    }>
+      <p aria-live="polite" className={cn('px-3 text-xs leading-relaxed', checking || result ? 'pb-1 pt-2' : 'sr-only', result?.ok === false ? 'text-destructive' : 'text-muted-foreground')}>
+        {checking ? 'Consultando Meta y Google Ads para tus cuentas. Puede tardar hasta un minuto.' : result?.text ?? ''}
+      </p>
       {loading ? <ListSkeleton /> : groups.length === 0 ? (
         <p className="px-3 py-6 text-center text-sm leading-relaxed text-muted-foreground">Ninguna de tus cuentas tiene alertas activas. Todo en orden por ahora.</p>
       ) : (
