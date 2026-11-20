@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { ChevronRight, Sparkles } from 'lucide-react'
@@ -30,12 +30,15 @@ export function ConexaNavGroup() {
   const pathname = usePathname()
   const inConexa = pathname === CONEXA_PATH || pathname.startsWith(`${CONEXA_PATH}/`)
   const [open, setOpen] = useState(inConexa)
+  // Al entrar a Conexa (por el link o desde otra pantalla) se despliegan sus opciones.
+  useEffect(() => { if (inConexa) setOpen(true) }, [inConexa])
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="flex items-center">
         <Link
           href={CONEXA_PATH}
+          onClick={() => setOpen(true)}
           aria-current={inConexa ? 'page' : undefined}
           className={cn(
             'flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
