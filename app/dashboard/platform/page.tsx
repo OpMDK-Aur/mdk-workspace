@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ClientsPlatformConfig } from '@/components/dashboard/clients-platform-config'
 
-export default async function PlatformPage() {
+export default async function PlatformPage({ searchParams }: { searchParams: Promise<{ cliente?: string }> }) {
+  const { cliente: initialClientId } = await searchParams
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -60,7 +61,7 @@ export default async function PlatformPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">IDs de clientes</h2>
-        <ClientsPlatformConfig clients={(clientes || []).map(c => ({
+        <ClientsPlatformConfig initialClientName={clientes?.find((c) => c.id === initialClientId)?.nombre_del_negocio ?? undefined} clients={(clientes || []).map(c => ({
           id: c.id,
           business_name: c.nombre_del_negocio || '',
           meta_ads_account_id: c.meta_ads_account_id,
