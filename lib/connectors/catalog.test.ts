@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildConnectorStatuses } from './catalog'
+import { buildConnectorStatuses, connectorAnchor, CONNECTORS } from './catalog'
 import { safeReturnPath } from '../google/return-path'
 
 const now = new Date('2026-11-20T12:00:00Z').getTime()
@@ -36,5 +36,13 @@ describe('safeReturnPath', () => {
     expect(safeReturnPath('https://evil.com')).toBeNull()
     expect(safeReturnPath('//evil.com')).toBeNull()
     expect(safeReturnPath('/\\evil.com')).toBeNull()
+  })
+})
+
+describe('connectorAnchor', () => {
+  it('no usa "ads" en el id para que los bloqueadores no oculten la tarjeta', () => {
+    expect(connectorAnchor('google_ads')).toBe('conector-google-campanas')
+    expect(connectorAnchor('google_analytics')).toBe('conector-google-analytics')
+    for (const connector of CONNECTORS) expect(connectorAnchor(connector.id)).not.toMatch(/ads\b|_ads|-ads/i)
   })
 })

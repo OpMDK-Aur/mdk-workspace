@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { createClient } from '@/lib/supabase/client'
-import { CONNECTORS, CONNECTOR_BY_ID, type ConnectorDefinition, type ConnectorId, type ConnectorStatus } from '@/lib/connectors/catalog'
+import { CONNECTORS, CONNECTOR_BY_ID, connectorAnchor, type ConnectorDefinition, type ConnectorId, type ConnectorStatus } from '@/lib/connectors/catalog'
 import { cn } from '@/lib/utils'
 import { CredentialsDialog } from './credentials-dialog'
 
@@ -175,7 +175,7 @@ function ConnectorCard({ connector, status, pending, onConnect, onDisconnect }: 
   const statusLabel = !connected ? 'Sin conectar' : expired ? 'Vencido' : unverified ? 'Guardado' : 'Conectado'
 
   return (
-    <li id={connector.id} className="flex scroll-mt-24 flex-col gap-4 rounded-xl border border-border bg-card p-4 target:ring-2 target:ring-primary/40">
+    <li id={connectorAnchor(connector.id)} className="flex scroll-mt-24 flex-col gap-4 rounded-xl border border-border bg-card p-4 target:ring-2 target:ring-primary/40">
       <div className="flex items-start gap-3">
         <div className="flex shrink-0 -space-x-2">
           {connector.logos.map((logo) => (

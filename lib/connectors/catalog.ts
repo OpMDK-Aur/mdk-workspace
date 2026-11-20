@@ -41,7 +41,7 @@ export const CONNECTORS: ConnectorDefinition[] = [
     id: 'google_ads',
     name: 'Google Ads',
     description: 'Las cuentas de Google Ads a las que tenés acceso, para asignarlas a tus clientes.',
-    logos: ['/connectors/google-ads.svg'],
+    logos: ['/connectors/g-campanas.svg'],
     group: 'google',
     platform: 'google_ads',
     connectPath: '/api/auth/google-ads',
@@ -270,6 +270,14 @@ export const CONNECTOR_BY_ID = Object.fromEntries(CONNECTORS.map((connector) => 
 
 export const CREDENTIALS_VERIFIED_SCOPE = 'credentials:verified'
 export const CREDENTIALS_UNVERIFIED_SCOPE = 'credentials:unverified'
+
+/**
+ * Id del DOM de la tarjeta. Evita "ads" porque los bloqueadores de anuncios
+ * (Brave, uBlock, AdBlock) ocultan elementos con ids como `google_ads`.
+ */
+export function connectorAnchor(id: ConnectorId) {
+  return `conector-${id.replace(/_ads$/, '_campanas').replace(/_/g, '-')}`
+}
 
 export function isConnectorId(value: string): value is ConnectorId {
   return value in CONNECTOR_BY_ID

@@ -533,7 +533,7 @@ export function ClientsPlatformConfig({ clients, isMaster = false, initialClient
     }
   }
 
-  const connectorsHref = '/dashboard/apps#google_analytics'
+  const connectorsHref = '/dashboard/apps#conector-google-analytics'
 
   async function fetchTagContainers(search = '') {
     setTagLoading(true)

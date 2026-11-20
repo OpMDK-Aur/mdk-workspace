@@ -813,7 +813,7 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.location.href = '/dashboard/apps#google_sheets'}
+                        onClick={() => window.location.href = '/dashboard/apps#conector-google-sheets'}
                       >
                         Cambiar cuenta en Conectores
                       </Button>
@@ -892,7 +892,7 @@ export function CRMContent({ clients, allClients }: CRMContentProps) {
                       Conecta tu cuenta de Google para acceder a tus spreadsheets y usar los datos en el CRM.
                     </p>
                     <Button
-                      onClick={() => window.location.href = '/dashboard/apps#google_sheets'}
+                      onClick={() => window.location.href = '/dashboard/apps#conector-google-sheets'}
                       className="gap-2"
                     >
                       <FileSpreadsheet className="h-4 w-4" />
