@@ -4,7 +4,33 @@ export const AR_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 
 export type InicioTask = { id: string; titulo: string; estado: string; clienteNombre: string | null; vence: string | null; reunionInicio: string | null; reunionFin: string | null; meetUrl: string | null; esReunion: boolean }
 export type InicioAlert = { id: string; clienteId: string; clienteNombre: string; subtipo: string; plataforma: string | null; desde: string | null; mensaje: string | null }
-export type InicioData = { nombre: string; tareas: InicioTask[]; vencidas: number; alertas: InicioAlert[]; segundosHoy: number; timerCorriendo: boolean }
+export type ConnectionKey = 'meta' | 'google' | 'analytics' | 'tag_manager'
+export type InicioConnection = { clienteId: string; clienteNombre: string; conectadas: Record<ConnectionKey, boolean> }
+export type InicioData = { nombre: string; tareas: InicioTask[]; vencidas: number; alertas: InicioAlert[]; conexiones: InicioConnection[]; segundosHoy: number; timerCorriendo: boolean }
+
+export const CONNECTION_LABELS: Record<ConnectionKey, string> = { meta: 'Meta Ads', google: 'Google Ads', analytics: 'GA4', tag_manager: 'GTM' }
+/** Meta y Google son las cuentas publicitarias; GA4 y GTM se muestran pero no cuentan como faltantes. */
+export const REQUIRED_CONNECTIONS: ConnectionKey[] = ['meta', 'google']
+
+type ClientConnectionRow = {
+  meta_ads_account_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_id?: string | null; google_ads_customer_ids?: string[] | null
+  analytics_property_id?: string | null; tag_manager_container_id?: string | null; cuentas_publicitarias?: Array<{ plataforma: string | null; activo?: boolean | null }> | null
+}
+
+export function connectionsOf(row: ClientConnectionRow): Record<ConnectionKey, boolean> {
+  const linked = (platform: string) => Boolean(row.cuentas_publicitarias?.some((account) => account.plataforma === platform && account.activo !== false))
+  return {
+    meta: Boolean(row.meta_ads_account_id || row.meta_ads_account_ids?.length || linked('meta')),
+    google: Boolean(row.google_ads_customer_id || row.google_ads_customer_ids?.length || linked('google')),
+    analytics: Boolean(row.analytics_property_id),
+    tag_manager: Boolean(row.tag_manager_container_id),
+  }
+}
+
+export const missingConnections = (connection: InicioConnection) => REQUIRED_CONNECTIONS.filter((key) => !connection.conectadas[key])
+
+/** Primero los clientes a los que les falta conectar más cuentas publicitarias. */
+export const sortConnections = (items: InicioConnection[]) => [...items].sort((a, b) => missingConnections(b).length - missingConnections(a).length || a.clienteNombre.localeCompare(b.clienteNombre, 'es'))
 
 /** Inicio y fin del día de hoy en Argentina, como ISO con offset. */
 export function todayRange(now = new Date()) {
@@ -45,30 +71,37 @@ export function formatWorked(seconds: number) {
 
 export const firstName = (name: string | null | undefined) => (name ?? '').trim().split(/\s+/)[0] || ''
 
-const PHRASES = [
-  'Lo urgente rara vez es importante. Lo importante rara vez es urgente.',
-  'Una campaña sin conversiones es solo una opinión con presupuesto.',
-  'Tomate un vaso de agua. El algoritmo de Meta puede esperar dos minutos.',
-  'Hecho es mejor que perfecto. Y publicado es mejor que hecho.',
-  'Si el CPL sube, respirá. Si baja, también respirá, pero sonriendo.',
-  'Nadie se acuerda del día que todo salió bien, pero vos sí vas a saber por qué.',
-  'Pará cinco minutos y mirá por la ventana. Los mejores insights no aparecen en el Ads Manager.',
-  'Un cliente bien informado es un cliente tranquilo. Un mensaje a tiempo vale más que diez reportes.',
-  'Hoy es un buen día para apagar ese anuncio que nadie se anima a apagar.',
-  'El mate se enfría, las campañas no. Priorizá en consecuencia.',
-  'No compitas con la competencia: competí con tu versión de ayer.',
-  'Las métricas cuentan qué pasó. Vos decidís qué pasa después.',
-  'Cerrá una pestaña. Ahora otra. ¿Ves? El día ya pesa menos.',
-  'Si una tarea lleva menos de dos minutos, hacela ahora y tachala con ganas.',
-  'El mejor momento para revisar el presupuesto fue ayer. El segundo mejor es ahora.',
-  'Dato curioso: los pulpos tienen tres corazones. Vos con uno solo ya bancás a todos tus clientes.',
-  'Trabajar mucho no es lo mismo que avanzar. Elegí las tres cosas que mueven la aguja hoy.',
-  'Estirá la espalda. En serio, ahora. Te lo agradece el yo de las seis de la tarde.',
+export const PHRASES = [
+  '🎯 Lo urgente rara vez es importante. Lo importante rara vez es urgente.',
+  '📉 Una campaña sin conversiones es solo una opinión con presupuesto.',
+  '💧 Tomate un vaso de agua. El algoritmo de Meta puede esperar dos minutos.',
+  '🚀 Hecho es mejor que perfecto. Y publicado es mejor que hecho.',
+  '😮‍💨 Si el CPL sube, respirá. Si baja, también respirá, pero sonriendo.',
+  '🧠 Nadie se acuerda del día que todo salió bien, pero vos sí vas a saber por qué.',
+  '🪟 Pará cinco minutos y mirá por la ventana. Los mejores insights no aparecen en el Ads Manager.',
+  '💬 Un mensaje a tiempo al cliente vale más que diez reportes.',
+  '🔌 Hoy es un buen día para apagar ese anuncio que nadie se anima a apagar.',
+  '🧉 El mate se enfría, las campañas no. Priorizá en consecuencia.',
+  '🏃 No compitas con la competencia: competí con tu versión de ayer.',
+  '📊 Las métricas cuentan qué pasó. Vos decidís qué pasa después.',
+  '🗂️ Cerrá una pestaña. Ahora otra. ¿Ves? El día ya pesa menos.',
+  '✅ Si una tarea lleva menos de dos minutos, hacela ahora y tachala con ganas.',
+  '💸 El mejor momento para revisar el presupuesto fue ayer. El segundo mejor es ahora.',
+  '🐙 Dato curioso: los pulpos tienen tres corazones. Vos con uno solo ya bancás a todos tus clientes.',
+  '🪡 Trabajar mucho no es lo mismo que avanzar. Elegí las tres cosas que mueven la aguja hoy.',
+  '🧘 Estirá la espalda. En serio, ahora. Te lo agradece tu yo de las seis de la tarde.',
+  '🌱 Las campañas también necesitan tiempo de aprendizaje. Vos también.',
+  '🎧 Poné tu playlist favorita y atacá la tarea que venís pateando.',
+  '🍕 Ningún reporte se arruinó por frenar a comer algo rico.',
+  '⭐ Celebrá lo chico: un CTR que sube también es una buena noticia.',
 ]
 
-/** Una frase distinta cada día, la misma durante todo el día para la misma persona. */
-export function phraseOfTheDay(day: string, seed = '') {
+/** Índice de partida distinto cada día y persona; desde ahí las frases van rotando. */
+export function phraseStartIndex(day: string, seed = '') {
   let hash = 0
   for (const char of `${day}:${seed}`) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-  return PHRASES[hash % PHRASES.length]
+  return hash % PHRASES.length
 }
+
+export const phraseAt = (index: number) => PHRASES[((index % PHRASES.length) + PHRASES.length) % PHRASES.length]
+export const phraseOfTheDay = (day: string, seed = '') => phraseAt(phraseStartIndex(day, seed))

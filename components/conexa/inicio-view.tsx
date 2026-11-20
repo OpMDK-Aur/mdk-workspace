@@ -1,14 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import useSWR from 'swr'
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Quote, Timer, Video } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Plug, Quote, RefreshCw, Timer, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
-import { AR_TIME_ZONE, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseOfTheDay, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
+import { AR_TIME_ZONE, CONNECTION_LABELS, missingConnections, type ConnectionKey, type InicioConnection, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseAt, phraseStartIndex, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
 
 const fetchInicio = async (url: string) => {
   const response = await dashboardApiFetch(url)
@@ -37,10 +38,7 @@ export function InicioView({ onOpenClient }: { onOpenClient: (clientId: string) 
               <h1 className="font-display text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl">Hola <span aria-hidden="true" className="font-sans font-normal" style={{ fontFamily: "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif" }}>👋🏼</span>{name ? ` ${name}` : ''}</h1>
             )}
           </div>
-          <figure className="flex max-w-md items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3">
-            <Quote className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-            <blockquote className="text-pretty text-sm leading-relaxed text-foreground">{phraseOfTheDay(day, data?.nombre ?? '')}</blockquote>
-          </figure>
+          <RotatingPhrase start={phraseStartIndex(day, data?.nombre ?? '')} />
         </header>
 
         {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</p>}
@@ -52,6 +50,7 @@ export function InicioView({ onOpenClient }: { onOpenClient: (clientId: string) 
           <TasksSection loading={isLoading && !data} tasks={data?.tareas ?? []} overdue={data?.vencidas ?? 0} />
           <AlertsSection loading={isLoading && !data} alerts={data?.alertas ?? []} onOpenClient={onOpenClient} />
         </div>
+        <ConnectionsSection loading={isLoading && !data} connections={data?.conexiones ?? []} />
         </>}
       </div>
     </div>
@@ -158,5 +157,75 @@ function AlertsSection({ loading, alerts, onOpenClient }: { loading: boolean; al
         </div>
       )}
     </SectionCard>
+  )
+}
+
+const CONNECTION_ORDER: ConnectionKey[] = ['meta', 'google', 'analytics', 'tag_manager']
+
+function ConnectionsSection({ loading, connections }: { loading: boolean; connections: InicioConnection[] }) {
+  const [showComplete, setShowComplete] = useState(false)
+  const pending = connections.filter((item) => missingConnections(item).length > 0)
+  const complete = connections.filter((item) => missingConnections(item).length === 0)
+  const visible = showComplete ? [...pending, ...complete] : pending
+  return (
+    <SectionCard
+      title="Conexión de cuentas publicitarias"
+      icon={<Plug className="size-4" aria-hidden="true" />}
+      action={!loading && connections.length > 0 ? <span className="text-xs text-muted-foreground">{`${complete.length} de ${connections.length} con Meta y Google conectados`}</span> : undefined}
+    >
+      {loading ? <ListSkeleton /> : connections.length === 0 ? (
+        <p className="px-3 py-6 text-center text-sm leading-relaxed text-muted-foreground">No tenés clientes asignados como project o account manager.</p>
+      ) : (
+        <>
+          {pending.length === 0 && !showComplete && <p className="px-3 py-4 text-center text-sm leading-relaxed text-muted-foreground">Todos tus clientes tienen Meta Ads y Google Ads conectados.</p>}
+          {visible.length > 0 && (
+            <ul className="flex flex-col">
+              {visible.map((item) => {
+                const missing = missingConnections(item)
+                return (
+                  <li key={item.clienteId} className="flex flex-col gap-2 rounded-lg px-3 py-2.5 hover:bg-muted sm:flex-row sm:items-center">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{item.clienteNombre}</span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {CONNECTION_ORDER.map((key) => (
+                        <span key={key} className={cn('flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium', item.conectadas[key] ? 'border-border text-muted-foreground' : missing.includes(key) ? 'border-primary/40 bg-primary/10 text-primary' : 'border-dashed border-border text-muted-foreground/70')}>
+                          <span className={cn('size-1.5 rounded-full', item.conectadas[key] ? 'bg-status-verde' : missing.includes(key) ? 'bg-primary' : 'bg-muted-foreground/40')} aria-hidden="true" />
+                          {CONNECTION_LABELS[key]}
+                          <span className="sr-only">{item.conectadas[key] ? 'conectada' : 'sin conectar'}</span>
+                        </span>
+                      ))}
+                    </span>
+                    {missing.length > 0 && <Button asChild size="sm" variant="outline" className="h-7 shrink-0 px-2.5 text-xs"><Link href="/dashboard/platform">Conectar</Link></Button>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {complete.length > 0 && (
+            <button type="button" onClick={() => setShowComplete((value) => !value)} className="mx-2 mb-1 mt-1 rounded-lg px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+              {showComplete ? 'Ocultar los clientes completos' : `Ver también los ${complete.length} clientes con todo conectado`}
+            </button>
+          )}
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
+const PHRASE_INTERVAL_MS = 20_000
+
+function RotatingPhrase({ start }: { start: number }) {
+  const [offset, setOffset] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setOffset((value) => value + 1), PHRASE_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [])
+  return (
+    <figure className="flex max-w-md items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3">
+      <Quote className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+      <blockquote key={offset} className="min-h-10 flex-1 text-pretty text-sm leading-relaxed text-foreground motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700">{phraseAt(start + offset)}</blockquote>
+      <button type="button" onClick={() => setOffset((value) => value + 1)} aria-label="Ver otra frase" title="Otra frase" className="-mr-1 -mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+        <RefreshCw className="size-3.5" aria-hidden="true" />
+      </button>
+    </figure>
   )
 }

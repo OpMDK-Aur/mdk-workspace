@@ -56,6 +56,7 @@ import { KeyboardArrowLeftIcon, KeyboardArrowRightIcon, LinkedServicesIcon, Mana
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
 import { ConexaNavGroup } from './conexa-nav'
+import { CONEXA_NEW_UNTIL } from '@/lib/conexa/views'
 
 interface SidebarProps {
   user: User
@@ -81,8 +82,8 @@ interface NavSection {
   moduleId?: string // Section-level module requirement
 }
 
-const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles }
-const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem, badge: 'nuevo', badgeUntil: '2027-01-15' }
+const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles, badge: 'nuevo', badgeUntil: CONEXA_NEW_UNTIL }
+const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem }
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
