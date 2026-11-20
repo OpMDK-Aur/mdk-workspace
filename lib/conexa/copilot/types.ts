@@ -164,6 +164,8 @@ export type CopilotContext = {
   tasks: Array<Record<string, unknown>>
   comments: Array<Record<string, unknown>>
   notes: ClientContextRecord[]
+  /** Transcripciones de reuniones con el cliente, de la más reciente a la más vieja. */
+  transcripts: Array<{ id: string; titulo: string; fecha_reunion: string | null; contenido: string }>
   platforms: RecommendationPlatform[]
 }
 

@@ -27,6 +27,8 @@ import { es } from 'date-fns/locale'
 import {
   ClientSquares,
   PeopleStack,
+  MeetJoinLink,
+  MeetingChip,
   PriorityPill,
   STATUS_DOT,
   TypeChip,
@@ -119,6 +121,8 @@ function TaskRow({
             <span className="truncate text-[13px] font-semibold text-[var(--tasks-text)]">
               {stripClientFromTitle(task.title, clients)}
             </span>
+            {task.meeting && <MeetingChip meeting={task.meeting} className="shrink-0" />}
+            {task.meeting && <MeetJoinLink meeting={task.meeting} />}
             {subtasks && subtasks.total > 0 && (
               <span className="flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums text-[var(--tasks-text-3)]">
                 <CircleCheck className="h-3 w-3" aria-hidden="true" />

@@ -1516,6 +1516,55 @@ const getClaudeDesignPrompt: ToolDefinition = {
   },
 }
 
+const MAX_TRANSCRIPT_TOOL_CHARS = 24_000
+
+const getMeetingTranscripts: ToolDefinition = {
+  key: 'get_meeting_transcripts',
+  description: 'Devuelve las transcripciones de reuniones con el cliente activo (Google Meet o cargadas a mano), de la más reciente a la más vieja. Usala para saber qué se habló, qué pidió el cliente, acuerdos y próximos pasos. Acepta una búsqueda por texto.',
+  inputSchema: z.object({
+    query: z.string().trim().max(120).optional().describe('Palabra o frase a buscar dentro de las transcripciones.'),
+    limit: z.number().int().min(1).max(5).optional().describe('Cuántas transcripciones completas traer (por defecto 3).'),
+  }),
+  async execute(input, context: ExecutionContext) {
+    const { query, limit = 3 } = input as { query?: string; limit?: number }
+    const emit = context.emitActivity
+    if (!context.clientId) return { available: false, message: 'No hay un cliente activo seleccionado.' }
+    emit?.({ agentSlug: 'supervisor', toolKey: 'get_meeting_transcripts', status: 'running', label: 'Leyendo transcripciones de reuniones...' })
+
+    // El acceso al cliente se valida con la sesión del usuario (RLS); la tabla de transcripciones solo se lee desde el servidor.
+    const userClient = await createClient()
+    const { data: client } = await userClient.from('clientes').select('id').eq('id', context.clientId).maybeSingle()
+    if (!client) return { available: false, message: 'No tenés acceso a este cliente.' }
+
+    let request = createAdminClient()
+      .from('transcripciones_clientes')
+      .select('id, titulo, fecha_reunion, fuente, contenido')
+      .eq('cliente_id', context.clientId)
+      .order('fecha_reunion', { ascending: false, nullsFirst: false })
+    if (query) request = request.ilike('contenido', `%${query.replace(/[%_\\]/g, (char) => `\\${char}`)}%`)
+    const { data, error } = await request.limit(20)
+    if (error) {
+      console.warn('[v0] get_meeting_transcripts unavailable:', error.message)
+      return { available: false, message: 'Las transcripciones no están disponibles todavía.' }
+    }
+    const rows = data ?? []
+    emit?.({ agentSlug: 'supervisor', toolKey: 'get_meeting_transcripts', status: 'completed', label: `${rows.length} transcripci${rows.length === 1 ? 'ón' : 'ones'} encontrada${rows.length === 1 ? '' : 's'}` })
+    return {
+      available: true,
+      total: rows.length,
+      transcripts: rows.slice(0, limit).map((row) => ({
+        id: row.id,
+        title: row.titulo,
+        meetingDate: row.fecha_reunion,
+        source: row.fuente,
+        truncated: row.contenido.length > MAX_TRANSCRIPT_TOOL_CHARS,
+        content: row.contenido.slice(0, MAX_TRANSCRIPT_TOOL_CHARS),
+      })),
+      older: rows.slice(limit).map((row) => ({ id: row.id, title: row.titulo, meetingDate: row.fecha_reunion })),
+    }
+  },
+}
+
 const allTools: ToolDefinition[] = [
   getClaudeDesignPrompt,
   crmAppointments,
@@ -1524,6 +1573,7 @@ const allTools: ToolDefinition[] = [
   crmContactAds,
   crmSalesAttribution,
   getAccountContext,
+  getMeetingTranscripts,
   getCrmContext,
   getClientMemory,
   saveClientProfile,
