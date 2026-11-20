@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useCopilot } from './use-copilot'
+import { COMPLETE_CONTEXT_MESSAGE, ContextStatus, type CompetitorControls } from './context-status'
+import { ContextFormDialog } from './context-form-dialog'
 import type { ContextAssessment, ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
 import { PROFILE_FIELD_LABEL } from '@/lib/conexa/copilot/profile-fields'
 import { createdCampaignNote, describeOperation, executionLines, PLATFORM_LABEL, readableEvidenceExcerpt, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
@@ -39,7 +41,6 @@ const PLATFORM_LOGOS: Partial<Record<RecommendationPlatform, string>> = {
 }
 const PRIORITY_OPTIONS: RecommendationPriority[] = ['alta', 'media', 'baja']
 const FILTER_ALL = 'all'
-const COMPLETE_CONTEXT_MESSAGE = 'Ayudame a completar el contexto del cliente. Preguntame lo que falta de a uno o dos datos por vez.'
 
 type InitialPrompt = { id: number; text: string } | null
 
@@ -68,7 +69,6 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
   const [manualContextOpen, setManualContextOpen] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [manualContext, setManualContext] = useState('')
   const [hydratedPanels, setHydratedPanels] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -180,17 +180,6 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrompt?.id])
 
-  async function saveManualContext(event: FormEvent) {
-    event.preventDefault()
-    if (manualContext.trim().length < 3) return
-    try {
-      await copilot.addContext(manualContext.trim())
-      setManualContext('')
-      setManualContextOpen(false)
-      toast.success('Contexto guardado para este cliente')
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contexto') }
-  }
-
   async function publish() {
     if (!publishTarget || !plan || publishing) return
     setPublishing(true)
@@ -260,19 +249,19 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
   const panelOrder: Panel[] = ['chat', 'recommendations', 'history']
   const columns = panelOrder.map((panel) => collapsed[panel] ? '42px' : panel === 'recommendations' ? 'minmax(430px, 2fr)' : 'minmax(250px, 1fr)').join(' ')
 
-  return <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white text-[#252525]">
-    <div role="tablist" aria-label="Paneles de Recomendaciones" className="flex shrink-0 border-b border-[#e7e7e5] bg-white lg:hidden">
-      {panelOrder.map((panel) => <button key={panel} type="button" role="tab" aria-selected={mobilePanel === panel} onClick={() => setMobilePanel(panel)} className={cn('flex-1 border-b-2 px-2 py-2.5 text-xs font-medium', mobilePanel === panel ? 'border-[#f97316] text-[#c55208]' : 'border-transparent text-[#777]')}>{panel === 'recommendations' ? `Activas ${drafts.length}` : PANEL_LABEL[panel]}</button>)}
+  return <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-card text-foreground">
+    <div role="tablist" aria-label="Paneles de Recomendaciones" className="flex shrink-0 border-b border-border bg-card lg:hidden">
+      {panelOrder.map((panel) => <button key={panel} type="button" role="tab" aria-selected={mobilePanel === panel} onClick={() => setMobilePanel(panel)} className={cn('flex-1 border-b-2 px-2 py-2.5 text-xs font-medium', mobilePanel === panel ? 'border-primary text-primary' : 'border-transparent text-muted-foreground')}>{panel === 'recommendations' ? `Activas ${drafts.length}` : PANEL_LABEL[panel]}</button>)}
     </div>
     <div className={cn('min-h-0 flex-1 lg:grid', fullPanel ? 'hidden' : 'flex')} style={{ gridTemplateColumns: columns }}>
-      {panelOrder.map((panel) => <div key={panel} className={cn('min-h-0 min-w-0 overflow-hidden border-r border-[#e7e7e5] last:border-r-0 lg:flex', mobilePanel === panel ? 'flex' : 'hidden')}>
+      {panelOrder.map((panel) => <div key={panel} className={cn('min-h-0 min-w-0 overflow-hidden border-r border-border last:border-r-0 lg:flex', mobilePanel === panel ? 'flex' : 'hidden')}>
         {collapsed[panel] ? <>
-          <button type="button" onClick={() => setCollapsed((current) => ({ ...current, [panel]: false }))} aria-label={`Expandir panel ${PANEL_LABEL[panel]}`} title={`Expandir ${PANEL_LABEL[panel]}`} className="hidden h-full w-[42px] shrink-0 flex-col items-center gap-3 bg-[#fafaf9] py-4 text-[#555] lg:flex"><PanelIcon panel={panel} /><span className="text-[10px] font-semibold [writing-mode:vertical-rl] rotate-180">{PANEL_LABEL[panel]}</span></button>
+          <button type="button" onClick={() => setCollapsed((current) => ({ ...current, [panel]: false }))} aria-label={`Expandir panel ${PANEL_LABEL[panel]}`} title={`Expandir ${PANEL_LABEL[panel]}`} className="hidden h-full w-[42px] shrink-0 flex-col items-center gap-3 bg-muted py-4 text-muted-foreground lg:flex"><PanelIcon panel={panel} /><span className="text-[10px] font-semibold [writing-mode:vertical-rl] rotate-180">{PANEL_LABEL[panel]}</span></button>
           <div className="flex min-h-0 min-w-0 flex-1 lg:hidden"><PanelShell panel={panel} onCollapse={() => setCollapsed((current) => ({ ...current, [panel]: true }))} onExpand={() => showPanel(panel)}>{panels[panel]}</PanelShell></div>
         </> : <PanelShell panel={panel} onCollapse={() => setCollapsed((current) => ({ ...current, [panel]: true }))} onExpand={() => showPanel(panel)}>{panels[panel]}</PanelShell>}
       </div>)}
     </div>
-    {fullPanel && <div className="absolute inset-0 z-40 flex min-h-0 flex-col bg-white">{fullContent}</div>}
+    {fullPanel && <div className="absolute inset-0 z-40 flex min-h-0 flex-col bg-card">{fullContent}</div>}
 
     <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden sm:max-w-xl">
@@ -289,11 +278,11 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
         <DialogHeader><DialogTitle>Publicar en {publishTarget?.operation ? PLATFORM_LABEL[publishTarget.operation.platform] : 'la plataforma'}</DialogTitle><DialogDescription>Se aplica en la cuenta real del cliente exactamente lo que ves abajo, leído recién de la plataforma. Si algo cambia antes de confirmar, se te vuelve a mostrar.</DialogDescription></DialogHeader>
         {publishTarget && <div className="flex flex-col gap-3">
           <p className="text-sm font-semibold leading-snug">{publishTarget.title}</p>
-          {preparing && <p role="status" className="flex items-center gap-2 rounded-md bg-[#fafaf9] px-3 py-2.5 text-xs text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Leyendo los valores actuales en la plataforma…</p>}
+          {preparing && <p role="status" className="flex items-center gap-2 rounded-md bg-muted px-3 py-2.5 text-xs text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin text-primary" />Leyendo los valores actuales en la plataforma…</p>}
           {plan && <PlanSteps steps={plan.steps} />}
-          {prepareError && <p role="alert" className="rounded-md bg-[#fff0ec] px-3 py-2.5 text-xs leading-relaxed text-[#b42318]">{prepareError}</p>}
+          {prepareError && <p role="alert" className="rounded-md bg-primary/10 px-3 py-2.5 text-xs leading-relaxed text-destructive">{prepareError}</p>}
         </div>}
-        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => { setPublishTarget(null); setPlan(null) }}>{prepareError ? 'Cerrar' : 'Cancelar'}</Button>{prepareError && !plan && publishTarget && !preparing ? <Button variant="outline" onClick={() => openPublish(publishTarget)}>Volver a leer</Button> : <Button onClick={publish} disabled={publishing || preparing || !plan || plan.steps.every((item) => item.alreadyApplied)} className="bg-[#f97316] text-white hover:bg-[#e7650c]">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Confirmar'}</Button>}</DialogFooter>
+        <DialogFooter><Button variant="outline" disabled={publishing || preparing} onClick={() => { setPublishTarget(null); setPlan(null) }}>{prepareError ? 'Cerrar' : 'Cancelar'}</Button>{prepareError && !plan && publishTarget && !preparing ? <Button variant="outline" onClick={() => openPublish(publishTarget)}>Volver a leer</Button> : <Button onClick={publish} disabled={publishing || preparing || !plan || plan.steps.every((item) => item.alreadyApplied)} className="bg-primary text-primary-foreground hover:bg-primary">{publishing ? <><LoaderCircle className="size-3.5 animate-spin" />Ejecutando…</> : 'Confirmar'}</Button>}</DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(discardTarget)} onOpenChange={(open) => { if (!open) setDiscardTarget(null) }}>
@@ -316,33 +305,28 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
             setResetOpen(false)
             toast.success('Chat reiniciado')
           } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo reiniciar el chat') } finally { setResetting(false) }
-        }} className="bg-[#f97316] text-[#ffffff] hover:bg-[#e7650c]">{resetting ? <><LoaderCircle className="size-3.5 animate-spin" />Reiniciando…</> : 'Reiniciar'}</Button></DialogFooter>
+        }} className="bg-primary text-background hover:bg-primary">{resetting ? <><LoaderCircle className="size-3.5 animate-spin" />Reiniciando…</> : 'Reiniciar'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={manualContextOpen} onOpenChange={setManualContextOpen}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Agregar contexto del cliente</DialogTitle><DialogDescription>Este dato se suma al contexto de Recomendaciones, sin modificar el formulario existente del cliente.</DialogDescription></DialogHeader>
-        <form onSubmit={saveManualContext} className="flex flex-col gap-3"><label htmlFor="manual-recommendation-context" className="text-xs font-medium">Contexto para tener en cuenta</label><Textarea id="manual-recommendation-context" value={manualContext} maxLength={2000} onChange={(event) => setManualContext(event.target.value)} placeholder="Objetivos, estacionalidad, promociones o restricciones…" /><DialogFooter><Button type="button" variant="outline" onClick={() => setManualContextOpen(false)}>Cancelar</Button><Button type="submit" disabled={manualContext.trim().length < 3}>Guardar contexto</Button></DialogFooter></form>
-      </DialogContent>
-    </Dialog>
+    <ContextFormDialog open={manualContextOpen} onOpenChange={setManualContextOpen} assessment={copilot.assessment} onSaveProfile={copilot.saveProfile} onAddNote={copilot.addContext} />
   </div>
 }
 
 function PanelIcon({ panel }: { panel: Panel }) {
-  if (panel === 'chat') return <MessageCircle className="size-4 text-[#f97316]" />
-  if (panel === 'recommendations') return <Lightbulb className="size-4 text-[#f97316]" />
-  return <ArrowDownToLine className="size-4 text-[#f97316]" />
+  if (panel === 'chat') return <MessageCircle className="size-4 text-primary" />
+  if (panel === 'recommendations') return <Lightbulb className="size-4 text-primary" />
+  return <ArrowDownToLine className="size-4 text-primary" />
 }
 
 function PanelShell({ panel, full = false, onCollapse, onExpand, children }: { panel: Panel; full?: boolean; onCollapse: () => void; onExpand: () => void; children: ReactNode }) {
   const title = PANEL_LABEL[panel]
-  return <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-white" aria-label={title}>
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[#eeeeec] bg-white px-3">
+  return <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-card" aria-label={title}>
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
       <PanelIcon panel={panel} />
       <h2 className="min-w-0 flex-1 truncate text-xs font-semibold">{title}</h2>
-      {panel === 'recommendations' && <span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">Activas</span>}
-      {!full && <button type="button" onClick={onCollapse} aria-label={`Colapsar ${title}`} title="Colapsar panel" className="hidden rounded-md p-1.5 text-[#777] hover:bg-[#f5f5f4] lg:inline-flex"><Minimize2 className="size-4" /></button>}
-      <button type="button" onClick={onExpand} aria-label={full ? 'Volver a la posición original' : `Expandir ${title} a pantalla completa`} title={full ? 'Volver al panel' : 'Pantalla completa'} className="rounded-md p-1.5 text-[#777] hover:bg-[#f5f5f4]">{full ? <X className="size-4" /> : <Maximize2 className="size-4" />}</button>
+      {panel === 'recommendations' && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Activas</span>}
+      {!full && <button type="button" onClick={onCollapse} aria-label={`Colapsar ${title}`} title="Colapsar panel" className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-muted lg:inline-flex"><Minimize2 className="size-4" /></button>}
+      <button type="button" onClick={onExpand} aria-label={full ? 'Volver a la posición original' : `Expandir ${title} a pantalla completa`} title={full ? 'Volver al panel' : 'Pantalla completa'} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted">{full ? <X className="size-4" /> : <Maximize2 className="size-4" />}</button>
     </header>
     {children}
   </section>
@@ -372,107 +356,33 @@ function ChatPanel({ clientName, connectedPlatforms, messages, assessment, conte
 }) {
   return <div className="flex min-h-0 flex-1 flex-col">
     <ContextStatus assessment={assessment} unavailable={contextUnavailable} busy={busy} competitors={competitors} onAddManual={onAddManual} onComplete={onCompleteContext} />
-    {!connectedPlatforms.length && <p role="status" className="border-b border-[#f0e5d9] bg-[#fff8f1] px-3 py-2 text-[10px] leading-relaxed text-[#8a541e]">Este cliente no tiene plataformas conectadas. El chat recomendará únicamente a partir del contexto, las tareas y los comentarios.</p>}
+    {!connectedPlatforms.length && <p role="status" className="border-b border-primary/30 bg-primary/10 px-3 py-2 text-[10px] leading-relaxed text-primary">Este cliente no tiene plataformas conectadas. El chat recomendará únicamente a partir del contexto, las tareas y los comentarios.</p>}
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      {!messages.length && <div className="mt-4 rounded-xl border border-[#eeeeec] bg-[#fafaf9] p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-[#777]">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Proponé una campaña nueva en Meta para captar más leads', 'Proponé una campaña de búsqueda nueva en Google Ads', '¿Cuáles son los competidores y qué están haciendo?', 'Tiene una promoción este mes'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-[#e7e7e5] bg-white px-2.5 py-1.5 text-left text-[10px] hover:border-[#f97316]/50">{suggestion}</button>)}</div></div>}
-      <div className="flex flex-col gap-3">{messages.map((message) => <article key={message.id} className={cn('max-w-[96%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-[#fff2e9] text-[#4a2b18]' : 'self-start border border-[#eeeeec] bg-[#fafaf9] text-[#444]')}><p className="mb-1 text-[9px] font-semibold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'Vos' : 'Conexa'}</p><p className="whitespace-pre-wrap">{message.content}</p></article>)}</div>
+      {!messages.length && <div className="mt-4 rounded-xl border border-border bg-muted p-4"><p className="text-xs font-semibold">Contame qué está pasando con {clientName}</p><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Objetivos, estacionalidad, promociones, restricciones o feedback del cliente. Conexa lo tendrá en cuenta en futuras recomendaciones.</p><div className="mt-3 flex flex-wrap gap-1.5">{['Proponé una campaña nueva en Meta para captar más leads', 'Proponé una campaña de búsqueda nueva en Google Ads', '¿Cuáles son los competidores y qué están haciendo?', 'Tiene una promoción este mes'].map((suggestion) => <button key={suggestion} type="button" onClick={() => onInput(suggestion)} className="rounded-full border border-border bg-card px-2.5 py-1.5 text-left text-[10px] hover:border-primary/50">{suggestion}</button>)}</div></div>}
+      <div className="flex flex-col gap-3">{messages.map((message) => <article key={message.id} className={cn('max-w-[96%] rounded-xl px-3 py-2.5 text-[11px] leading-5', message.role === 'user' ? 'self-end bg-primary/10 text-[#4a2b18]' : 'self-start border border-border bg-muted text-muted-foreground')}><p className="mb-1 text-[9px] font-semibold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'Vos' : 'Conexa'}</p><p className="whitespace-pre-wrap">{message.content}</p></article>)}</div>
       {proposal.length > 0 && <ProfileProposalCard key={proposal.map((item) => `${item.field}:${item.value}`).join('|')} proposal={proposal} saving={savingProfile} onSave={onSaveProposal} onDismiss={onDismissProposal} />}
-      {busy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-[#777]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está analizando contexto y datos…</div>}
+      {busy && <div role="status" className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin text-primary" />Conexa está analizando contexto y datos…</div>}
       <div ref={endRef} />
     </div>
-    <form onSubmit={onSubmit} className="border-t border-[#eeeeec] p-3">
+    <form onSubmit={onSubmit} className="border-t border-border p-3">
       {editing && <div className="mb-2 flex items-center justify-between rounded-md bg-[#fff5ee] px-2.5 py-1.5 text-[10px] text-[#9a4d13]"><span>Editando un borrador</span><button type="button" onClick={onClearEditing} className="underline">Cancelar edición</button></div>}
       <label htmlFor="recommendation-chat-input" className="sr-only">Mensaje para Conexa</label>
-      <div className="flex items-end gap-2 rounded-lg border border-[#e5e5e3] bg-white p-1.5 focus-within:border-[#f97316]"><Textarea id="recommendation-chat-input" value={input} rows={2} maxLength={4000} onChange={(event) => onInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={busy} placeholder="Sumá contexto o pedí recomendaciones…" className="min-h-10 resize-none border-0 text-[11px] shadow-none focus-visible:ring-0" /><Button type="submit" size="icon" aria-label="Enviar mensaje" disabled={!input.trim() || busy} className="size-8 shrink-0 bg-[#f97316] text-white hover:bg-[#e7650c]"><Send className="size-3.5" /></Button></div>
+      <div className="flex items-end gap-2 rounded-lg border border-border bg-card p-1.5 focus-within:border-primary"><Textarea id="recommendation-chat-input" value={input} rows={2} maxLength={4000} onChange={(event) => onInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} disabled={busy} placeholder="Sumá contexto o pedí recomendaciones…" className="min-h-10 resize-none border-0 text-[11px] shadow-none focus-visible:ring-0" /><Button type="submit" size="icon" aria-label="Enviar mensaje" disabled={!input.trim() || busy} className="size-8 shrink-0 bg-primary text-primary-foreground hover:bg-primary"><Send className="size-3.5" /></Button></div>
       <div className="mt-2 flex items-start justify-between gap-2">
-        <p className="text-[9px] leading-4 text-[#999]">Conexa no publica ni ejecuta cambios. Los mensajes solo se usan como contexto de Recomendaciones.</p>
-        {messages.length > 0 && <button type="button" onClick={onReset} disabled={busy} className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-[#666] hover:bg-[#f5f5f4] hover:text-[#252525] disabled:opacity-50"><RotateCcw className="size-3" aria-hidden="true" />Reiniciar chat</button>}
+        <p className="text-[9px] leading-4 text-muted-foreground">Conexa no publica ni ejecuta cambios. Los mensajes solo se usan como contexto de Recomendaciones.</p>
+        {messages.length > 0 && <button type="button" onClick={onReset} disabled={busy} className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><RotateCcw className="size-3" aria-hidden="true" />Reiniciar chat</button>}
       </div>
     </form>
   </div>
 }
 
-const LEVEL_STYLE = {
-  debil: { label: 'Débil', badge: 'bg-[#fff0ec] text-[#b42318]', bar: 'bg-[#e5533d]', segments: 1 },
-  intermedio: { label: 'Intermedio', badge: 'bg-[#fff4e5] text-[#8a541e]', bar: 'bg-[#f59e0b]', segments: 2 },
-  completo: { label: 'Completo', badge: 'bg-[#e7f5ec] text-[#1b6b38]', bar: 'bg-[#22a05a]', segments: 3 },
-} as const
-
-type CompetitorControls = { suggesting: boolean; onSuggest: () => Promise<unknown>; onAdd: (name: string) => Promise<unknown>; onRemove: (noteId: string) => Promise<unknown> }
-
-function CompetitorEditor({ assessment, controls }: { assessment: ContextAssessment; controls: CompetitorControls }) {
-  const [name, setName] = useState('')
-  const [pending, setPending] = useState<string | null>(null)
-  const run = async (key: string, task: () => Promise<unknown>, success?: string) => {
-    setPending(key)
-    try { await task(); if (success) toast.success(success) } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la competencia') } finally { setPending(null) }
-  }
-  const searching = controls.suggesting || pending === 'suggest'
-  const canSuggest = assessment.level !== 'debil'
-  return <section aria-labelledby="competitors-title" className="flex flex-col gap-2 rounded-lg border border-[#ececea] bg-[#ffffff] p-2.5">
-    <div className="flex items-center justify-between gap-2">
-      <h3 id="competitors-title" className="text-[11px] font-semibold text-[#252525]">Competencia</h3>
-      <Button type="button" variant="ghost" size="sm" disabled={searching || !canSuggest || Boolean(pending)} title={canSuggest ? undefined : 'Completá los datos base para buscar competidores'} onClick={() => run('suggest', controls.onSuggest)} className="h-6 gap-1 px-1.5 text-[10px] text-[#c55208] hover:bg-[#fff2e9] hover:text-[#a8440c]">{searching ? <LoaderCircle className="size-3 animate-spin" aria-hidden="true" /> : <Sparkles className="size-3" aria-hidden="true" />}{searching ? 'Buscando…' : 'Sugerir con IA'}</Button>
-    </div>
-    {searching && !assessment.competitorEntries.length && <p role="status" className="text-[10px] text-[#777]">Conexa está buscando competidores en la web…</p>}
-    {!searching && !assessment.competitorEntries.length && <p className="text-[10px] italic text-[#a3a3a0]">{canSuggest ? 'Sin competidores todavía.' : 'Completá industria, objetivo y qué vende para que Conexa los busque.'}</p>}
-    {assessment.competitorEntries.length > 0 && <ul className="flex flex-col gap-1.5">{assessment.competitorEntries.map((entry) => <li key={entry.noteId} className="flex items-start gap-2 rounded-md bg-[#fafaf9] px-2 py-1.5">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#252525]">{entry.name}{entry.suggested && <span className="rounded-full bg-[#fff2e9] px-1.5 py-px text-[9px] font-semibold text-[#c55208]">IA</span>}</span>
-        {entry.detail && <span className="text-[10px] leading-snug text-[#777]">{entry.detail.replace(/^Sugerido por Conexa\s*—\s*/, '')}</span>}
-      </div>
-      <button type="button" onClick={() => run(entry.noteId, () => controls.onRemove(entry.noteId))} disabled={Boolean(pending)} aria-label={`Quitar ${entry.name}`} title="No es competidor" className="rounded p-1 text-[#999] hover:bg-[#f0f0ee] hover:text-[#b42318] disabled:opacity-50">{pending === entry.noteId ? <LoaderCircle className="size-3 animate-spin" /> : <X className="size-3" />}</button>
-    </li>)}</ul>}
-    <form onSubmit={(event) => { event.preventDefault(); const value = name.trim(); if (value.length < 2) return; void run('add', async () => { await controls.onAdd(value); setName('') }) }} className="flex items-center gap-1.5">
-      <label htmlFor="competitor-name" className="sr-only">Agregar competidor</label>
-      <Input id="competitor-name" value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="Agregar competidor…" className="h-7 border-[#e5e5e3] bg-[#ffffff] text-[11px] text-[#252525]" />
-      <Button type="submit" variant="outline" size="sm" disabled={name.trim().length < 2 || Boolean(pending)} className="h-7 shrink-0 border-[#e5e5e3] bg-[#ffffff] px-2 text-[10px] text-[#252525] hover:bg-[#f5f5f4] hover:text-[#252525]">{pending === 'add' ? <LoaderCircle className="size-3 animate-spin" /> : 'Agregar'}</Button>
-    </form>
-    {assessment.discardedCompetitors.length > 0 && <p className="text-[9px] leading-relaxed text-[#a3a3a0]">Descartados (no se vuelven a sugerir): {assessment.discardedCompetitors.join(', ')}</p>}
-  </section>
-}
-
-function ContextStatus({ assessment, unavailable, busy, competitors, onAddManual, onComplete }: { assessment: ContextAssessment | null; unavailable: boolean; busy: boolean; competitors: CompetitorControls; onAddManual: () => void; onComplete: () => void }) {
-  const [open, setOpen] = useState(false)
-  const style = assessment ? LEVEL_STYLE[assessment.level] : null
-  const formatValue = (value: string | number | null) => (typeof value === 'number' ? value.toLocaleString('es-AR') : String(value ?? '').replace(/_/g, ' '))
-  return <div className="shrink-0 border-b border-[#eeeeec]">
-    <div className="flex items-center gap-2 px-3 py-2">
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="context-status-detail" className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left">
-        <span className="text-[11px] font-semibold text-[#252525]">Contexto</span>
-        {style ? <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', style.badge)}>{style.label}</span> : unavailable ? <span className="text-[10px] text-[#999]">No disponible</span> : <Skeleton className="h-4 w-14 rounded-full" />}
-        {style && <span className="flex items-center gap-0.5" aria-hidden="true">{[1, 2, 3].map((segment) => <span key={segment} className={cn('h-1.5 w-4 rounded-full', segment <= style.segments ? style.bar : 'bg-[#ececea]')} />)}</span>}
-        {competitors.suggesting && <span role="status" className="flex items-center gap-1 truncate text-[10px] text-[#777]"><LoaderCircle className="size-3 shrink-0 animate-spin text-[#f97316]" aria-hidden="true" />Buscando competidores</span>}
-        <ChevronDown className={cn('ml-auto size-3.5 shrink-0 text-[#777] transition-transform', open && 'rotate-180')} aria-hidden="true" />
-      </button>
-      <Button type="button" variant="outline" size="sm" onClick={onAddManual} className="h-7 shrink-0 px-2 text-[10px]">+ Contexto</Button>
-    </div>
-    {!open && assessment && assessment.competitorEntries.length > 0 && <div className="flex flex-wrap items-center gap-1 px-3 pb-2" aria-label="Competidores guardados en el contexto">
-      <span className="text-[10px] text-[#777]">Competencia:</span>
-      {assessment.competitorEntries.slice(0, 4).map((entry) => <span key={entry.noteId} className="rounded-full border border-[#ececea] bg-[#fafaf9] px-2 py-0.5 text-[10px] text-[#444]">{entry.name}</span>)}
-      {assessment.competitorEntries.length > 4 && <span className="text-[10px] text-[#777]">+{assessment.competitorEntries.length - 4}</span>}
-    </div>}
-    {open && assessment && <div id="context-status-detail" className="flex flex-col gap-3 border-t border-[#f2f2f0] bg-[#fafaf9] px-3 py-3">
-      <ul className="flex flex-col gap-1.5">
-        {assessment.fields.map((field) => <li key={field.key} className="flex items-start gap-2 text-[11px] leading-snug">
-          {field.filled ? <Check className="mt-0.5 size-3 shrink-0 text-[#22a05a]" aria-label="Cargado" /> : <span className="mt-1 size-2 shrink-0 rounded-full border border-[#c9c9c6]" aria-label="Falta" />}
-          <span className="w-28 shrink-0 text-[#777]">{field.label}{field.core && <span className="sr-only"> (obligatorio)</span>}</span>
-          <span className={cn('min-w-0 flex-1 break-words', field.filled ? 'text-[#252525]' : 'italic text-[#a3a3a0]')}>{field.filled ? formatValue(field.value) : 'Falta'}</span>
-        </li>)}
-      </ul>
-      <CompetitorEditor assessment={assessment} controls={competitors} />
-      <p className="text-[10px] leading-relaxed text-[#777]">{assessment.notesCount} nota(s) de contexto guardadas. Lo que confirmes en el chat se guarda en el formulario Contexto del cliente.</p>
-      {assessment.level !== 'completo' && <Button type="button" size="sm" disabled={busy} onClick={() => { setOpen(false); onComplete() }} className="h-8 self-start bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]"><Sparkles className="size-3.5" />Completar con Conexa</Button>}
-    </div>}
-  </div>
-}
 
 function ProfileProposalCard({ proposal, saving, onSave, onDismiss }: { proposal: ProfileUpdate[]; saving: boolean; onSave: (updates: ProfileUpdate[]) => void; onDismiss: () => void }) {
   const [values, setValues] = useState(proposal)
-  return <section aria-label="Datos para el Contexto del cliente" className="mt-3 flex flex-col gap-3 rounded-xl border border-[#f3dcc9] bg-[#fff8f2] p-3 text-[#252525]">
-    <div className="flex flex-col gap-1"><p className="text-[11px] font-semibold">¿Guardo esto en Contexto del cliente?</p><p className="text-[10px] leading-relaxed text-[#777]">Revisá o corregí los valores antes de guardar.</p></div>
-    <div className="flex flex-col gap-2">{values.map((item, index) => <label key={item.field} className="flex flex-col gap-1 text-[10px] font-medium text-[#5a3a22]">{PROFILE_FIELD_LABEL[item.field]}<Input value={item.value} maxLength={600} onChange={(event) => setValues((current) => current.map((entry, position) => (position === index ? { ...entry, value: event.target.value } : entry)))} className="h-8 border-[#ecd9c6] bg-[#ffffff] text-[11px] text-[#252525]" /></label>)}</div>
-    <div className="flex justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={onDismiss} disabled={saving} className="h-8 px-3 text-[11px] text-[#666] hover:bg-[#fdeee2] hover:text-[#252525]">Descartar</Button><Button type="button" size="sm" disabled={saving || values.some((item) => !item.value.trim())} onClick={() => onSave(values.map((item) => ({ ...item, value: item.value.trim() })))} className="h-8 bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]">{saving ? <><LoaderCircle className="size-3.5 animate-spin" />Guardando…</> : 'Guardar'}</Button></div>
+  return <section aria-label="Datos para el Contexto del cliente" className="mt-3 flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/10 p-3 text-foreground">
+    <div className="flex flex-col gap-1"><p className="text-[11px] font-semibold">¿Guardo esto en Contexto del cliente?</p><p className="text-[10px] leading-relaxed text-muted-foreground">Revisá o corregí los valores antes de guardar.</p></div>
+    <div className="flex flex-col gap-2">{values.map((item, index) => <label key={item.field} className="flex flex-col gap-1 text-[10px] font-medium text-primary">{PROFILE_FIELD_LABEL[item.field]}<Input value={item.value} maxLength={600} onChange={(event) => setValues((current) => current.map((entry, position) => (position === index ? { ...entry, value: event.target.value } : entry)))} className="h-8 border-[#ecd9c6] bg-card text-[11px] text-foreground" /></label>)}</div>
+    <div className="flex justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={onDismiss} disabled={saving} className="h-8 px-3 text-[11px] text-muted-foreground hover:bg-[#fdeee2] hover:text-foreground">Descartar</Button><Button type="button" size="sm" disabled={saving || values.some((item) => !item.value.trim())} onClick={() => onSave(values.map((item) => ({ ...item, value: item.value.trim() })))} className="h-8 bg-primary px-3 text-[11px] text-background hover:bg-primary">{saving ? <><LoaderCircle className="size-3.5 animate-spin" />Guardando…</> : 'Guardar'}</Button></div>
   </section>
 }
 
@@ -491,31 +401,31 @@ function RecommendationsPanel({ items, total, filters, search, loading, scanning
   onDiscard: (item: Recommendation) => void
 }) {
   const blocked = missingContext.length > 0
-  return <div className="flex min-h-0 flex-1 flex-col bg-[#fafaf9]">
-    <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] bg-white px-3 py-2.5">
-      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-[#fff2e9] px-2 py-0.5 text-[10px] font-semibold text-[#c55208]">{total} pendientes</span><Button type="button" size="sm" onClick={onScan} disabled={scanning || blocked} title={blocked ? 'Completá el contexto del cliente para generar recomendaciones' : undefined} className="ml-auto h-7 bg-[#f97316] px-2.5 text-[10px] text-white hover:bg-[#e7650c]">{scanning ? <><LoaderCircle className="size-3 animate-spin" />Analizando cuentas…</> : <><Sparkles className="size-3" />Generar recomendaciones</>}</Button></div>
+  return <div className="flex min-h-0 flex-1 flex-col bg-muted">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-card px-3 py-2.5">
+      <div className="flex items-center gap-2"><span className="text-xs font-semibold">Borradores</span><span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{total} pendientes</span><Button type="button" size="sm" onClick={onScan} disabled={scanning || blocked} title={blocked ? 'Completá el contexto del cliente para generar recomendaciones' : undefined} className="ml-auto h-7 bg-primary px-2.5 text-[10px] text-primary-foreground hover:bg-primary">{scanning ? <><LoaderCircle className="size-3 animate-spin" />Analizando cuentas…</> : <><Sparkles className="size-3" />Generar recomendaciones</>}</Button></div>
       <div className="flex flex-wrap gap-1.5">
-        <select aria-label="Filtrar por plataforma" value={filters.platform} onChange={(event) => onFilters({ ...filters, platform: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todas las plataformas</option>{PLATFORM_OPTIONS.map((platform) => <option key={platform} value={platform}>{PLATFORM_LABEL[platform]}</option>)}</select>
-        <select aria-label="Filtrar por tipo" value={filters.type} onChange={(event) => onFilters({ ...filters, type: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Todos los tipos</option>{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select>
-        <select aria-label="Filtrar por prioridad" value={filters.priority} onChange={(event) => onFilters({ ...filters, priority: event.target.value })} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Toda prioridad</option>{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select>
-        <div className="flex min-w-[140px] flex-1 items-center gap-1 rounded-md border border-[#e5e5e3] bg-white px-2"><Search className="size-3.5 text-[#888]" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar recomendaciones" placeholder="Buscar…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div>
+        <select aria-label="Filtrar por plataforma" value={filters.platform} onChange={(event) => onFilters({ ...filters, platform: event.target.value })} className="h-8 rounded-md border border-border bg-card px-2 text-[10px]"><option value="all">Todas las plataformas</option>{PLATFORM_OPTIONS.map((platform) => <option key={platform} value={platform}>{PLATFORM_LABEL[platform]}</option>)}</select>
+        <select aria-label="Filtrar por tipo" value={filters.type} onChange={(event) => onFilters({ ...filters, type: event.target.value })} className="h-8 rounded-md border border-border bg-card px-2 text-[10px]"><option value="all">Todos los tipos</option>{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select>
+        <select aria-label="Filtrar por prioridad" value={filters.priority} onChange={(event) => onFilters({ ...filters, priority: event.target.value })} className="h-8 rounded-md border border-border bg-card px-2 text-[10px]"><option value="all">Toda prioridad</option>{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select>
+        <div className="flex min-w-[140px] flex-1 items-center gap-1 rounded-md border border-border bg-card px-2"><Search className="size-3.5 text-muted-foreground" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar recomendaciones" placeholder="Buscar…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div>
       </div>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto p-3">
-      {blocked && <section aria-labelledby="context-gate-title" className="mb-3 flex flex-col gap-3 rounded-xl border border-[#f3dcc9] bg-[#ffffff] p-4 text-[#252525]">
+      {blocked && <section aria-labelledby="context-gate-title" className="mb-3 flex flex-col gap-3 rounded-xl border border-primary/30 bg-card p-4 text-foreground">
         <div className="flex items-start gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#fff2e9]"><Lock className="size-4 text-[#c55208]" aria-hidden="true" /></span>
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"><Lock className="size-4 text-primary" aria-hidden="true" /></span>
           <div className="flex min-w-0 flex-col gap-1">
             <h3 id="context-gate-title" className="text-sm font-semibold text-balance">Completá el contexto para usar Recomendaciones</h3>
-            <p className="text-[11px] leading-relaxed text-[#666] text-pretty">Sin saber qué vende el cliente y qué busca lograr, Conexa no puede juzgar si una campaña rinde. Respondé en el chat y se guarda en Contexto del cliente.</p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground text-pretty">Sin saber qué vende el cliente y qué busca lograr, Conexa no puede juzgar si una campaña rinde. Respondé en el chat y se guarda en Contexto del cliente.</p>
           </div>
         </div>
-        <ul className="flex flex-wrap gap-1.5" aria-label="Datos que faltan">{missingContext.map((label) => <li key={label} className="rounded-full border border-[#f3dcc9] bg-[#fff8f2] px-2.5 py-1 text-[10px] font-medium text-[#8a541e]">{label}</li>)}</ul>
-        <Button type="button" size="sm" onClick={onCompleteContext} className="h-8 self-start bg-[#f97316] px-3 text-[11px] text-[#ffffff] hover:bg-[#e7650c]"><MessageCircle className="size-3.5" />Completar en el chat</Button>
+        <ul className="flex flex-wrap gap-1.5" aria-label="Datos que faltan">{missingContext.map((label) => <li key={label} className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">{label}</li>)}</ul>
+        <Button type="button" size="sm" onClick={onCompleteContext} className="h-8 self-start bg-primary px-3 text-[11px] text-background hover:bg-primary"><MessageCircle className="size-3.5" />Completar en el chat</Button>
       </section>}
-      {error && <p role="alert" className="mb-3 rounded-md bg-[#fff3ed] px-3 py-2 text-[11px] text-[#9a3412]">{error}</p>}
-      {scanning && <p role="status" className="mb-3 flex items-center gap-2 rounded-md bg-white px-3 py-2 text-[11px] text-[#666]"><LoaderCircle className="size-3.5 animate-spin text-[#f97316]" />Conexa está revisando los últimos 30 días de las cuentas, el CRM y el contexto. Puede tardar un par de minutos.</p>}
-      {loading && !error ? <div className="flex flex-col gap-3" aria-label="Generando recomendaciones"><Skeleton className="h-36 w-full bg-[#f0f0ee]" /><Skeleton className="h-36 w-full bg-[#f0f0ee]" /></div> : items.length ? <ul className="flex flex-col gap-3">{items.map((item) => <RecommendationCard key={item.id} item={item} onSelect={() => onSelect(item)} onEdit={() => onEdit(item)} onEditWithChat={() => onEditWithChat(item)} onPublish={() => onPublish(item)} onMarkDone={() => onMarkDone(item)} onDiscard={() => onDiscard(item)} />)}</ul> : <div className="mt-8 rounded-xl border border-dashed border-[#dededb] bg-white p-8 text-center"><Lightbulb className="mx-auto size-5 text-[#f97316]" /><p className="mt-3 text-sm font-semibold">No hay recomendaciones pendientes.</p><p className="mt-1 text-xs text-[#777]">Usá «Generar recomendaciones» o contale al chat sobre el cliente.</p></div>}
+      {error && <p role="alert" className="mb-3 rounded-md bg-primary/10 px-3 py-2 text-[11px] text-primary">{error}</p>}
+      {scanning && <p role="status" className="mb-3 flex items-center gap-2 rounded-md bg-card px-3 py-2 text-[11px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin text-primary" />Conexa está revisando los últimos 30 días de las cuentas, el CRM y el contexto. Puede tardar un par de minutos.</p>}
+      {loading && !error ? <div className="flex flex-col gap-3" aria-label="Generando recomendaciones"><Skeleton className="h-36 w-full bg-muted" /><Skeleton className="h-36 w-full bg-muted" /></div> : items.length ? <ul className="flex flex-col gap-3">{items.map((item) => <RecommendationCard key={item.id} item={item} onSelect={() => onSelect(item)} onEdit={() => onEdit(item)} onEditWithChat={() => onEditWithChat(item)} onPublish={() => onPublish(item)} onMarkDone={() => onMarkDone(item)} onDiscard={() => onDiscard(item)} />)}</ul> : <div className="mt-8 rounded-xl border border-dashed border-border bg-card p-8 text-center"><Lightbulb className="mx-auto size-5 text-primary" /><p className="mt-3 text-sm font-semibold">No hay recomendaciones pendientes.</p><p className="mt-1 text-xs text-muted-foreground">Usá «Generar recomendaciones» o contale al chat sobre el cliente.</p></div>}
     </div>
   </div>
 }
@@ -523,29 +433,29 @@ function RecommendationsPanel({ items, total, filters, search, loading, scanning
 function RecommendationCard({ item, onSelect, onEdit, onEditWithChat, onPublish, onMarkDone, onDiscard }: { item: Recommendation; onSelect: () => void; onEdit: () => void; onEditWithChat: () => void; onPublish: () => void; onMarkDone: () => void; onDiscard: () => void }) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const manualOnly = !item.operation && Boolean(item.non_executable_reason)
-  return <li className="rounded-xl border border-[#e5e5e1] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)]">
-    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold leading-snug"><button type="button" onClick={onSelect} className="text-left hover:text-[#c55208]">{item.title}</button></h3><div className="mt-2 flex flex-wrap items-center gap-1.5">{item.platforms.length ? item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="rounded-full bg-[#f2f2f0] px-2 py-1 text-[9px] text-[#555]">Basada en contexto</span>}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[9px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} />{item.operation && <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f5ec] px-2 py-1 text-[9px] font-semibold text-[#1b6b38]"><Zap className="size-2.5" aria-hidden="true" />Ejecutable</span>}</div></div><span className="shrink-0 rounded-full bg-[#fff4e9] px-2 py-1 text-[9px] font-semibold text-[#a8440c]">{STATUS_LABEL[item.status]}</span></div>
-    <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-[#555]">{item.description}</p>
-    <button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-[#a8440c]">Fundamento <ChevronDown className={cn('size-3 transition-transform', evidenceOpen && 'rotate-180')} /></button>
-    {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-[#fafaf9] p-3"><p className="text-[11px] leading-relaxed text-[#555]">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="line-clamp-3 border-l-2 border-[#f97316] pl-2 text-[10px] leading-relaxed text-[#666] [overflow-wrap:anywhere]"><span className="font-semibold">{evidence.label}: </span>{readableEvidenceExcerpt(evidence)}</li>)}</ul></div>}
-    <div className="mt-3"><p className="text-[10px] font-semibold text-[#555]">Acciones sugeridas</p><ol className="mt-1 list-decimal pl-4 text-[10px] leading-relaxed text-[#666]">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></div>
-    <p className="mt-2 text-[10px] text-[#555]"><span className="font-semibold">Impacto esperado:</span> {item.expected_impact}</p>
-    <div className="mt-3 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-[#a8440c]">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-[#5a3a22]">{describeOperation(item.operation)}</span></> : manualOnly ? <><span className="font-semibold text-[#5a3a22]">Acción manual:</span> <span className="text-[#666]">{item.non_executable_reason}</span></> : <span className="text-[#777]">Al publicar, Conexa buscará en Meta Ads o Google Ads la entidad que corresponde y te mostrará el cambio exacto antes de ejecutarlo.</span>}</div>
-    {item.execution_error && <p role="alert" className="mt-2 rounded-md bg-[#fff0ec] px-3 py-2 text-[10px] leading-relaxed text-[#b42318]">Último intento falló: {item.execution_error}</p>}
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#eeeeeb] pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-[#777]">Descartar</Button></div>{manualOnly ? <Button size="sm" variant="outline" onClick={onMarkDone} className="h-8 px-3 text-[10px]"><Check className="size-3" />Marcar como hecha</Button> : <Button size="sm" onClick={onPublish} disabled={item.status === 'executing'} className="h-8 bg-[#f97316] px-3 text-[10px] text-white hover:bg-[#e7650c]">{item.status === 'executing' ? <><LoaderCircle className="size-3 animate-spin" />Ejecutando…</> : 'Publicar'}</Button>}</div>
+  return <li className="rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)]">
+    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold leading-snug"><button type="button" onClick={onSelect} className="text-left hover:text-primary">{item.title}</button></h3><div className="mt-2 flex flex-wrap items-center gap-1.5">{item.platforms.length ? item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="rounded-full bg-muted px-2 py-1 text-[9px] text-muted-foreground">Basada en contexto</span>}<span className="rounded-full bg-muted px-2 py-1 text-[9px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} />{item.operation && <span className="inline-flex items-center gap-1 rounded-full bg-status-verde/10 px-2 py-1 text-[9px] font-semibold text-status-verde"><Zap className="size-2.5" aria-hidden="true" />Ejecutable</span>}</div></div><span className="shrink-0 rounded-full bg-[#fff4e9] px-2 py-1 text-[9px] font-semibold text-primary">{STATUS_LABEL[item.status]}</span></div>
+    <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{item.description}</p>
+    <button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-semibold text-primary">Fundamento <ChevronDown className={cn('size-3 transition-transform', evidenceOpen && 'rotate-180')} /></button>
+    {evidenceOpen && <div className="mt-2 flex flex-col gap-2 rounded-lg bg-muted p-3"><p className="text-[11px] leading-relaxed text-muted-foreground">{item.rationale}</p><ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="line-clamp-3 border-l-2 border-primary pl-2 text-[10px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]"><span className="font-semibold">{evidence.label}: </span>{readableEvidenceExcerpt(evidence)}</li>)}</ul></div>}
+    <div className="mt-3"><p className="text-[10px] font-semibold text-muted-foreground">Acciones sugeridas</p><ol className="mt-1 list-decimal pl-4 text-[10px] leading-relaxed text-muted-foreground">{item.suggested_actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol></div>
+    <p className="mt-2 text-[10px] text-muted-foreground"><span className="font-semibold">Impacto esperado:</span> {item.expected_impact}</p>
+    <div className="mt-3 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[10px] leading-relaxed">{item.operation ? <><span className="font-semibold text-primary">Al publicar · {PLATFORM_LABEL[item.operation.platform]}:</span> <span className="text-primary">{describeOperation(item.operation)}</span></> : manualOnly ? <><span className="font-semibold text-primary">Acción manual:</span> <span className="text-muted-foreground">{item.non_executable_reason}</span></> : <span className="text-muted-foreground">Al publicar, Conexa buscará en Meta Ads o Google Ads la entidad que corresponde y te mostrará el cambio exacto antes de ejecutarlo.</span>}</div>
+    {item.execution_error && <p role="alert" className="mt-2 rounded-md bg-primary/10 px-3 py-2 text-[10px] leading-relaxed text-destructive">Último intento falló: {item.execution_error}</p>}
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3"><div className="flex flex-wrap gap-1.5"><Button variant="outline" size="sm" onClick={onEdit} className="h-7 px-2 text-[10px]"><FileEdit className="size-3" />Editar</Button><Button variant="outline" size="sm" onClick={onEditWithChat} className="h-7 px-2 text-[10px]"><MessageCircle className="size-3" />Editar con chat</Button><Button variant="ghost" size="sm" onClick={onDiscard} className="h-7 px-2 text-[10px] text-muted-foreground">Descartar</Button></div>{manualOnly ? <Button size="sm" variant="outline" onClick={onMarkDone} className="h-8 px-3 text-[10px]"><Check className="size-3" />Marcar como hecha</Button> : <Button size="sm" onClick={onPublish} disabled={item.status === 'executing'} className="h-8 bg-primary px-3 text-[10px] text-primary-foreground hover:bg-primary">{item.status === 'executing' ? <><LoaderCircle className="size-3 animate-spin" />Ejecutando…</> : 'Publicar'}</Button>}</div>
   </li>
 }
 
 function HistoryPanel({ items, loading, error, filters, search, onSearch, onStatus, onSelect, onRestore }: { items: Recommendation[]; loading: boolean; error?: string; filters: { status: string }; search: string; onSearch: (value: string) => void; onStatus: (value: string) => void; onSelect: (item: Recommendation) => void; onRestore: (item: Recommendation) => void }) {
-  return <div className="flex min-h-0 flex-1 flex-col bg-white">
-    <div className="flex shrink-0 flex-col gap-2 border-b border-[#e7e7e5] px-3 py-2.5"><div className="flex items-center gap-2 text-xs font-semibold"><Clock3 className="size-3.5 text-[#f97316]" />Recomendaciones cerradas</div><select aria-label="Filtrar histórico por estado" value={filters.status} onChange={(event) => onStatus(event.target.value)} className="h-8 rounded-md border border-[#e5e5e3] bg-white px-2 text-[10px]"><option value="all">Publicadas y descartadas</option><option value="published">Publicadas</option><option value="discarded">Descartadas</option></select><div className="flex items-center gap-1 rounded-md border border-[#e5e5e3] px-2"><Search className="size-3.5 text-[#888]" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar en histórico" placeholder="Buscar en histórico…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div></div>
-    <div className="min-h-0 flex-1 overflow-y-auto">{error ? <p role="alert" className="m-3 rounded-md bg-[#fff3ed] p-3 text-[10px] text-[#9a3412]">{error}</p> : loading ? <p className="p-4 text-xs text-[#777]">Cargando histórico…</p> : items.length ? <ul className="divide-y divide-[#eeeeeb]">{items.map((item) => <li key={item.id} className="px-3 py-3"><button type="button" onClick={() => onSelect(item)} className="block w-full text-left"><span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', item.status === 'published' ? 'bg-[#e7f5ec] text-[#1b6b38]' : 'bg-[#f1f1ef] text-[#666]')}>{STATUS_LABEL[item.status]}</span><span className="mt-2 block text-xs font-semibold leading-relaxed">{item.title}</span><span className="mt-1 block text-[10px] text-[#777]">{item.platforms.map((platform) => PLATFORM_LABEL[platform]).join(' · ') || 'Basada en contexto'}</span><ExecutionSummary item={item} compact /><span className="mt-1 block text-[9px] text-[#999]">{new Date(item.status === 'published' ? item.published_at ?? item.updated_at : item.discarded_at ?? item.updated_at).toLocaleString('es-AR')} · {item.status === 'published' ? item.published_by_name ?? 'Usuario MDK' : item.discarded_by_name ?? 'Usuario MDK'}</span></button>{item.status === 'discarded' && <Button type="button" variant="outline" size="sm" onClick={() => onRestore(item)} className="mt-2 h-7 px-2 text-[10px]">Restaurar como borrador</Button>}</li>)}</ul> : <div className="px-5 py-12 text-center"><Clock3 className="mx-auto size-5 text-[#b0b0aa]" /><p className="mt-2 text-xs font-medium">Todavía no hay recomendaciones publicadas o descartadas.</p></div>}</div>
+  return <div className="flex min-h-0 flex-1 flex-col bg-card">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2.5"><div className="flex items-center gap-2 text-xs font-semibold"><Clock3 className="size-3.5 text-primary" />Recomendaciones cerradas</div><select aria-label="Filtrar histórico por estado" value={filters.status} onChange={(event) => onStatus(event.target.value)} className="h-8 rounded-md border border-border bg-card px-2 text-[10px]"><option value="all">Publicadas y descartadas</option><option value="published">Publicadas</option><option value="discarded">Descartadas</option></select><div className="flex items-center gap-1 rounded-md border border-border px-2"><Search className="size-3.5 text-muted-foreground" /><Input value={search} onChange={(event) => onSearch(event.target.value)} aria-label="Buscar en histórico" placeholder="Buscar en histórico…" className="h-7 border-0 px-0 text-[10px] shadow-none focus-visible:ring-0" /></div></div>
+    <div className="min-h-0 flex-1 overflow-y-auto">{error ? <p role="alert" className="m-3 rounded-md bg-primary/10 p-3 text-[10px] text-primary">{error}</p> : loading ? <p className="p-4 text-xs text-muted-foreground">Cargando histórico…</p> : items.length ? <ul className="divide-y divide-border">{items.map((item) => <li key={item.id} className="px-3 py-3"><button type="button" onClick={() => onSelect(item)} className="block w-full text-left"><span className={cn('rounded-full px-2 py-0.5 text-[9px] font-semibold', item.status === 'published' ? 'bg-status-verde/10 text-status-verde' : 'bg-muted text-muted-foreground')}>{STATUS_LABEL[item.status]}</span><span className="mt-2 block text-xs font-semibold leading-relaxed">{item.title}</span><span className="mt-1 block text-[10px] text-muted-foreground">{item.platforms.map((platform) => PLATFORM_LABEL[platform]).join(' · ') || 'Basada en contexto'}</span><ExecutionSummary item={item} compact /><span className="mt-1 block text-[9px] text-muted-foreground">{new Date(item.status === 'published' ? item.published_at ?? item.updated_at : item.discarded_at ?? item.updated_at).toLocaleString('es-AR')} · {item.status === 'published' ? item.published_by_name ?? 'Usuario MDK' : item.discarded_by_name ?? 'Usuario MDK'}</span></button>{item.status === 'discarded' && <Button type="button" variant="outline" size="sm" onClick={() => onRestore(item)} className="mt-2 h-7 px-2 text-[10px]">Restaurar como borrador</Button>}</li>)}</ul> : <div className="px-5 py-12 text-center"><Clock3 className="mx-auto size-5 text-muted-foreground" /><p className="mt-2 text-xs font-medium">Todavía no hay recomendaciones publicadas o descartadas.</p></div>}</div>
   </div>
 }
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return <section className="flex min-w-0 flex-col gap-2">
-    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[#8a8a85]">{title}</h3>
+    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
     {children}
   </section>
 }
@@ -556,21 +466,21 @@ function RecommendationDetail({ item, readonly, onRestore }: { item: Recommendat
     <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
       <DialogTitle className="text-pretty text-lg leading-snug">{item.title}</DialogTitle>
       <DialogDescription className="text-xs">{readonly ? `${STATUS_LABEL[item.status]}${closedAt ? ` el ${new Date(closedAt).toLocaleString('es-AR')}` : ''} · vista de solo lectura` : 'Detalle de la recomendación'}</DialogDescription>
-      <div className="flex flex-wrap gap-1.5 pt-1">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-[#f3f3f1] px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div>
+      <div className="flex flex-wrap gap-1.5 pt-1">{item.platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />)}<span className="rounded-full bg-muted px-2 py-1 text-[10px]">{RECOMMENDATION_TYPE_LABEL[item.type]}</span><PriorityBadge priority={item.priority} /></div>
     </DialogHeader>
 
     <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.description}</p>
 
-    {item.execution_result && <div className="flex flex-col gap-1 rounded-lg border border-[#cfe9d8] bg-[#f4faf6] p-3 text-xs text-[#1b6b38]"><p className="font-semibold">Ejecutado el {new Date(item.execution_result.executedAt).toLocaleString('es-AR')}</p><ExecutionSummary item={item} /></div>}
-    {item.operation && <div className="rounded-lg border border-[#f3dcc9] bg-[#fff8f2] p-3 text-xs leading-relaxed"><p className="font-semibold text-[#a8440c]">Acción en {PLATFORM_LABEL[item.operation.platform]}</p><p className="mt-1 text-[#5a3a22]">{describeOperation(item.operation)}</p></div>}
-    {!item.operation && item.non_executable_reason && <div className="rounded-lg bg-[#fafaf9] p-3 text-xs leading-relaxed"><p className="font-semibold">Acción manual</p><p className="mt-1 text-[#666]">{item.non_executable_reason}</p></div>}
-    {item.discard_reason && <div className="rounded-lg bg-[#f5f5f4] p-3 text-xs leading-relaxed"><p className="font-semibold">Motivo del descarte</p><p className="mt-1 text-[#666]">{item.discard_reason}</p></div>}
+    {item.execution_result && <div className="flex flex-col gap-1 rounded-lg border border-[#cfe9d8] bg-muted p-3 text-xs text-status-verde"><p className="font-semibold">Ejecutado el {new Date(item.execution_result.executedAt).toLocaleString('es-AR')}</p><ExecutionSummary item={item} /></div>}
+    {item.operation && <div className="rounded-lg border border-primary/30 bg-primary/10 p-3 text-xs leading-relaxed"><p className="font-semibold text-primary">Acción en {PLATFORM_LABEL[item.operation.platform]}</p><p className="mt-1 text-primary">{describeOperation(item.operation)}</p></div>}
+    {!item.operation && item.non_executable_reason && <div className="rounded-lg bg-muted p-3 text-xs leading-relaxed"><p className="font-semibold">Acción manual</p><p className="mt-1 text-muted-foreground">{item.non_executable_reason}</p></div>}
+    {item.discard_reason && <div className="rounded-lg bg-muted p-3 text-xs leading-relaxed"><p className="font-semibold">Motivo del descarte</p><p className="mt-1 text-muted-foreground">{item.discard_reason}</p></div>}
 
     <DetailSection title="Fundamento">
-      <p className="text-xs leading-relaxed text-[#555]">{item.rationale}</p>
-      {item.evidence.length > 0 && <ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="min-w-0 rounded-md border border-[#eeeeeb] bg-[#fafaf9] px-3 py-2">
-        <p className="text-[11px] font-semibold leading-snug text-[#202020]">{evidence.label}</p>
-        <p className="mt-0.5 line-clamp-3 text-[11px] leading-relaxed text-[#666]">{readableEvidenceExcerpt(evidence)}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{item.rationale}</p>
+      {item.evidence.length > 0 && <ul className="flex flex-col gap-1.5">{item.evidence.map((evidence) => <li key={evidence.id} className="min-w-0 rounded-md border border-border bg-muted px-3 py-2">
+        <p className="text-[11px] font-semibold leading-snug text-foreground">{evidence.label}</p>
+        <p className="mt-0.5 line-clamp-3 text-[11px] leading-relaxed text-muted-foreground">{readableEvidenceExcerpt(evidence)}</p>
       </li>)}</ul>}
     </DetailSection>
 
@@ -596,8 +506,8 @@ function EditRecommendationDialog({ item, onCancel, onSave }: { item: Recommenda
   return <form onSubmit={submit} className="flex flex-col gap-3">
     <DialogHeader><DialogTitle>Editar borrador</DialogTitle><DialogDescription>Los cambios solo modifican esta recomendación; no afectan al cliente ni a las plataformas.</DialogDescription></DialogHeader>
     <label className="flex flex-col gap-1 text-xs font-medium">Título<Input value={draft.title} maxLength={140} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
-    <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as RecommendationType })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs">{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select></label><label className="flex flex-col gap-1 text-xs font-medium">Prioridad<select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as RecommendationPriority })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs">{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></label></div>
-    <fieldset className="flex flex-col gap-1.5"><legend className="text-xs font-medium">Plataformas involucradas</legend><div className="flex flex-wrap gap-2">{PLATFORM_OPTIONS.map((platform) => <label key={platform} className="flex items-center gap-1.5 rounded-md border border-[#e7e7e5] px-2 py-1.5 text-[10px]"><input type="checkbox" checked={draft.platforms.includes(platform)} onChange={(event) => setDraft({ ...draft, platforms: event.target.checked ? [...draft.platforms, platform] : draft.platforms.filter((item) => item !== platform) })} />{PLATFORM_LABEL[platform]}</label>)}</div></fieldset>
+    <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as RecommendationType })} className="h-9 rounded-md border border-border bg-card px-2 text-xs">{TYPE_OPTIONS.map((type) => <option key={type} value={type}>{RECOMMENDATION_TYPE_LABEL[type]}</option>)}</select></label><label className="flex flex-col gap-1 text-xs font-medium">Prioridad<select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as RecommendationPriority })} className="h-9 rounded-md border border-border bg-card px-2 text-xs">{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></label></div>
+    <fieldset className="flex flex-col gap-1.5"><legend className="text-xs font-medium">Plataformas involucradas</legend><div className="flex flex-wrap gap-2">{PLATFORM_OPTIONS.map((platform) => <label key={platform} className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-[10px]"><input type="checkbox" checked={draft.platforms.includes(platform)} onChange={(event) => setDraft({ ...draft, platforms: event.target.checked ? [...draft.platforms, platform] : draft.platforms.filter((item) => item !== platform) })} />{PLATFORM_LABEL[platform]}</label>)}</div></fieldset>
     <label className="flex flex-col gap-1 text-xs font-medium">Descripción<Textarea value={draft.description} maxLength={900} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
     <label className="flex flex-col gap-1 text-xs font-medium">Fundamento<Textarea value={draft.rationale} maxLength={1000} onChange={(event) => setDraft({ ...draft, rationale: event.target.value })} /></label>
     <label className="flex flex-col gap-1 text-xs font-medium">Acciones sugeridas (una por línea)<Textarea value={actionText} onChange={(event) => setActionText(event.target.value)} /></label>
@@ -609,33 +519,33 @@ function EditRecommendationDialog({ item, onCancel, onSave }: { item: Recommenda
 
 function OperationFields({ operation, onChange }: { operation: RecommendationOperation; onChange: (operation: RecommendationOperation) => void }) {
   const numberValue = (value: string) => (value === '' ? Number.NaN : Number(value))
-  return <fieldset className="flex flex-col gap-2 rounded-lg border border-[#f3dcc9] bg-[#fff8f2] p-3">
-    <legend className="px-1 text-xs font-semibold text-[#a8440c]">Acción que ejecuta Publicar</legend>
-    <p className="text-[11px] text-[#5a3a22]">{describeOperation(operation)}</p>
-    {operation.kind === 'set_status' && <label className="flex flex-col gap-1 text-xs font-medium">Estado<select value={operation.status} onChange={(event) => onChange(operation.platform === 'meta' ? { ...operation, status: event.target.value as 'ACTIVE' | 'PAUSED' } : { ...operation, status: event.target.value as 'ENABLED' | 'PAUSED' })} className="h-9 rounded-md border border-[#e5e5e3] bg-white px-2 text-xs"><option value={operation.platform === 'meta' ? 'ACTIVE' : 'ENABLED'}>Activar</option><option value="PAUSED">Pausar</option></select></label>}
+  return <fieldset className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/10 p-3">
+    <legend className="px-1 text-xs font-semibold text-primary">Acción que ejecuta Publicar</legend>
+    <p className="text-[11px] text-primary">{describeOperation(operation)}</p>
+    {operation.kind === 'set_status' && <label className="flex flex-col gap-1 text-xs font-medium">Estado<select value={operation.status} onChange={(event) => onChange(operation.platform === 'meta' ? { ...operation, status: event.target.value as 'ACTIVE' | 'PAUSED' } : { ...operation, status: event.target.value as 'ENABLED' | 'PAUSED' })} className="h-9 rounded-md border border-border bg-card px-2 text-xs"><option value={operation.platform === 'meta' ? 'ACTIVE' : 'ENABLED'}>Activar</option><option value="PAUSED">Pausar</option></select></label>}
     {operation.kind === 'set_daily_budget' && <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario nuevo (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>}
     {operation.kind === 'create_campaign' && operation.platform === 'google_ads' && <>
       <label className="flex flex-col gap-1 text-xs font-medium">Nombre de la campaña<Input value={operation.campaignName} maxLength={120} onChange={(event) => onChange({ ...operation, campaignName: event.target.value })} /></label>
       <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>
-      <p className="text-[11px] text-[#5a3a22]">Modelo: «{operation.templateCampaignName}» · Grupos copiados: {operation.adGroups.map((group) => `«${group.name}»`).join(', ')}</p>
+      <p className="text-[11px] text-primary">Modelo: «{operation.templateCampaignName}» · Grupos copiados: {operation.adGroups.map((group) => `«${group.name}»`).join(', ')}</p>
     </>}
     {operation.kind === 'create_campaign' && operation.platform === 'meta' && <>
       <label className="flex flex-col gap-1 text-xs font-medium">Nombre de la campaña<Input value={operation.campaignName} maxLength={120} onChange={(event) => onChange({ ...operation, campaignName: event.target.value })} /></label>
       <label className="flex flex-col gap-1 text-xs font-medium">Nombre del conjunto<Input value={operation.adsetName} maxLength={120} onChange={(event) => onChange({ ...operation, adsetName: event.target.value })} /></label>
       <label className="flex flex-col gap-1 text-xs font-medium">Presupuesto diario (en la moneda de la cuenta)<Input type="number" min={0} step="0.01" value={Number.isNaN(operation.dailyBudget) ? '' : operation.dailyBudget} onChange={(event) => onChange({ ...operation, dailyBudget: numberValue(event.target.value) })} /></label>
       <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Edad mínima (vacío = la del modelo)<Input type="number" min={18} max={65} value={operation.ageMin ?? ''} onChange={(event) => onChange({ ...operation, ageMin: event.target.value === '' ? null : numberValue(event.target.value) })} /></label><label className="flex flex-col gap-1 text-xs font-medium">Edad máxima (65 = 65+)<Input type="number" min={18} max={65} value={operation.ageMax ?? ''} onChange={(event) => onChange({ ...operation, ageMax: event.target.value === '' ? null : numberValue(event.target.value) })} /></label></div>
-      <p className="text-[11px] text-[#5a3a22]">Modelo: «{operation.templateAdsetName}» · Creatividades: {operation.ads.map((ad) => `«${ad.name}»`).join(', ')}</p>
+      <p className="text-[11px] text-primary">Modelo: «{operation.templateAdsetName}» · Creatividades: {operation.ads.map((ad) => `«${ad.name}»`).join(', ')}</p>
     </>}
     {operation.kind === 'set_age_range' && <div className="grid grid-cols-2 gap-3"><label className="flex flex-col gap-1 text-xs font-medium">Edad mínima<Input type="number" min={18} max={65} value={Number.isNaN(operation.ageMin) ? '' : operation.ageMin} onChange={(event) => onChange({ ...operation, ageMin: numberValue(event.target.value) })} /></label><label className="flex flex-col gap-1 text-xs font-medium">Edad máxima (65 = 65+)<Input type="number" min={18} max={65} value={Number.isNaN(operation.ageMax) ? '' : operation.ageMax} onChange={(event) => onChange({ ...operation, ageMax: numberValue(event.target.value) })} /></label></div>}
-    <p className="text-[10px] leading-relaxed text-[#777]">Al guardar se valida contra las cuentas vinculadas y el tope de ±30% de presupuesto.</p>
+    <p className="text-[10px] leading-relaxed text-muted-foreground">Al guardar se valida contra las cuentas vinculadas y el tope de ±30% de presupuesto.</p>
   </fieldset>
 }
 
 function PlanSteps({ steps }: { steps: PlanStep[] }) {
-  return <ul className="flex flex-col gap-2">{steps.map((step) => <li key={`${step.entityId}-${step.field}`} className={cn('rounded-lg border p-3', step.alreadyApplied ? 'border-[#e7e7e5] bg-[#fafaf9] opacity-70' : 'border-[#f3dcc9] bg-[#fff8f2]')}>
-    <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{step.entityName}</p><span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[9px] font-medium text-[#666]">{PLATFORM_LABEL[step.platform]} · {step.entityType === 'campaign' ? 'Campaña' : step.entityType === 'adset' ? 'Conjunto' : 'Anuncio'}</span></div>
-    {step.alreadyApplied ? <p className="mt-1.5 text-[11px] text-[#666]">Ya aplicado ({step.afterLabel}); se omite.</p> : <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]"><span className="text-[#666]">{step.beforeLabel}</span><ArrowRight className="size-3 text-[#a8440c]" aria-label="pasa a" /><span className="font-semibold text-[#a8440c]">{step.afterLabel}</span>{step.pctChange !== null && <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-semibold text-[#5a3a22]">{step.pctChange > 0 ? '+' : ''}{Math.round(step.pctChange * 100)}%</span>}</p>}
-    {step.warnings.map((warning) => <p key={warning} className="mt-1.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-[#8a541e]"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{warning}</p>)}
+  return <ul className="flex flex-col gap-2">{steps.map((step) => <li key={`${step.entityId}-${step.field}`} className={cn('rounded-lg border p-3', step.alreadyApplied ? 'border-border bg-muted opacity-70' : 'border-primary/30 bg-primary/10')}>
+    <div className="flex items-start justify-between gap-2"><p className="text-xs font-semibold leading-snug">{step.entityName}</p><span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-[9px] font-medium text-muted-foreground">{PLATFORM_LABEL[step.platform]} · {step.entityType === 'campaign' ? 'Campaña' : step.entityType === 'adset' ? 'Conjunto' : 'Anuncio'}</span></div>
+    {step.alreadyApplied ? <p className="mt-1.5 text-[11px] text-muted-foreground">Ya aplicado ({step.afterLabel}); se omite.</p> : <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]"><span className="text-muted-foreground">{step.beforeLabel}</span><ArrowRight className="size-3 text-primary" aria-label="pasa a" /><span className="font-semibold text-primary">{step.afterLabel}</span>{step.pctChange !== null && <span className="rounded-full bg-card px-1.5 py-0.5 text-[9px] font-semibold text-primary">{step.pctChange > 0 ? '+' : ''}{Math.round(step.pctChange * 100)}%</span>}</p>}
+    {step.warnings.map((warning) => <p key={warning} className="mt-1.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-primary"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />{warning}</p>)}
   </li>)}</ul>
 }
 
@@ -646,16 +556,16 @@ function ExecutionSummary({ item, compact = false }: { item: Recommendation; com
     ? decisions.map((decision) => ({ key: decision.id, text: `${decision.payload?.step?.entityName ?? 'Entidad'}: ${decision.value_before?.label ?? String(decision.value_before?.value ?? '')} → ${decision.value_after?.label ?? String(decision.value_after?.value ?? '')}${createdCampaignNote(decision.payload?.step)}`, failed: decision.outcome === 'failed', who: decision.user_name }))
     : executionLines(item.execution_result).map((text, index) => ({ key: String(index), text, failed: text.endsWith('(falló)'), who: null as string | null | undefined }))
   if (!lines.length) return null
-  return <span className={cn('flex flex-col gap-1', compact ? 'mt-1.5 rounded-md bg-[#f4faf6] px-2 py-1.5 text-[10px] leading-relaxed text-[#1b6b38]' : 'mt-1 text-xs')}>{lines.map((line) => <span key={line.key} className={cn('block', line.failed && 'text-[#b42318]')}>{line.text}{line.failed && decisions.length ? ' (falló)' : ''}{!compact && line.who ? ` · ${line.who}` : ''}</span>)}</span>
+  return <span className={cn('flex flex-col gap-1', compact ? 'mt-1.5 rounded-md bg-muted px-2 py-1.5 text-[10px] leading-relaxed text-status-verde' : 'mt-1 text-xs')}>{lines.map((line) => <span key={line.key} className={cn('block', line.failed && 'text-destructive')}>{line.text}{line.failed && decisions.length ? ' (falló)' : ''}{!compact && line.who ? ` · ${line.who}` : ''}</span>)}</span>
 }
 
 function PlatformBadge({ platform }: { platform: RecommendationPlatform }) {
   const Icon = platform === 'meta' ? Users : platform === 'google_ads' ? Search : platform === 'ga4' ? BarChart3 : platform === 'tag_manager' ? Tag : Database
   const logo = PLATFORM_LOGOS[platform]
-  return <span className="inline-flex items-center gap-1 rounded-full border border-[#e8e8e5] bg-white px-2 py-1 text-[9px] font-medium">{logo ? <img src={logo} alt="" className="size-3 object-contain" /> : <Icon className="size-3 text-[#f97316]" aria-hidden="true" />}{PLATFORM_LABEL[platform]}</span>
+  return <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-1 text-[9px] font-medium">{logo ? <img src={logo} alt="" className="size-3 object-contain" /> : <Icon className="size-3 text-primary" aria-hidden="true" />}{PLATFORM_LABEL[platform]}</span>
 }
 
 function PriorityBadge({ priority }: { priority: RecommendationPriority }) {
-  const colors = priority === 'alta' ? 'bg-[#fff0ec] text-[#b42318]' : priority === 'media' ? 'bg-[#fff5e9] text-[#9a5b10]' : 'bg-[#eff5f0] text-[#486653]'
+  const colors = priority === 'alta' ? 'bg-primary/10 text-destructive' : priority === 'media' ? 'bg-[#fff5e9] text-[#9a5b10]' : 'bg-muted text-[#486653]'
   return <span className={cn('rounded-full px-2 py-1 text-[9px] font-semibold', colors)}>{priority}</span>
 }

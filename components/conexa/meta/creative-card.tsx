@@ -18,7 +18,7 @@ export function CreativeCard({ creative }: { creative: CreativeCardData }) {
   const showImage = Boolean(creative.thumbnail) && !imageFailed
   const paused = isPausedStatus(creative.status)
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#E6E6E3] bg-white">
+    <div className="overflow-hidden rounded-[14px] border border-border bg-card">
       <div className="relative h-[120px] overflow-hidden">
         <div className="absolute inset-0" style={{ background: thumbnailBackground }} aria-hidden="true" />
         {showImage && (
@@ -32,21 +32,21 @@ export function CreativeCard({ creative }: { creative: CreativeCardData }) {
           />
         )}
         {creative.format && (
-          <span className="absolute left-2 top-2 rounded-[5px] bg-white/90 px-2 py-[3px] font-mono text-[11px] text-[#5C5C5C]">{creative.format}</span>
+          <span className="absolute left-2 top-2 rounded-[5px] bg-card/90 px-2 py-[3px] font-mono text-[11px] text-muted-foreground">{creative.format}</span>
         )}
         {paused && (
-          <span className="absolute right-2 top-2 flex items-center gap-1 rounded-[5px] bg-white/90 px-2 py-[3px] text-[11px] text-[#5C5C5C]">
-            <span className="size-1.5 rounded-full bg-[#9A9A9A]" aria-hidden="true" />
+          <span className="absolute right-2 top-2 flex items-center gap-1 rounded-[5px] bg-card/90 px-2 py-[3px] text-[11px] text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
             Pausado
           </span>
         )}
       </div>
       <div className="p-[14px]">
-        <p className="mb-0.5 truncate text-[13.5px] font-bold text-[#141414]" title={creative.name}>{creative.name}</p>
+        <p className="mb-0.5 truncate text-[13.5px] font-bold text-foreground" title={creative.name}>{creative.name}</p>
         {creative.campaign && (
-          <p className="mb-2.5 truncate text-[11.5px] text-[#9A9A9A]" title={creative.campaign}>{creative.campaign}</p>
+          <p className="mb-2.5 truncate text-[11.5px] text-muted-foreground" title={creative.campaign}>{creative.campaign}</p>
         )}
-        <div className="flex justify-between gap-2 border-t border-[#F5F5F3] pt-2 text-[11.5px] text-[#5C5C5C]">
+        <div className="flex justify-between gap-2 border-t border-border pt-2 text-[11.5px] text-muted-foreground">
           <span>{creative.impressions.toLocaleString('es-AR')} impr.</span>
           <span>{'CTR ' + creative.ctr.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%'}</span>
           <span>{formatSpend(creative.spend, creative.currency)}</span>
@@ -58,19 +58,19 @@ export function CreativeCard({ creative }: { creative: CreativeCardData }) {
 
 function CreativeSkeleton() {
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#E6E6E3] bg-white" aria-hidden="true">
-      <div className="h-[120px] animate-pulse bg-[#F5F5F3]" />
+    <div className="overflow-hidden rounded-[14px] border border-border bg-card" aria-hidden="true">
+      <div className="h-[120px] animate-pulse bg-muted" />
       <div className="flex flex-col gap-2 p-[14px]">
-        <div className="h-3.5 w-2/3 animate-pulse rounded bg-[#F5F5F3]" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-[#F5F5F3]" />
-        <div className="mt-1 h-3 w-full animate-pulse rounded bg-[#F5F5F3]" />
+        <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+        <div className="mt-1 h-3 w-full animate-pulse rounded bg-muted" />
       </div>
     </div>
   )
 }
 
 function StateMessage({ children }: { children: string }) {
-  return <p className="mb-6 rounded-[14px] border border-[#E6E6E3] bg-white p-8 text-center text-[12px] text-[#9A9A9A]">{children}</p>
+  return <p className="mb-6 rounded-[14px] border border-border bg-card p-8 text-center text-[12px] text-muted-foreground">{children}</p>
 }
 
 export function CreativeGrid({ creatives, loading, error, periodLabel }: { creatives: CreativeCardData[]; loading: boolean; error: boolean; periodLabel: string }) {
@@ -86,7 +86,7 @@ export function CreativeGrid({ creatives, loading, error, periodLabel }: { creat
   if (!creatives.length) return <StateMessage>No hay creativos con impresiones en este período.</StateMessage>
   return (
     <div className="mb-6">
-      <p className="mb-3 text-[12px] text-[#9A9A9A]">{`${creatives.length} creativos · ${periodLabel}`}</p>
+      <p className="mb-3 text-[12px] text-muted-foreground">{`${creatives.length} creativos · ${periodLabel}`}</p>
       <div className="grid grid-cols-3 gap-[14px]">
         {creatives.map((creative) => <CreativeCard key={creative.id} creative={creative} />)}
       </div>

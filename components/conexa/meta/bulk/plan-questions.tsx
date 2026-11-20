@@ -7,7 +7,7 @@ import { ANSWER_CREATE, ANSWER_EXCLUDE, type PlanAnswer, type PlanQuestion } fro
 
 const SPECIAL_VALUES = new Set([ANSWER_CREATE, ANSWER_EXCLUDE])
 
-const inputClass = 'min-w-0 flex-1 rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[12px] text-[#141414] outline-none focus:border-[#5B5FE8]'
+const inputClass = 'min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-[12px] text-foreground outline-none focus:border-primary'
 const chipClass = 'rounded-full border px-2.5 py-1 text-left text-[11.5px] transition-colors'
 
 const rowsLabel = (rows: number[]) => (rows.length === 1 ? `Fila ${rows[0]}` : `Filas ${rows.slice(0, 6).join(', ')}${rows.length > 6 ? ` y ${rows.length - 6} más` : ''}`)
@@ -29,7 +29,7 @@ function FreeAnswer({ placeholder, initial, onSubmit }: { placeholder: string; i
         aria-label={placeholder}
         className={inputClass}
       />
-      <button type="button" onClick={submit} disabled={!text.trim()} className="rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
+      <button type="button" onClick={submit} disabled={!text.trim()} className="rounded-full bg-foreground px-3 py-1 text-[11px] font-medium text-background disabled:opacity-40">
         Responder
       </button>
     </div>
@@ -51,47 +51,47 @@ function PlacementBody({ question, onAnswer }: { question: PlanQuestion; onAnswe
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#777]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         <span>{`Cuenta: ${payload.accountName}`}</span>
         {payload.modality && <span>{`Modalidad: ${payload.modality}`}</span>}
         {payload.unit && <span>{`Unidad: ${payload.unit}`}</span>}
         {relevant.length > 0 && relevant.length < payload.campaigns.length && (
-          <button type="button" onClick={() => setShowAll((value) => !value)} className="text-[#5B5FE8] underline-offset-2 hover:underline">
+          <button type="button" onClick={() => setShowAll((value) => !value)} className="text-primary underline-offset-2 hover:underline">
             {showAll ? `Ver solo las que coinciden (${relevant.length})` : `Ver todas las campañas (${payload.campaigns.length})`}
           </button>
         )}
       </div>
-      <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-md border border-[#eeeeea] p-1">
+      <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-md border border-border p-1">
         {visible.map((campaign) => {
           const expanded = open === campaign.id
           const campaignValue = `campaign:${campaign.id}`
           return (
             <li key={campaign.id} className="rounded-md">
-              <div className={cn('flex items-center gap-2 rounded-md px-2 py-1.5', picked === campaignValue && 'bg-[#5B5FE8]/10')}>
+              <div className={cn('flex items-center gap-2 rounded-md px-2 py-1.5', picked === campaignValue && 'bg-primary/10')}>
                 <button type="button" aria-expanded={expanded} onClick={() => setOpen(expanded ? undefined : campaign.id)} className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-[12px] font-medium text-[#141414]">{campaign.name}</span>
-                  <span className="text-[10.5px] text-[#888]">
+                  <span className="block truncate text-[12px] font-medium text-foreground">{campaign.name}</span>
+                  <span className="text-[10.5px] text-muted-foreground">
                     {`${campaign.status === 'ACTIVE' ? 'Activa' : 'Pausada'} · ${campaign.objective || 'sin objetivo'} · ${campaign.adsets.length} conjunto${campaign.adsets.length > 1 ? 's' : ''}`}
-                    {payload.maxScore > 0 && campaign.score > 0 && <span className="text-[#1e9e6b]">{campaign.score === payload.maxScore ? ' · coincide' : ' · coincide en parte'}</span>}
+                    {payload.maxScore > 0 && campaign.score > 0 && <span className="text-status-verde">{campaign.score === payload.maxScore ? ' · coincide' : ' · coincide en parte'}</span>}
                   </span>
                 </button>
-                <button type="button" onClick={() => setPicked(campaignValue)} className="shrink-0 rounded-full border border-[#e5e5e0] px-2 py-0.5 text-[10.5px] text-[#333] hover:border-[#141414]">
+                <button type="button" onClick={() => setPicked(campaignValue)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10.5px] text-foreground hover:border-foreground">
                   Elegir campaña
                 </button>
               </div>
               {expanded && (
-                <ul className="ml-3 flex flex-col gap-1 border-l border-[#eeeeea] py-1 pl-2">
+                <ul className="ml-3 flex flex-col gap-1 border-l border-border py-1 pl-2">
                   {campaign.adsets.map((adset) => {
                     const selected = picked === adset.id
                     const bad = adset.checks.filter((check) => !check.ok)
                     return (
                       <li key={adset.id}>
-                        <button type="button" role="radio" aria-checked={selected} onClick={() => setPicked(adset.id)} className={cn('flex w-full flex-col gap-0.5 rounded-md border px-2 py-1.5 text-left', selected ? 'border-[#5B5FE8] bg-[#5B5FE8]/10' : 'border-transparent hover:border-[#e5e5e0]')}>
+                        <button type="button" role="radio" aria-checked={selected} onClick={() => setPicked(adset.id)} className={cn('flex w-full flex-col gap-0.5 rounded-md border px-2 py-1.5 text-left', selected ? 'border-primary bg-primary/10' : 'border-transparent hover:border-border')}>
                           <span className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-[#141414]">{adset.name}</span>
-                            <span className={cn('shrink-0 text-[10.5px]', bad.length ? 'text-[#b4432f]' : 'text-[#1e9e6b]')}>{bad.length ? `${bad.length} problema${bad.length > 1 ? 's' : ''}` : 'Compatible'}</span>
+                            <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-foreground">{adset.name}</span>
+                            <span className={cn('shrink-0 text-[10.5px]', bad.length ? 'text-destructive' : 'text-status-verde')}>{bad.length ? `${bad.length} problema${bad.length > 1 ? 's' : ''}` : 'Compatible'}</span>
                           </span>
-                          <span className="text-[10.5px] text-[#888]">{`${adset.status === 'ACTIVE' ? 'Activo' : 'Pausado'} · ${adset.destinationLabel}`}</span>
+                          <span className="text-[10.5px] text-muted-foreground">{`${adset.status === 'ACTIVE' ? 'Activo' : 'Pausado'} · ${adset.destinationLabel}`}</span>
                         </button>
                       </li>
                     )
@@ -104,29 +104,29 @@ function PlacementBody({ question, onAnswer }: { question: PlanQuestion; onAnswe
       </ul>
 
       {pickedAdset && (
-        <ul className="flex flex-col gap-0.5 rounded-md bg-[#fafaf8] px-3 py-2">
+        <ul className="flex flex-col gap-0.5 rounded-md bg-muted px-3 py-2">
           {pickedAdset.checks.map((check) => (
             <li key={check.label} className="flex gap-2 text-[11px] leading-relaxed">
-              <span className={cn('w-24 shrink-0 font-medium', check.ok ? 'text-[#1e9e6b]' : 'text-[#b4432f]')}>{check.label}</span>
-              <span className="text-[#555]">{check.detail}</span>
+              <span className={cn('w-24 shrink-0 font-medium', check.ok ? 'text-status-verde' : 'text-destructive')}>{check.label}</span>
+              <span className="text-muted-foreground">{check.detail}</span>
             </li>
           ))}
-          <li className="pt-1 text-[10.5px] text-[#888]">Se crean solo anuncios nuevos dentro del conjunto; no se modifica nada existente.</li>
+          <li className="pt-1 text-[10.5px] text-muted-foreground">Se crean solo anuncios nuevos dentro del conjunto; no se modifica nada existente.</li>
         </ul>
       )}
-      {pickedCampaign && <p className="text-[11px] text-[#777]">{`Se usa el conjunto activo de "${pickedCampaign.name}". Si tiene varios, te pido que elijas uno.`}</p>}
-      {failing.length > 0 && <p className="text-[11px] text-[#b4432f]">Con estos problemas la fila queda bloqueada. Elegí otro conjunto o excluí la fila.</p>}
+      {pickedCampaign && <p className="text-[11px] text-muted-foreground">{`Se usa el conjunto activo de "${pickedCampaign.name}". Si tiene varios, te pido que elijas uno.`}</p>}
+      {failing.length > 0 && <p className="text-[11px] text-destructive">Con estos problemas la fila queda bloqueada. Elegí otro conjunto o excluí la fila.</p>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={!picked} onClick={() => picked && onAnswer({ value: picked }, false)} className="rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
+        <button type="button" disabled={!picked} onClick={() => picked && onAnswer({ value: picked }, false)} className="rounded-full bg-foreground px-3 py-1 text-[11px] font-medium text-background disabled:opacity-40">
           Aplicar a esta fila
         </button>
         {groupSize > 1 && (
-          <button type="button" disabled={!picked} onClick={() => picked && onAnswer({ value: picked }, true)} className="rounded-full border border-[#141414] px-3 py-1 text-[11px] font-medium text-[#141414] hover:bg-[#141414] hover:text-white disabled:opacity-40">
+          <button type="button" disabled={!picked} onClick={() => picked && onAnswer({ value: picked }, true)} className="rounded-full border border-foreground px-3 py-1 text-[11px] font-medium text-foreground hover:bg-foreground hover:text-background disabled:opacity-40">
             {`Aplicar a las ${groupSize} filas${groupLabel ? ` con ${groupLabel}` : ' sin campaña'}`}
           </button>
         )}
-        <button type="button" onClick={() => onAnswer({ value: ANSWER_EXCLUDE }, false)} className="text-[11px] text-[#777] underline-offset-2 hover:text-[#141414] hover:underline">
+        <button type="button" onClick={() => onAnswer({ value: ANSWER_EXCLUDE }, false)} className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
           Excluir fila
         </button>
       </div>
@@ -154,12 +154,12 @@ function QuestionBody({ question, onAnswer }: { question: PlanQuestion; onAnswer
     <div className="flex flex-col gap-2">
       {question.searchable && <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Buscar…" aria-label={`Buscar opciones para ${question.field}`} className={inputClass} />}
       {multi && options.length > 1 && (
-        <label className="flex items-center gap-2 self-start text-[11.5px] font-medium text-[#141414]">
+        <label className="flex items-center gap-2 self-start text-[11.5px] font-medium text-foreground">
           <input
             type="checkbox"
             checked={allPicked}
             onChange={() => setPicked((current) => (allPicked ? current.filter((value) => !options.some((option) => option.value === value)) : [...new Set([...current, ...options.map((option) => option.value)])]))}
-            className="size-3.5 accent-[#5B5FE8]"
+            className="size-3.5 accent-primary"
           />
           {`Seleccionar todos (${options.length})`}
         </label>
@@ -176,28 +176,28 @@ function QuestionBody({ question, onAnswer }: { question: PlanQuestion; onAnswer
               aria-checked={multi ? undefined : selected}
               aria-pressed={multi ? selected : undefined}
               onClick={() => (multi ? setPicked((current) => (current.includes(option.value) ? current.filter((value) => value !== option.value) : [...current, option.value])) : onAnswer({ value: option.value }))}
-              className={cn(chipClass, multi && 'inline-flex items-center gap-1.5', selected ? 'border-[#5B5FE8] bg-[#5B5FE8]/10 text-[#4347c9]' : suggested ? 'border-[#5B5FE8]/50 text-[#141414]' : 'border-[#e5e5e0] text-[#333] hover:border-[#141414]')}
+              className={cn(chipClass, multi && 'inline-flex items-center gap-1.5', selected ? 'border-primary bg-primary/10 text-primary' : suggested ? 'border-primary/50 text-foreground' : 'border-border text-foreground hover:border-foreground')}
             >
               {multi && (
-                <span aria-hidden="true" className={cn('flex size-3.5 shrink-0 items-center justify-center rounded-sm border', selected ? 'border-[#5B5FE8] bg-[#5B5FE8] text-white' : 'border-[#bbb] bg-white')}>
+                <span aria-hidden="true" className={cn('flex size-3.5 shrink-0 items-center justify-center rounded-sm border', selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card')}>
                   {selected && <Check className="size-2.5" />}
                 </span>
               )}
               <span className="font-medium">{option.label}</span>
-              {option.hint && <span className="text-[#888]">{` · ${option.hint}`}</span>}
-              {suggested && !selected && <span className="text-[#5B5FE8]">{' · sugerido'}</span>}
+              {option.hint && <span className="text-muted-foreground">{` · ${option.hint}`}</span>}
+              {suggested && !selected && <span className="text-primary">{' · sugerido'}</span>}
             </button>
           )
         })}
-        {!options.length && <span className="text-[11px] text-[#999]">Ninguna opción coincide.</span>}
+        {!options.length && <span className="text-[11px] text-muted-foreground">Ninguna opción coincide.</span>}
       </div>
       {multi && (
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={!picked.length} onClick={() => onAnswer({ values: picked })} className="rounded-full bg-[#141414] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">
+          <button type="button" disabled={!picked.length} onClick={() => onAnswer({ values: picked })} className="rounded-full bg-foreground px-3 py-1 text-[11px] font-medium text-background disabled:opacity-40">
             {picked.length ? `Usar ${picked.length} seleccionado${picked.length > 1 ? 's' : ''}${question.field === 'Conjunto' && picked.length > 1 ? ` · ${picked.length} anuncios por pieza` : ''}` : 'Elegí al menos uno'}
           </button>
           {specialOptions.map((option) => (
-            <button key={option.value} type="button" onClick={() => onAnswer({ value: option.value })} className="text-[11px] text-[#555] underline-offset-2 hover:text-[#141414] hover:underline">
+            <button key={option.value} type="button" onClick={() => onAnswer({ value: option.value })} className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
               {option.hint ? `${option.label} (${option.hint})` : option.label}
             </button>
           ))}
@@ -212,24 +212,24 @@ function QuestionCard({ question, onAnswer, onReset }: { question: PlanQuestion;
   if (question.answered) {
     return (
       <li className="flex flex-wrap items-center gap-2 px-4 py-2">
-        <Check className="size-3.5 shrink-0 text-[#1e9e6b]" aria-hidden="true" />
-        <span className="text-[11.5px] text-[#777]">{`${question.field} · ${rowsLabel(question.rowNumbers)}:`}</span>
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[#141414]">{question.answerLabel ?? question.answer?.text ?? question.answer?.value}</span>
-        <button type="button" onClick={onReset} className="text-[11px] text-[#777] underline-offset-2 hover:text-[#141414] hover:underline">Cambiar</button>
+        <Check className="size-3.5 shrink-0 text-status-verde" aria-hidden="true" />
+        <span className="text-[11.5px] text-muted-foreground">{`${question.field} · ${rowsLabel(question.rowNumbers)}:`}</span>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">{question.answerLabel ?? question.answer?.text ?? question.answer?.value}</span>
+        <button type="button" onClick={onReset} className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Cambiar</button>
       </li>
     )
   }
   return (
-    <li id={questionDomId(question.id)} tabIndex={-1} data-pending-question className="flex scroll-mt-4 flex-col gap-2 px-4 py-3 outline-none focus-visible:bg-[#fdf9f0]">
+    <li id={questionDomId(question.id)} tabIndex={-1} data-pending-question className="flex scroll-mt-4 flex-col gap-2 px-4 py-3 outline-none focus-visible:bg-muted">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="rounded-full bg-[#fdf3e3] px-2 py-0.5 text-[10.5px] font-semibold text-[#8a5f0d]">{question.field}</span>
-        <span className="text-[11px] text-[#999]">{rowsLabel(question.rowNumbers)}</span>
+        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] font-semibold text-primary">{question.field}</span>
+        <span className="text-[11px] text-muted-foreground">{rowsLabel(question.rowNumbers)}</span>
       </div>
-      <p className="text-pretty text-[12.5px] font-medium leading-relaxed text-[#141414]">{question.prompt}</p>
-      <p className="text-pretty text-[11px] leading-relaxed text-[#777]">{question.why}</p>
-      {question.note && <p className="text-[11px] text-[#8a5f0d]">{question.note}</p>}
+      <p className="text-pretty text-[12.5px] font-medium leading-relaxed text-foreground">{question.prompt}</p>
+      <p className="text-pretty text-[11px] leading-relaxed text-muted-foreground">{question.why}</p>
+      {question.note && <p className="text-[11px] text-primary">{question.note}</p>}
       {question.kind === 'placement' && question.placement ? <PlacementBody question={question} onAnswer={onAnswer} /> : <QuestionBody question={question} onAnswer={onAnswer} />}
-      {question.reuse && <p className="text-[10.5px] text-[#999]">{question.reuse.kind === 'alias' ? `Se recuerda para "${question.reuse.alias}" en próximas cargas.` : question.reuse.kind === 'action' ? `Se recuerda qué significa "${question.reuse.value}" en este sheet.` : 'Tu respuesta se recuerda para esta instrucción en otros sheets del cliente.'}</p>}
+      {question.reuse && <p className="text-[10.5px] text-muted-foreground">{question.reuse.kind === 'alias' ? `Se recuerda para "${question.reuse.alias}" en próximas cargas.` : question.reuse.kind === 'action' ? `Se recuerda qué significa "${question.reuse.value}" en este sheet.` : 'Tu respuesta se recuerda para esta instrucción en otros sheets del cliente.'}</p>}
     </li>
   )
 }
@@ -256,22 +256,22 @@ export function PlanQuestions({ questions, onAnswer }: { questions: PlanQuestion
     target?.focus({ preventScroll: true })
   }
   return (
-    <section className="rounded-xl border border-[#f0e2c2] bg-white" aria-labelledby="plan-questions-title">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f0f0ed] px-4 py-2.5">
-        <h3 id="plan-questions-title" className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#141414]">
-          <HelpCircle className="size-4 text-[#c98a16]" aria-hidden="true" />
+    <section className="rounded-xl border border-[#f0e2c2] bg-card" aria-labelledby="plan-questions-title">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+        <h3 id="plan-questions-title" className="flex items-center gap-1.5 text-[12.5px] font-semibold text-foreground">
+          <HelpCircle className="size-4 text-primary" aria-hidden="true" />
           {pending.length ? `${pending.length} pregunta${pending.length > 1 ? 's' : ''} pendiente${pending.length > 1 ? 's' : ''}` : 'Todas las preguntas respondidas'}
         </h3>
         <div className="flex items-center gap-3">
-          <span className="text-[11px] text-[#999]">{`${answered.length}/${questions.length} respondidas`}</span>
+          <span className="text-[11px] text-muted-foreground">{`${answered.length}/${questions.length} respondidas`}</span>
           {pending.length > 0 && (
-            <button type="button" onClick={goToNext} className="rounded-full border border-[#141414] px-3 py-1 text-[11px] font-medium text-[#141414] hover:bg-[#141414] hover:text-white">
+            <button type="button" onClick={goToNext} className="rounded-full border border-foreground px-3 py-1 text-[11px] font-medium text-foreground hover:bg-foreground hover:text-background">
               Ir a la siguiente
             </button>
           )}
         </div>
       </header>
-      <ul className="divide-y divide-[#f3f3f0]">
+      <ul className="divide-y divide-border">
         {[...pending, ...answered].map((question) => (
           <QuestionCard key={question.id} question={question} onAnswer={answerFor(question)} onReset={resetFor(question)} />
         ))}

@@ -105,7 +105,7 @@ export function ChatAdAccountSelector({
         aria-label={`Cuentas publicitarias: ${triggerLabel}`}
         className={cn(
           'flex h-8 max-w-[240px] items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-          selectedCount ? 'border-[#5b5fe8] bg-[#eeefff] text-[#5b5fe8]' : 'border-[#dededb] bg-white text-[#333] hover:border-[#5b5fe8]',
+          selectedCount ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground hover:border-primary',
         )}
       >
         <span className="truncate">Ads · {triggerLabel}</span>
@@ -114,9 +114,9 @@ export function ChatAdAccountSelector({
       {open && !disabled && (
         <>
           <button type="button" aria-label="Cerrar selector de cuentas" className="fixed inset-0 z-30 cursor-default" onClick={() => setOpen(false)} />
-          <div id={listId} role="group" aria-label="Selección de cuentas publicitarias" className="absolute right-0 top-10 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-[#dededb] bg-white p-3 shadow-xl">
-            <p className="text-[11px] font-semibold text-[#141414]">Cuentas de Ads para este análisis</p>
-            <p className="mt-1 text-[10px] leading-4 text-[#777]">Marcá solo las cuentas que querés consultar. Las cuentas de Ads no marcadas no se consultan.</p>
+          <div id={listId} role="group" aria-label="Selección de cuentas publicitarias" className="absolute right-0 top-10 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-3 shadow-xl">
+            <p className="text-[11px] font-semibold text-foreground">Cuentas de Ads para este análisis</p>
+            <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Marcá solo las cuentas que querés consultar. Las cuentas de Ads no marcadas no se consultan.</p>
             {accounts.length ? (
               <div className="mt-3 flex flex-col gap-3">
                 {PLATFORMS.map(({ key, label }) => {
@@ -124,17 +124,17 @@ export function ChatAdAccountSelector({
                   if (!platformAccounts.length) return null
                   return (
                     <fieldset key={key} className="flex flex-col gap-1">
-                      <legend className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#777]">{label}</legend>
+                      <legend className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{label}</legend>
                       {platformAccounts.map((account) => (
-                        <label key={`${key}:${account.id}`} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[11px] text-[#222] hover:bg-[#f5f5f3]">
+                        <label key={`${key}:${account.id}`} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[11px] text-foreground hover:bg-muted">
                           <input
                             type="checkbox"
                             checked={selected[key].includes(account.id)}
                             onChange={() => toggleAccount(key, account.id)}
-                            className="size-4 shrink-0 accent-[#5b5fe8]"
+                            className="size-4 shrink-0 accent-primary"
                           />
                           <span className="min-w-0 flex-1 truncate" title={account.name}>{account.name}</span>
-                          <span className="shrink-0 font-mono text-[9px] text-[#999]">{account.id}</span>
+                          <span className="shrink-0 font-mono text-[9px] text-muted-foreground">{account.id}</span>
                         </label>
                       ))}
                     </fieldset>
@@ -142,12 +142,12 @@ export function ChatAdAccountSelector({
                 })}
               </div>
             ) : (
-              <p className="mt-3 rounded-lg bg-[#f5f5f3] px-3 py-2 text-[11px] leading-5 text-[#777]">Este cliente no tiene cuentas activas de Meta Ads o Google Ads vinculadas.</p>
+              <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-[11px] leading-5 text-muted-foreground">Este cliente no tiene cuentas activas de Meta Ads o Google Ads vinculadas.</p>
             )}
-            <p className="mt-3 border-t border-[#eee] pt-2 text-[10px] leading-4 text-[#777]">
+            <p className="mt-3 border-t border-border pt-2 text-[10px] leading-4 text-muted-foreground">
               {selectedCount ? `${selectedCount} cuenta${selectedCount === 1 ? '' : 's'} seleccionada${selectedCount === 1 ? '' : 's'}. GA4 y CRM siguen disponibles si están conectados.` : 'Sin cuentas de Ads seleccionadas. GA4 y CRM solo se podrán usar si están conectados.'}
             </p>
-            <button type="button" onClick={() => setOpen(false)} className="mt-2 w-full rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold text-[#5b5fe8] hover:bg-[#f5f5f3]">Listo</button>
+            <button type="button" onClick={() => setOpen(false)} className="mt-2 w-full rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold text-primary hover:bg-muted">Listo</button>
           </div>
         </>
       )}
