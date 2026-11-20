@@ -8,8 +8,10 @@ export const maxDuration = 300
 const TIME_BUDGET_MS = 270_000
 
 /**
- * Cada 30 minutos trae las transcripciones nuevas de todas las personas que
- * conectaron Google Docs y las carga como comentario en su cliente.
+ * Una vez por día trae las transcripciones nuevas de todas las personas que
+ * conectaron Google Docs y las carga como comentario en su cliente. Es diario
+ * porque los proyectos en plan Hobby rechazan crons más frecuentes; durante el
+ * día la pestaña Transcripciones sincroniza sola al abrirla.
  */
 export async function GET(request: Request) {
   const auth = request.headers.get('authorization')

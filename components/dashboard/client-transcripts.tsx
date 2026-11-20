@@ -33,6 +33,13 @@ const fetcher = async (url: string) => {
   return body
 }
 
+const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000
+
+const syncFetcher = async ([url]: [string, string]) => {
+  const response = await fetch(url, { method: 'POST' })
+  return response.ok ? response.json() : null
+}
+
 const formatDate = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)) : 'Sin fecha'
 
@@ -43,6 +50,20 @@ export function ClientTranscripts({ clientId, currentUserId }: { clientId: strin
   const [unmatched, setUnmatched] = useState<Unmatched[]>([])
   const [linking, setLinking] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+
+  // Al abrir la pestaña se sincroniza en segundo plano (como mucho cada 15 min por sesión),
+  // así las transcripciones recién generadas aparecen sin esperar al cron diario.
+  useSWR([`/api/clients/${clientId}/transcripts/sync`, 'auto'], syncFetcher, {
+    dedupingInterval: AUTO_SYNC_INTERVAL_MS,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    shouldRetryOnError: false,
+    onSuccess: (result: { createdForClient?: number; unmatched?: Unmatched[] } | null) => {
+      if (!result) return
+      if (result.unmatched?.length) setUnmatched(result.unmatched)
+      if (result.createdForClient) mutate()
+    },
+  })
 
   const sync = async () => {
     setSyncing(true)
@@ -84,7 +105,7 @@ export function ClientTranscripts({ clientId, currentUserId }: { clientId: strin
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <h3 id="transcripts-title" className="text-sm font-semibold text-foreground">Transcripciones de reuniones</h3>
-          <p className="text-pretty text-xs leading-relaxed text-muted-foreground">Las de Google Meet se traen solas cada 30 minutos desde tu Google Docs y se publican como comentario. Conexa las usa como contexto.</p>
+          <p className="text-pretty text-xs leading-relaxed text-muted-foreground">Las de Google Meet se traen solas desde tu Google Docs (al abrir esta pestaña y una vez por día) y se publican como comentario. Conexa las usa como contexto.</p>
         </div>
         <div className="flex shrink-0 gap-2">
           <Button type="button" variant="outline" size="sm" onClick={sync} disabled={syncing} className="h-8 gap-1.5 text-xs">

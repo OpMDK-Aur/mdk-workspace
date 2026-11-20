@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/transcripts",
-      "schedule": "*/30 * * * *"
+      "schedule": "30 10 * * *"
     }
   ]
 }
