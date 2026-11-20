@@ -48,13 +48,10 @@ import {
   BarChart3,
   Building2,
   LineChart,
-  Cpu,
   ClockCheck,
   Map,
   Smile,
   FileText,
-  Megaphone,
-  ListChecks,
   Gem,
 } from 'lucide-react'
 import { LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
@@ -95,7 +92,6 @@ const mainItems: NavItem[] = [
 
 // Sub-items for Tareas (nested under mainItems)
 const tareasSubItems: NavItem[] = [
-  { id: 'seguimiento', name: 'Seguimiento', href: '/dashboard/seguimiento', icon: ListChecks, badge: 'nuevo', badgeUntil: '2026-10-09' },
   { id: 'time', name: 'Entradas de tiempo', href: '/dashboard/time', icon: Clock },
   { id: 'reports', name: 'Mis horas', href: '/dashboard/reports', icon: BarChart3 },
 ]
@@ -104,8 +100,6 @@ const tareasSubItems: NavItem[] = [
 const primaryItems: NavItem[] = [
   { id: 'clients', name: 'Clientes', href: '/dashboard/clients', icon: Building2 },
   { id: 'performance', name: 'Performance', href: '/dashboard/performance', icon: LineChart },
-  { id: 'agentes', name: 'Agentes', href: '/dashboard/agentes', icon: Cpu, badge: 'nuevo', badgeUntil: '2026-06-20' },
-  { id: 'novedades', name: 'Novedades', href: '/dashboard/novedades', icon: Megaphone, badge: 'nuevo', badgeUntil: '2026-07-31' },
 ]
 
 // Administration section
@@ -156,7 +150,6 @@ export function Sidebar({
   // Collapsible section states - open by default if pathname matches
   const [tareasOpen, setTareasOpen] = useState(() =>
     pathname.startsWith('/dashboard/tasks') || 
-    pathname.startsWith('/dashboard/seguimiento') || 
     pathname.startsWith('/dashboard/time') || 
     pathname.startsWith('/dashboard/reports')
   )
@@ -435,7 +428,7 @@ export function Sidebar({
                 {unitAccess.mdk && tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
 
-              {/* Primary items (Clientes, Performance, Agentes) */}
+              {/* Primary items (Clientes, Performance) */}
               {unitAccess.mdk && (
                 <div className="space-y-1 pt-2 border-t border-border">
                   {primaryItems.map(item => renderNavItem(item, true))}
@@ -636,7 +629,7 @@ export function Sidebar({
                   )}
                 </div>
 
-                {/* Primary items (Clientes, Performance, Agentes) */}
+                {/* Primary items (Clientes, Performance) */}
                 {unitAccess.mdk && (
                   <div className="space-y-1">
                     {primaryItems.map(item => renderNavItem(item))}
