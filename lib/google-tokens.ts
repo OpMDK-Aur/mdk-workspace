@@ -22,16 +22,18 @@ function normalizeGoogleAccessToken(value: string | undefined | null) {
 }
 
 /**
- * Get token data from plataformas_tokens table
+ * Token guardado en plataformas_tokens. Con `userId` lee solo la conexión de ese
+ * usuario (cada persona conecta su propia cuenta de Google desde Conectores).
  */
-async function getTokenFromDb(plataforma: string): Promise<TokenData | null> {
+async function getTokenFromDb(plataforma: string, userId?: string): Promise<TokenData | null> {
   try {
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from('plataformas_tokens')
       .select('access_token, refresh_token, token_expiry')
       .eq('plataforma', plataforma)
-      .maybeSingle()
+    if (userId) query = query.eq('cliente_id', userId).eq('activo', true).order('updated_at', { ascending: false }).limit(1)
+    const { data, error } = await query.maybeSingle()
 
     if (error || !data) return null
     return data as TokenData
@@ -41,11 +43,14 @@ async function getTokenFromDb(plataforma: string): Promise<TokenData | null> {
 }
 
 /**
- * Refresh token and update in database
+ * Renueva el access token y lo guarda. Con `userId` solo actualiza la fila de
+ * ese usuario; sin él, solo la fila global (sin usuario) para no pisar con el
+ * token de la agencia las conexiones personales.
  */
 async function refreshAndUpdateToken(
   plataforma: string,
-  refreshToken: string
+  refreshToken: string,
+  userId?: string
 ): Promise<string | null> {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
@@ -67,15 +72,14 @@ async function refreshAndUpdateToken(
     const data = await res.json()
 
     if (!res.ok || !data.access_token) {
-      console.error(`[google-tokens] Failed to refresh ${plataforma} token:`, data)
+      console.error(`[google-tokens] Failed to refresh ${plataforma} token:`, data?.error ?? res.status)
       return null
     }
 
-    // Update token in database
     const supabase = createClient()
     const newExpiry = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString()
 
-    await supabase
+    const update = supabase
       .from('plataformas_tokens')
       .update({
         access_token: data.access_token,
@@ -83,12 +87,25 @@ async function refreshAndUpdateToken(
         updated_at: new Date().toISOString(),
       })
       .eq('plataforma', plataforma)
+    await (userId ? update.eq('cliente_id', userId) : update.is('cliente_id', null))
 
     return data.access_token
   } catch (error) {
     console.error(`[google-tokens] Error refreshing ${plataforma} token:`, error)
     return null
   }
+}
+
+const REFRESH_BUFFER_MS = 5 * 60 * 1000
+
+/** Token vigente de la conexión personal del usuario, renovándolo si está por vencer. */
+async function getUserToken(plataforma: string, userId: string): Promise<string | null> {
+  const dbToken = await getTokenFromDb(plataforma, userId)
+  if (!dbToken) return null
+  const expiry = dbToken.token_expiry ? new Date(dbToken.token_expiry).getTime() : 0
+  if (dbToken.access_token && expiry > Date.now() + REFRESH_BUFFER_MS) return dbToken.access_token
+  if (!dbToken.refresh_token) return null
+  return refreshAndUpdateToken(plataforma, dbToken.refresh_token, userId)
 }
 
 /**
@@ -102,7 +119,13 @@ export async function refreshGoogleAdsAccessToken(): Promise<string | null> {
   return refreshAndUpdateToken('google_ads', refreshToken)
 }
 
-export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
+export async function getGoogleAdsAccessToken(options: { userId?: string } = {}): Promise<TokenResult & { source?: 'user' | 'agency' }> {
+  // Con `userId` se usa primero la cuenta de Google Ads que conectó esa persona.
+  if (options.userId) {
+    const userToken = await getUserToken('google_ads', options.userId)
+    if (userToken) return { accessToken: userToken, source: 'user' }
+  }
+
   // Preferimos renovar con OAuth porque GOOGLE_ADS_ACCESS_TOKEN expira aproximadamente en una hora.
   // El access token estático queda como fallback para instalaciones sin refresh token.
   const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim()
@@ -111,11 +134,11 @@ export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
 
   if (refreshToken && clientId && clientSecret) {
     const refreshedToken = await refreshAndUpdateToken('google_ads', refreshToken)
-    if (refreshedToken) return { accessToken: refreshedToken }
+    if (refreshedToken) return { accessToken: refreshedToken, source: 'agency' }
   }
 
   const accessToken = normalizeGoogleAccessToken(process.env.GOOGLE_ADS_ACCESS_TOKEN)
-  if (accessToken) return { accessToken }
+  if (accessToken) return { accessToken, source: 'agency' }
 
   return {
     accessToken: null,
@@ -179,7 +202,7 @@ export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
 
   return {
     accessToken: null,
-    error: 'No se encontraron credenciales de Google Ads. Conecta tu cuenta desde Plataformas.'
+    error: 'No se encontraron credenciales de Google Ads. Conectá tu cuenta desde Conectores.'
   }
   */
 }
@@ -189,8 +212,13 @@ export async function getGoogleAdsAccessToken(): Promise<TokenResult> {
  * 1. First tries to read from plataformas_tokens table
  * 2. Falls back to environment variables if not found
  */
-export async function getGoogleCalendarAccessToken(): Promise<TokenResult> {
-  // Try database first
+export async function getGoogleCalendarAccessToken(options: { userId?: string } = {}): Promise<TokenResult> {
+  // Con `userId` se usa primero el calendario que conectó esa persona.
+  if (options.userId) {
+    const userToken = await getUserToken('google_calendar', options.userId)
+    if (userToken) return { accessToken: userToken }
+  }
+
   const dbToken = await getTokenFromDb('google_calendar')
   
   if (dbToken?.refresh_token) {
@@ -246,7 +274,7 @@ export async function getGoogleCalendarAccessToken(): Promise<TokenResult> {
 
   return { 
     accessToken: null, 
-    error: 'No se encontraron credenciales de Google Calendar. Conecta tu cuenta desde Plataformas.' 
+    error: 'No se encontraron credenciales de Google Calendar. Conectá tu cuenta desde Conectores.' 
   }
 }
 

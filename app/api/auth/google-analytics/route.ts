@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.redirect(new URL('/auth/login', appUrl))
 
   const nonce = randomBytes(16).toString('hex')
-  const returnTo = safeReturnPath(requestUrl.searchParams.get('return')) ?? '/dashboard/platform'
+  const returnTo = safeReturnPath(requestUrl.searchParams.get('return')) ?? '/dashboard/apps'
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.set('client_id', clientId)
