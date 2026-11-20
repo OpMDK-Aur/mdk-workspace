@@ -52,30 +52,30 @@ export function StepUpload({ clientId, clientName, adsets = [], creatives, desti
           onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
           onDrop={(event) => { event.preventDefault(); setDragging(false); handleFiles(event.dataTransfer.files) }}
-          className={cn('flex flex-col items-center justify-center gap-3 rounded-xl border-2 px-6 py-14 text-center transition-colors', dragging ? 'border-solid border-[#5B5FE8] bg-[#5B5FE8]/5' : 'border-dashed border-[#5B5FE8]/35 bg-white')}
+          className={cn('flex flex-col items-center justify-center gap-3 rounded-xl border-2 px-6 py-14 text-center transition-colors', dragging ? 'border-solid border-primary bg-primary/5' : 'border-dashed border-primary/35 bg-card')}
         >
-          <span className="flex size-11 items-center justify-center rounded-full bg-[#5B5FE8]/10">
-            <ImageUp className="size-5 text-[#5B5FE8]" aria-hidden="true" />
+          <span className="flex size-11 items-center justify-center rounded-full bg-primary/10">
+            <ImageUp className="size-5 text-primary" aria-hidden="true" />
           </span>
-          <button type="button" onClick={() => inputRef.current?.click()} className="text-[14px] font-semibold text-[#141414] hover:text-[#5B5FE8]">
+          <button type="button" onClick={() => inputRef.current?.click()} className="text-[14px] font-semibold text-foreground hover:text-primary">
             {reading ? 'Leyendo archivos…' : 'Arrastrá imágenes y videos, o hacé clic para elegirlos'}
           </button>
-          <p className="max-w-[520px] text-pretty text-[12px] leading-relaxed text-[#777]">
+          <p className="max-w-[520px] text-pretty text-[12px] leading-relaxed text-muted-foreground">
             JPG, PNG, MP4 o MOV. Conexa detecta el formato y agrupa en un solo anuncio las versiones 1:1, 4:5 y 9:16 de una misma pieza (ej. oferta_1x1.jpg + oferta_9x16.jpg).
           </p>
           <input ref={inputRef} type="file" multiple accept={ACCEPTED_TYPES.join(',')} className="sr-only" onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }} aria-label="Elegir archivos" />
-          <span className="text-[11px] text-[#999]">o</span>
+          <span className="text-[11px] text-muted-foreground">o</span>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <LibraryAdsPicker clientId={clientId} />
             <SheetImportDialog destinationUrl={destinationUrl} />
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <button type="button" onClick={() => addAssets(sampleAssets())} className="text-[11.5px] font-semibold text-[#5B5FE8] hover:underline">
+          <button type="button" onClick={() => addAssets(sampleAssets())} className="text-[11.5px] font-semibold text-primary hover:underline">
             Cargar lote de ejemplo (12 archivos)
           </button>
           {rowCount > 0 && (
-            <button type="button" onClick={() => setStep(2)} className="text-[11.5px] font-semibold text-[#333] hover:underline">
+            <button type="button" onClick={() => setStep(2)} className="text-[11.5px] font-semibold text-foreground hover:underline">
               {`Volver al lote (${rowCount} anuncios) →`}
             </button>
           )}
@@ -84,23 +84,23 @@ export function StepUpload({ clientId, clientName, adsets = [], creatives, desti
         <Panel title="Valores por defecto del lote">
           <div className="flex flex-col gap-4">
             <div>
-              <p className="mb-2 text-[11px] font-medium text-[#777]">CTA</p>
+              <p className="mb-2 text-[11px] font-medium text-muted-foreground">CTA</p>
               <div className="flex flex-wrap gap-2">
                 {CTAS.map((cta) => <Chip key={cta} active={defaults.cta === cta} onClick={() => setDefaults({ cta })}>{cta}</Chip>)}
               </div>
             </div>
-            <dl className="grid grid-cols-1 gap-3 border-t border-[#f0f0ed] pt-3 text-[11.5px] md:grid-cols-3">
+            <dl className="grid grid-cols-1 gap-3 border-t border-border pt-3 text-[11.5px] md:grid-cols-3">
               <div>
-                <dt className="mb-0.5 text-[10.5px] text-[#999]">URL de destino</dt>
-                <dd className="truncate text-[#333]">{destinationUrl || 'Definida en Contexto del cliente'}</dd>
+                <dt className="mb-0.5 text-[10.5px] text-muted-foreground">URL de destino</dt>
+                <dd className="truncate text-foreground">{destinationUrl || 'Definida en Contexto del cliente'}</dd>
               </div>
               <div>
-                <dt className="mb-0.5 text-[10.5px] text-[#999]">UTMs</dt>
-                <dd className="break-all font-mono text-[10.5px] text-[#333]">{'utm_source=meta&utm_campaign={campaña}&utm_content={anuncio}'}</dd>
+                <dt className="mb-0.5 text-[10.5px] text-muted-foreground">UTMs</dt>
+                <dd className="break-all font-mono text-[10.5px] text-foreground">{'utm_source=meta&utm_campaign={campaña}&utm_content={anuncio}'}</dd>
               </div>
               <div>
-                <dt className="mb-0.5 text-[10.5px] text-[#999]">Nomenclatura</dt>
-                <dd className="font-mono text-[10.5px] text-[#333]">{'{CLIENTE}_{conjunto}_{pieza}_{nº}'}<span className="block font-sans text-[10px] text-[#999]">{`CLIENTE = ${clientName}`}</span></dd>
+                <dt className="mb-0.5 text-[10.5px] text-muted-foreground">Nomenclatura</dt>
+                <dd className="font-mono text-[10.5px] text-foreground">{'{CLIENTE}_{conjunto}_{pieza}_{nº}'}<span className="block font-sans text-[10px] text-muted-foreground">{`CLIENTE = ${clientName}`}</span></dd>
               </div>
             </dl>
           </div>

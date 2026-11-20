@@ -8,20 +8,18 @@ import { Textarea } from '@/components/ui/textarea'
 
 type CampaignPlatform = 'meta' | 'google_ads'
 
-const COPY: Record<CampaignPlatform, { title: string; description: string; placeholder: string; prompt: string; accent: string }> = {
+const COPY: Record<CampaignPlatform, { title: string; description: string; placeholder: string; prompt: string}> = {
   meta: {
     title: 'Crear campaña en Meta Ads con Conexa',
     description: 'Conexa arma la campaña tomando como modelo un conjunto de anuncios que ya funciona y reutiliza sus creatividades. Queda como borrador en Recomendaciones y, al publicarla, se crea en pausa.',
     placeholder: 'Ej.: captar leads para la promo de verano en WhatsApp, público de 25 a 45 años',
     prompt: 'Proponé una campaña nueva en Meta Ads',
-    accent: 'bg-[#1877F2] hover:bg-[#1468d6]',
   },
   google_ads: {
     title: 'Crear campaña en Google Ads con Conexa',
     description: 'Conexa arma una campaña de búsqueda tomando como modelo una campaña existente y copia las palabras clave y los anuncios de los grupos que mejor rinden. Queda como borrador en Recomendaciones y, al publicarla, se crea en pausa.',
     placeholder: 'Ej.: búsquedas de la marca con la oferta de cuotas sin interés',
     prompt: 'Proponé una campaña de búsqueda nueva en Google Ads',
-    accent: 'bg-[#4285F4] hover:bg-[#3474e0]',
   },
 }
 
@@ -39,7 +37,7 @@ export function CreateCampaignButton({ platform, onSubmit }: { platform: Campaig
   }
 
   return <>
-    <Button type="button" onClick={() => setOpen(true)} className={`h-8 gap-1.5 rounded-full px-4 text-[11px] text-white ${copy.accent}`}>
+    <Button type="button" onClick={() => setOpen(true)} className="h-8 gap-1.5 rounded-full px-4 text-[11px]">
       <Sparkles className="size-3.5" aria-hidden="true" />
       Crear campaña con Conexa
     </Button>

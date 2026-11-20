@@ -41,8 +41,6 @@ import {
   Bell,
   Home,
   Sparkles,
-  PanelLeftClose,
-  PanelLeft,
   ChevronRight,
   Clock,
   BarChart3,
@@ -54,9 +52,11 @@ import {
   FileText,
   Gem,
 } from 'lucide-react'
-import { LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
+import { KeyboardArrowLeftIcon, KeyboardArrowRightIcon, LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
+import { ConexaNavGroup } from './conexa-nav'
+import { CONEXA_NEW_UNTIL } from '@/lib/conexa/views'
 
 interface SidebarProps {
   user: User
@@ -82,8 +82,8 @@ interface NavSection {
   moduleId?: string // Section-level module requirement
 }
 
-const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles }
-const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem, badge: 'nuevo', badgeUntil: '2027-01-15' }
+const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles, badge: 'nuevo', badgeUntil: CONEXA_NEW_UNTIL }
+const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem }
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
@@ -272,7 +272,7 @@ export function Sidebar({
   }
 
   // Render a navigation item
-  const renderNavItem = (item: NavItem, collapsed = false) => {
+  const renderNavItem = (item: NavItem, collapsed = false, onCollapsedClick?: () => void) => {
     // Check masterOnly
     if (item.masterOnly && !userIsMaster) return null
     
@@ -301,6 +301,7 @@ export function Sidebar({
             ) : (
               <Link
                 href={item.href}
+                onClick={onCollapsedClick}
                 className={cn(
                   'flex items-center justify-center h-9 w-full rounded-lg transition-colors relative',
                   isActive
@@ -422,7 +423,7 @@ export function Sidebar({
             <div className="p-2 space-y-4">
               {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
-                {unitAccess.mdk && renderNavItem(conexaItem, true)}
+                {unitAccess.mdk && renderNavItem(conexaItem, true, () => setIsCollapsed(false))}
                 {unitAccess.aurelia && renderNavItem(aureliaItem, true)}
                 {unitAccess.mdk && mainItems.map(item => renderNavItem(item, true))}
                 {unitAccess.mdk && tareasSubItems.map(item => renderNavItem(item, true))}
@@ -459,7 +460,7 @@ export function Sidebar({
                   className="h-9 w-full"
                   onClick={() => setIsCollapsed(false)}
                 >
-                  <PanelLeft className="h-4 w-4" />
+                  <KeyboardArrowRightIcon className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">Expandir</TooltipContent>
@@ -531,7 +532,7 @@ export function Sidebar({
                       className="h-7 w-7 text-muted-foreground hover:text-foreground"
                       onClick={() => setIsCollapsed(true)}
                     >
-                      <PanelLeftClose className="h-4 w-4" />
+                      <KeyboardArrowLeftIcon className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="right">Colapsar</TooltipContent>
@@ -575,7 +576,7 @@ export function Sidebar({
               <div className="p-4 space-y-4">
                 {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
-                  {unitAccess.mdk && renderNavItem(conexaItem)}
+                  {unitAccess.mdk && <ConexaNavGroup />}
                   {unitAccess.aurelia && renderNavItem(aureliaItem)}
                   {/* Tareas as collapsible parent */}
                   {unitAccess.mdk && (

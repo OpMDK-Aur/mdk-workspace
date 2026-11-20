@@ -246,60 +246,60 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
       <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-5 py-6 sm:px-6">
         {!embedded && <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-1 text-[11px] text-[#929292]">{period} · Control de plataformas</p>
-            <h1 className="text-balance text-[22px] font-bold tracking-[-.03em] text-[#202020]">Dashboard · {clientName ?? 'Seleccioná un cliente'}</h1>
-            <p className="mt-1 text-[12px] leading-5 text-[#777]">Resumen de las plataformas conectadas para el período seleccionado.</p>
+            <p className="mb-1 text-[11px] text-muted-foreground">{period} · Control de plataformas</p>
+            <h1 className="text-balance text-[22px] font-bold tracking-[-.03em] text-foreground">Dashboard · {clientName ?? 'Seleccioná un cliente'}</h1>
+            <p className="mt-1 text-[12px] leading-5 text-muted-foreground">Resumen de las plataformas conectadas para el período seleccionado.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {periodSelector}
-            <span className="flex items-center gap-1.5 text-[11px] text-[#777]" aria-live="polite"><span className="size-1.5 rounded-full bg-[#1e9e6b]" aria-hidden="true" />{relativeLabel(updatedAt, now)}</span>
-            <button type="button" onClick={refreshDashboard} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#dededb] bg-white px-3 text-[11px] font-medium text-[#333] transition-colors hover:bg-[#f8f8f6] disabled:cursor-not-allowed disabled:opacity-60" title="Vuelve a consultar las plataformas">
+            <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground" aria-live="polite"><span className="size-1.5 rounded-full bg-status-verde" aria-hidden="true" />{relativeLabel(updatedAt, now)}</span>
+            <button type="button" onClick={refreshDashboard} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[11px] font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60" title="Vuelve a consultar las plataformas">
               {loading ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="size-3.5" aria-hidden="true" />}
               Actualizar ahora
             </button>
           </div>
         </header>}
 
-        <section className="rounded-2xl border border-[#e6e6e3] bg-[#fafaf8] p-4 sm:p-5" aria-label="Archivo de presupuesto">
+        <section className="rounded-2xl border border-border bg-muted p-4 sm:p-5" aria-label="Archivo de presupuesto">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#e8e8e5] bg-white"><FileSpreadsheet className="size-4 text-[#F97316]" aria-hidden="true" /></span>
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card"><FileSpreadsheet className="size-4 text-primary" aria-hidden="true" /></span>
               <div>
-                <h2 className="text-[13px] font-semibold text-[#262626]">Presupuesto por cliente</h2>
+                <h2 className="text-[13px] font-semibold text-foreground">Presupuesto por cliente</h2>
                 {budgetData?.configured ? (
-                  <p className="mt-1 text-[10px] text-[#777]">{budgetData.fileName} · {Object.values(budgetData.rowCounts ?? {}).reduce((total, count) => total + count, 0)} filas · reemplazado al subir una nueva versión</p>
-                ) : budgetData && !budgetData.canUpload ? <p className="mt-1 text-[10px] text-[#777]">No hay un archivo cargado. Inicia sesi&oacute;n con permisos sobre este cliente para subirlo.</p> : <p className="mt-1 text-[10px] text-[#777]">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
+                  <p className="mt-1 text-[10px] text-muted-foreground">{budgetData.fileName} · {Object.values(budgetData.rowCounts ?? {}).reduce((total, count) => total + count, 0)} filas · reemplazado al subir una nueva versión</p>
+                ) : budgetData && !budgetData.canUpload ? <p className="mt-1 text-[10px] text-muted-foreground">No hay un archivo cargado. Inicia sesi&oacute;n con permisos sobre este cliente para subirlo.</p> : <p className="mt-1 text-[10px] text-muted-foreground">{budgetData?.error ?? budgetLoadError?.message ?? 'Subí el libro XLSX o CSV de presupuesto para habilitar consumo, ritmo y alertas.'}</p>}
                 <p className="mt-1 text-[10px] text-[#8b6a25]">El archivo se guarda en un bucket público; cualquier persona con el enlace puede descargarlo.</p>
-                {budgetData?.publicUrl && <a href={budgetData.publicUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-medium text-[#F97316] underline underline-offset-2">Abrir archivo público</a>}
+                {budgetData?.publicUrl && <a href={budgetData.publicUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-medium text-primary underline underline-offset-2">Abrir archivo público</a>}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <input ref={fileInput} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={uploadBudget} className="sr-only" aria-label="Seleccionar archivo de presupuesto" />
-              <button type="button" onClick={() => fileInput.current?.click()} disabled={!clientId || uploading || !budgetData?.canUpload} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#F97316] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#e7650c] disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={() => fileInput.current?.click()} disabled={!clientId || uploading || !budgetData?.canUpload} className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-60">
                 {uploading ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <UploadCloud className="size-3.5" aria-hidden="true" />}
                 {uploading ? 'Subiendo…' : 'Subir / reemplazar'}
               </button>
             </div>
           </div>
-          {uploadError && <p role="alert" className="mt-3 text-[11px] text-[#b42318]">{uploadError}</p>}
+          {uploadError && <p role="alert" className="mt-3 text-[11px] text-destructive">{uploadError}</p>}
         </section>
 
         {connectedPlatforms.length > 0 && <section aria-label="Resumen consolidado" className="flex flex-col gap-3">
-          <div><h2 className="text-[13px] font-semibold text-[#303030]">Resumen por plataforma</h2><p className="mt-1 text-[10px] text-[#858585]">Los resultados, conversiones, eventos clave y leads se mantienen separados porque representan métricas distintas.</p></div>
+          <div><h2 className="text-[13px] font-semibold text-foreground">Resumen por plataforma</h2><p className="mt-1 text-[10px] text-muted-foreground">Los resultados, conversiones, eventos clave y leads se mantienen separados porque representan métricas distintas.</p></div>
           <div className="flex flex-col gap-3">
             {connectedPlatforms.map((platform) => {
               const metrics = platformMetrics[platform.key] ?? []
               const highlightLabels: Record<string, string> = { meta: 'Resultados', google: 'Conversiones', analytics: 'Sesiones', crm: 'Contactos', tag_manager: 'Etiquetas' }
               const highlight = metrics.find((metric) => normalize(metric.label) === normalize(highlightLabels[platform.key] ?? '')) ?? metrics[0]
               const investment = ['meta', 'google'].includes(platform.key) ? metrics.find((metric) => normalize(metric.label).includes('inversion')) : undefined
-              return <article key={`summary-${platform.key}`} className="rounded-xl border border-[#e6e6e3] bg-white p-4">
+              return <article key={`summary-${platform.key}`} className="rounded-xl border border-border bg-card p-4">
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="flex size-7 items-center justify-center overflow-hidden rounded-md border border-[#ededeb] bg-white">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-5 object-contain" /> : <platform.icon className="size-4 text-[#11A683]" aria-hidden="true" />}</span>
-                  <h3 className="text-[11px] font-semibold text-[#555]">{platform.name}</h3>
+                  <span className="flex size-7 items-center justify-center overflow-hidden rounded-md border border-border bg-card">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-5 object-contain" /> : <platform.icon className="size-4 text-[#11A683]" aria-hidden="true" />}</span>
+                  <h3 className="text-[11px] font-semibold text-muted-foreground">{platform.name}</h3>
                 </div>
-                <p className="text-[10px] text-[#888]">{highlight?.label ?? 'Métrica principal'}</p>
-                <p className="mt-1 text-[21px] font-semibold tracking-[-.03em] text-[#202020] tabular-nums">{highlight ? numberFormat.format(Number(highlight.value ?? 0)) : '—'}</p>
-                {investment && <p className="mt-2 text-[10px] text-[#777]">Inversión: <strong className="font-semibold text-[#333]">{moneyFormat.format(Number(investment.value ?? 0))}</strong></p>}
+                <p className="text-[10px] text-muted-foreground">{highlight?.label ?? 'Métrica principal'}</p>
+                <p className="mt-1 text-[21px] font-semibold tracking-[-.03em] text-foreground tabular-nums">{highlight ? numberFormat.format(Number(highlight.value ?? 0)) : '—'}</p>
+                {investment && <p className="mt-2 text-[10px] text-muted-foreground">Inversión: <strong className="font-semibold text-foreground">{moneyFormat.format(Number(investment.value ?? 0))}</strong></p>}
               </article>
             })}
           </div>
@@ -308,15 +308,15 @@ export function DashboardOverview({ clientId, clientName, period, customRange, p
         <ComparisonSection clientId={clientId} platforms={connectedPlatforms} baseRange={comparisonBaseRange} />
 
         {!connectedPlatforms.length ? (
-          <section className="rounded-2xl border border-dashed border-[#dcdcd8] bg-white px-6 py-12 text-center">
-            <h2 className="text-[14px] font-semibold text-[#292929]">No hay plataformas conectadas</h2>
-            <p className="mx-auto mt-2 max-w-[420px] text-[12px] leading-5 text-[#777]">Conectá una plataforma para ver sus métricas en este Dashboard.</p>
-            <a href="/dashboard/platform" className="mt-4 inline-flex rounded-lg bg-[#F97316] px-4 py-2 text-[11px] font-semibold text-white hover:bg-[#e7650c]">Ir a Conexiones</a>
+          <section className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center">
+            <h2 className="text-[14px] font-semibold text-foreground">No hay plataformas conectadas</h2>
+            <p className="mx-auto mt-2 max-w-[420px] text-[12px] leading-5 text-muted-foreground">Conectá una plataforma para ver sus métricas en este Dashboard.</p>
+            <a href="/dashboard/platform" className="mt-4 inline-flex rounded-lg bg-primary px-4 py-2 text-[11px] font-semibold text-primary-foreground hover:bg-primary">Ir a Conexiones</a>
           </section>
         ) : (
           <>
             <nav aria-label="Plataformas del Dashboard" className="flex flex-wrap gap-2">
-              {connectedPlatforms.map((platform) => <button key={platform.key} type="button" onClick={() => document.getElementById(`dashboard-platform-${platform.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="inline-flex items-center gap-2 rounded-full border border-[#e6e6e3] bg-white px-3 py-1.5 text-[11px] font-medium text-[#4c4c4c] hover:border-[#c9c9c6] hover:bg-[#fafaf8]">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-4 object-contain" /> : <platform.icon className="size-4 text-[#11A683]" aria-hidden="true" />}{platform.name}<span className="size-1.5 rounded-full bg-[#1e9e6b]" aria-hidden="true" /></button>)}
+              {connectedPlatforms.map((platform) => <button key={platform.key} type="button" onClick={() => document.getElementById(`dashboard-platform-${platform.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground hover:border-border hover:bg-muted">{platform.iconUrl ? <img src={platform.iconUrl} alt="" className="size-4 object-contain" /> : <platform.icon className="size-4 text-[#11A683]" aria-hidden="true" />}{platform.name}<span className="size-1.5 rounded-full bg-status-verde" aria-hidden="true" /></button>)}
             </nav>
             <div className="flex flex-col gap-6">{connectedPlatforms.map(platformSection)}</div>
           </>
@@ -349,21 +349,21 @@ function ComparisonSection({ clientId, platforms, baseRange }: { clientId: strin
   }
 
   return (
-    <details className="rounded-2xl border border-[#e6e6e3] bg-white">
-      <summary className="cursor-pointer px-5 py-4 text-[13px] font-semibold text-[#292929]">Comparar períodos</summary>
-      <div className="border-t border-[#ededeb] p-4 sm:p-5">
+    <details className="rounded-2xl border border-border bg-card">
+      <summary className="cursor-pointer px-5 py-4 text-[13px] font-semibold text-foreground">Comparar períodos</summary>
+      <div className="border-t border-border p-4 sm:p-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-          <label className="flex min-w-[230px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-[#858585]">Comparación</span><select value={preset} onChange={(event) => setPreset(event.target.value)} className="h-9 rounded-lg border border-[#e6e6e3] bg-white px-2.5 text-[11px]"><option value="month-to-date">Este mes vs mismo tramo del mes anterior</option><option value="last-month">Mes pasado vs anterior</option><option value="7-days">7 días vs 7 anteriores</option><option value="30-days">30 días vs 30 anteriores</option><option value="year">Hoy vs mismo día del año anterior</option><option value="custom">Fechas personalizadas</option></select></label>
+          <label className="flex min-w-[230px] flex-1 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.06em] text-muted-foreground">Comparación</span><select value={preset} onChange={(event) => setPreset(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-2.5 text-[11px]"><option value="month-to-date">Este mes vs mismo tramo del mes anterior</option><option value="last-month">Mes pasado vs anterior</option><option value="7-days">7 días vs 7 anteriores</option><option value="30-days">30 días vs 30 anteriores</option><option value="year">Hoy vs mismo día del año anterior</option><option value="custom">Fechas personalizadas</option></select></label>
           {preset === 'custom' && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><DateField label="Actual desde" value={custom.currentFrom} onChange={(value) => setCustom((old) => ({ ...old, currentFrom: value }))} /><DateField label="Actual hasta" value={custom.currentTo} onChange={(value) => setCustom((old) => ({ ...old, currentTo: value }))} /><DateField label="Comparar desde" value={custom.comparedFrom} onChange={(value) => setCustom((old) => ({ ...old, comparedFrom: value }))} /><DateField label="Comparar hasta" value={custom.comparedTo} onChange={(value) => setCustom((old) => ({ ...old, comparedTo: value }))} /></div>}
-          <button type="button" onClick={compare} disabled={!clientId || loading} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#d9d9d6] px-4 text-[11px] font-semibold text-[#333] hover:bg-[#fafaf8] disabled:opacity-60">{loading && <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}{loading ? 'Comparando…' : 'Comparar'}</button>
+          <button type="button" onClick={compare} disabled={!clientId || loading} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-4 text-[11px] font-semibold text-foreground hover:bg-muted disabled:opacity-60">{loading && <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}{loading ? 'Comparando…' : 'Comparar'}</button>
         </div>
-        {error && <p role="alert" className="mt-3 text-[11px] text-[#b42318]">{error}</p>}
-        {result && <div className="mt-4 flex flex-col gap-2"><p className="text-[10px] text-[#777]">{result.ranges.label}: {result.ranges.current.from}–{result.ranges.current.to} vs {result.ranges.compared.from}–{result.ranges.compared.to}. Las métricas de resultado se conservan por plataforma.</p><DashboardDataTable title="Comparación por plataforma" columns={[{ key: 'platform', label: 'Plataforma' }, { key: 'metric', label: 'Métrica' }, { key: 'current', label: 'Actual', format: 'number', right: true }, { key: 'compared', label: 'Comparado', format: 'number', right: true }, { key: 'variation', label: 'Variación', format: 'percent', toneKey: 'variationTone', right: true }]} rows={rows} searchable={false} emptyMessage="No hay métricas comparables para estas fechas." /></div>}
+        {error && <p role="alert" className="mt-3 text-[11px] text-destructive">{error}</p>}
+        {result && <div className="mt-4 flex flex-col gap-2"><p className="text-[10px] text-muted-foreground">{result.ranges.label}: {result.ranges.current.from}–{result.ranges.current.to} vs {result.ranges.compared.from}–{result.ranges.compared.to}. Las métricas de resultado se conservan por plataforma.</p><DashboardDataTable title="Comparación por plataforma" columns={[{ key: 'platform', label: 'Plataforma' }, { key: 'metric', label: 'Métrica' }, { key: 'current', label: 'Actual', format: 'number', right: true }, { key: 'compared', label: 'Comparado', format: 'number', right: true }, { key: 'variation', label: 'Variación', format: 'percent', toneKey: 'variationTone', right: true }]} rows={rows} searchable={false} emptyMessage="No hay métricas comparables para estas fechas." /></div>}
       </div>
     </details>
   )
 }
 
 function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="flex min-w-0 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.05em] text-[#858585]">{label}</span><input type="date" value={value} onChange={(event) => onChange(event.target.value)} className="h-9 min-w-0 rounded-lg border border-[#e6e6e3] px-2 text-[10px]" /></label>
+  return <label className="flex min-w-0 flex-col gap-1"><span className="text-[9px] font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}</span><input type="date" value={value} onChange={(event) => onChange(event.target.value)} className="h-9 min-w-0 rounded-lg border border-border px-2 text-[10px]" /></label>
 }

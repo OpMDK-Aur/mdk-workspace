@@ -43,12 +43,12 @@ function Stepper() {
           return (
             <li key={step} className="flex flex-1 items-center gap-3 last:flex-none">
               <button type="button" disabled={!reachable} onClick={() => setStep(step)} aria-current={active ? 'step' : undefined} className="flex items-center gap-2 disabled:cursor-not-allowed">
-                <span className={cn('flex size-6 items-center justify-center rounded-full text-[11px] font-bold', done ? 'bg-[#1e9e6b] text-white' : active ? 'bg-[#141414] text-white' : 'border border-[#dcdcd8] bg-white text-[#999]')}>
+                <span className={cn('flex size-6 items-center justify-center rounded-full text-[11px] font-bold', done ? 'bg-status-verde text-white' : active ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground')}>
                   {done ? <Check className="size-3.5" aria-label="Completado" /> : step}
                 </span>
-                <span className={cn('whitespace-nowrap text-[12px]', active ? 'font-semibold text-[#141414]' : 'text-[#777]')}>{label}</span>
+                <span className={cn('whitespace-nowrap text-[12px]', active ? 'font-semibold text-foreground' : 'text-muted-foreground')}>{label}</span>
               </button>
-              {index < STEPS.length - 1 && <span className={cn('h-px flex-1', done ? 'bg-[#1e9e6b]' : 'bg-[#dcdcd8]')} aria-hidden="true" />}
+              {index < STEPS.length - 1 && <span className={cn('h-px flex-1', done ? 'bg-status-verde' : 'bg-muted')} aria-hidden="true" />}
             </li>
           )
         })}

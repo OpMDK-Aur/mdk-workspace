@@ -17,9 +17,9 @@ function formatValue(value: number, format: ReportKpi['format']) {
 }
 
 function deltaColor(delta: number, invert?: boolean) {
-  if (Math.abs(delta) < NEUTRAL_THRESHOLD) return 'text-[#6B6B6B]'
+  if (Math.abs(delta) < NEUTRAL_THRESHOLD) return 'text-muted-foreground'
   const isGood = invert ? delta < 0 : delta > 0
-  return isGood ? 'text-[#16A34A]' : 'text-[#D92D20]'
+  return isGood ? 'text-status-verde' : 'text-destructive'
 }
 
 function isValidKpi(kpi: unknown): kpi is ReportKpi {
@@ -38,11 +38,11 @@ export function ChatKpis({ kpis }: { kpis?: unknown }) {
         {items.map((kpi) => {
           const delta = kpi.prev ? ((kpi.value - kpi.prev) / kpi.prev) * 100 : null
           return (
-            <div key={kpi.label} className="flex flex-col rounded-xl bg-[#F5F5F3] px-4 py-3.5">
-              <dd className="font-display text-[22px] font-extrabold leading-none tracking-[-0.01em] text-[#141414] tabular-nums">
+            <div key={kpi.label} className="flex flex-col rounded-xl bg-muted px-4 py-3.5">
+              <dd className="font-display text-[22px] font-extrabold leading-none tracking-[-0.01em] text-foreground tabular-nums">
                 {formatValue(kpi.value, kpi.format)}
               </dd>
-              <dt className="mt-1.5 text-[12px] text-[#6B6B6B]">{kpi.label}</dt>
+              <dt className="mt-1.5 text-[12px] text-muted-foreground">{kpi.label}</dt>
               {delta !== null ? (
                 <p className={`text-[11.5px] font-medium ${deltaColor(delta, kpi.invert)}`}>
                   {`${deltaFormatter.format(delta)}% vs anterior`}
@@ -60,7 +60,7 @@ export function ChatKpisSkeleton() {
   return (
     <div className="mb-4 grid grid-cols-2 gap-2.5" aria-hidden="true">
       {Array.from({ length: 4 }, (_, index) => (
-        <div key={index} className="h-[78px] animate-pulse rounded-xl bg-[#F5F5F3]" />
+        <div key={index} className="h-[78px] animate-pulse rounded-xl bg-muted" />
       ))}
     </div>
   )
