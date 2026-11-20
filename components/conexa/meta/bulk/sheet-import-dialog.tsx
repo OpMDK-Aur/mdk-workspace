@@ -49,39 +49,39 @@ export function SheetImportDialog({ destinationUrl }: { destinationUrl?: string 
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-full border border-[#e5e5e0] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#141414] hover:border-[#5B5FE8] hover:text-[#5B5FE8]">
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-[12px] font-semibold text-foreground hover:border-primary hover:text-primary">
         <FileSpreadsheet className="size-3.5" aria-hidden="true" />
         Importar desde Google Sheet
       </button>
       <Dialog open={open} onOpenChange={(next) => { if (!busy) setOpen(next) }}>
-        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto bg-white text-[#141414]">
+        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto bg-card text-foreground">
           <DialogHeader>
             <DialogTitle>Importar desde Google Sheet</DialogTitle>
-            <DialogDescription className="text-pretty text-[#777]">
+            <DialogDescription className="text-pretty text-muted-foreground">
               Conexa interpreta las columnas de este cliente y arma un plan de carga contra lo que ya existe en Meta. Nada se crea hasta que lo apruebes.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={(event) => { event.preventDefault(); importSheet() }} className="flex gap-2">
-            <label className="flex flex-1 items-center gap-2 rounded-lg border border-[#e5e5e0] px-3 py-2 focus-within:border-[#5B5FE8]">
+            <label className="flex flex-1 items-center gap-2 rounded-lg border border-border px-3 py-2 focus-within:border-primary">
               <span className="sr-only">Link del Google Sheet</span>
-              <input value={url} onChange={(event) => setUrl(event.target.value)} disabled={Boolean(busy)} placeholder="https://docs.google.com/spreadsheets/d/…" className="w-full bg-transparent text-[13px] outline-none placeholder:text-[#aaa]" />
+              <input value={url} onChange={(event) => setUrl(event.target.value)} disabled={Boolean(busy)} placeholder="https://docs.google.com/spreadsheets/d/…" className="w-full bg-transparent text-[13px] outline-none placeholder:text-muted-foreground" />
             </label>
-            <button type="submit" disabled={Boolean(busy) || !url.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#141414] px-4 text-[12.5px] font-semibold text-white disabled:opacity-40">
+            <button type="submit" disabled={Boolean(busy) || !url.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-4 text-[12.5px] font-semibold text-background disabled:opacity-40">
               {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
               {busy ? 'Procesando…' : 'Armar plan de carga'}
             </button>
           </form>
 
           {error && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#f2d4cf] bg-[#fdf3f1] px-3 py-2 text-[12px] text-[#a8321f]" role="alert">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#f2d4cf] bg-muted px-3 py-2 text-[12px] text-[#a8321f]" role="alert">
               <span>{error.message}</span>
-              {error.needsGoogle && <a href={connectHref} className="shrink-0 rounded-full bg-[#141414] px-3 py-1 text-[11.5px] font-semibold text-white">Conectar Google</a>}
+              {error.needsGoogle && <a href={connectHref} className="shrink-0 rounded-full bg-foreground px-3 py-1 text-[11.5px] font-semibold text-background">Conectar Google</a>}
             </div>
           )}
 
           <DialogFooter className="sm:justify-start">
-            <p className="text-[11.5px] text-[#777]" aria-live="polite">
+            <p className="text-[11.5px] text-muted-foreground" aria-live="polite">
               {busy === 'reading' ? 'Interpretando el sheet…' : busy === 'planning' ? 'Leyendo Drive y cruzando con Meta…' : 'El sheet y las carpetas deben estar compartidos con tu cuenta de Google conectada.'}
             </p>
           </DialogFooter>

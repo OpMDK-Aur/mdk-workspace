@@ -12,34 +12,34 @@ import { Button } from '@/components/ui/button'
 import { PlanQuestions } from './plan-questions'
 import { SheetReviewList } from './sheet-review-list'
 
-const selectClass = 'rounded-md border border-[#e5e5e0] bg-white px-2 py-1 text-[11.5px] text-[#141414] outline-none focus:border-[#5B5FE8]'
+const selectClass = 'rounded-md border border-border bg-card px-2 py-1 text-[11.5px] text-foreground outline-none focus:border-primary'
 
 const BADGE_CLASS: Record<PlanBadge, string> = {
-  'Crear campaña': 'bg-[#5B5FE8]/10 text-[#4347c9]',
-  'Crear conjunto': 'bg-[#5B5FE8]/10 text-[#4347c9]',
-  'Crear anuncio': 'bg-[#e8f6ef] text-[#147a52]',
-  'Usar existente': 'bg-[#f0f0ed] text-[#555]',
-  'Nuevo (reemplaza creativos)': 'bg-[#fdf3e3] text-[#8a5f0d]',
-  'Nuevo (formatos faltantes)': 'bg-[#fdf3e3] text-[#8a5f0d]',
-  'Sin cambios': 'bg-[#f0f0ed] text-[#999]',
+  'Crear campaña': 'bg-primary/10 text-primary',
+  'Crear conjunto': 'bg-primary/10 text-primary',
+  'Crear anuncio': 'bg-status-verde/10 text-[#147a52]',
+  'Usar existente': 'bg-muted text-muted-foreground',
+  'Nuevo (reemplaza creativos)': 'bg-primary/10 text-primary',
+  'Nuevo (formatos faltantes)': 'bg-primary/10 text-primary',
+  'Sin cambios': 'bg-muted text-muted-foreground',
 }
 
 function StateIcon({ state }: { state: ItemState }) {
-  if (state === 'ready') return <CheckCircle2 className="size-3.5 shrink-0 text-[#1e9e6b]" aria-label="Listo" />
-  if (state === 'needs_answer') return <HelpCircle className="size-3.5 shrink-0 text-[#c98a16]" aria-label="Esperando tu respuesta" />
-  return <AlertTriangle className={cn('size-3.5 shrink-0', state === 'blocked' ? 'text-[#c0432c]' : 'text-[#c98a16]')} aria-label={state === 'blocked' ? 'Bloqueado' : 'Requiere confirmación'} />
+  if (state === 'ready') return <CheckCircle2 className="size-3.5 shrink-0 text-status-verde" aria-label="Listo" />
+  if (state === 'needs_answer') return <HelpCircle className="size-3.5 shrink-0 text-primary" aria-label="Esperando tu respuesta" />
+  return <AlertTriangle className={cn('size-3.5 shrink-0', state === 'blocked' ? 'text-destructive' : 'text-primary')} aria-label={state === 'blocked' ? 'Bloqueado' : 'Requiere confirmación'} />
 }
 
 function Badge({ label }: { label: string }) {
-  return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold', BADGE_CLASS[label as PlanBadge] ?? 'bg-[#f0f0ed] text-[#555]')}>{label}</span>
+  return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold', BADGE_CLASS[label as PlanBadge] ?? 'bg-muted text-muted-foreground')}>{label}</span>
 }
 
 const CHIP: Record<InstructionChip['status'], { label: string; className: string }> = {
-  applied: { label: 'Aplicada', className: 'bg-[#5B5FE8]/10 text-[#4347c9]' },
-  no_effect: { label: 'Sin efecto', className: 'bg-[#f0f0ec] text-[#777]' },
-  ignored: { label: 'Ignorada', className: 'bg-[#f0f0ec] text-[#999] line-through' },
-  unclear: { label: 'Sin entender', className: 'bg-[#fdf3dc] text-[#8a5f0d]' },
-  contradicts: { label: 'No aplicada', className: 'bg-[#fbe9e5] text-[#c0432c]' },
+  applied: { label: 'Aplicada', className: 'bg-primary/10 text-primary' },
+  no_effect: { label: 'Sin efecto', className: 'bg-muted text-muted-foreground' },
+  ignored: { label: 'Ignorada', className: 'bg-muted text-muted-foreground line-through' },
+  unclear: { label: 'Sin entender', className: 'bg-[#fdf3dc] text-primary' },
+  contradicts: { label: 'No aplicada', className: 'bg-[#fbe9e5] text-destructive' },
 }
 
 function InstructionChips({ chips }: { chips: InstructionChip[] }) {
@@ -60,25 +60,25 @@ function IssueLine({ issues }: { issues: PlanIssue[] }) {
   const [first, ...rest] = issues
   return (
     <span className="text-[10.5px] leading-relaxed">
-      <span className="font-medium text-[#c0432c]">{first.message}</span>
-      <span className="text-[#777]">{` → ${first.where}`}</span>
-      {rest.length > 0 && <span className="text-[#999]">{` · y ${rest.length} más: ${rest.map((issue) => issue.field).join(', ')}`}</span>}
+      <span className="font-medium text-destructive">{first.message}</span>
+      <span className="text-muted-foreground">{` → ${first.where}`}</span>
+      {rest.length > 0 && <span className="text-muted-foreground">{` · y ${rest.length} más: ${rest.map((issue) => issue.field).join(', ')}`}</span>}
     </span>
   )
 }
 
 function Legend() {
   const items = [
-    { icon: <CheckCircle2 className="size-3.5 text-[#1e9e6b]" aria-hidden="true" />, label: 'Listo', text: 'tiene todo lo necesario' },
-    { icon: <AlertTriangle className="size-3.5 text-[#c98a16]" aria-hidden="true" />, label: 'Requiere confirmación', text: 'hay que elegir algo (cuenta, acción o coincidencia)' },
-    { icon: <AlertTriangle className="size-3.5 text-[#c0432c]" aria-hidden="true" />, label: 'Bloqueado', text: 'falta un dato obligatorio; corregilo o excluí la fila' },
+    { icon: <CheckCircle2 className="size-3.5 text-status-verde" aria-hidden="true" />, label: 'Listo', text: 'tiene todo lo necesario' },
+    { icon: <AlertTriangle className="size-3.5 text-primary" aria-hidden="true" />, label: 'Requiere confirmación', text: 'hay que elegir algo (cuenta, acción o coincidencia)' },
+    { icon: <AlertTriangle className="size-3.5 text-destructive" aria-hidden="true" />, label: 'Bloqueado', text: 'falta un dato obligatorio; corregilo o excluí la fila' },
   ]
   return (
-    <ul className="flex flex-wrap gap-x-5 gap-y-1.5 rounded-lg border border-[#ececea] bg-white px-3 py-2 text-[11px] text-[#777]" aria-label="Qué significa cada ícono">
+    <ul className="flex flex-wrap gap-x-5 gap-y-1.5 rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground" aria-label="Qué significa cada ícono">
       {items.map((item) => (
         <li key={item.label} className="flex items-center gap-1.5">
           {item.icon}
-          <span className="font-medium text-[#141414]">{item.label}</span>
+          <span className="font-medium text-foreground">{item.label}</span>
           <span>{`: ${item.text}`}</span>
         </li>
       ))}
@@ -92,10 +92,10 @@ function PreviousBatch({ previous }: { previous: NonNullable<PlanRow['previous']
   const date = new Date(previous.date).toLocaleDateString('es-AR')
   return (
     <div className="flex flex-col gap-1.5">
-      <span className={cn('text-[11px] font-medium', previous.kind === 'created' ? 'text-[#147a52]' : 'text-[#8a5f0d]')}>
+      <span className={cn('text-[11px] font-medium', previous.kind === 'created' ? 'text-[#147a52]' : 'text-primary')}>
         {previous.kind === 'created' ? `Ya creado el ${date}` : `Esta fila se modificó desde la carga del ${date}: se trata como pedido nuevo`}
         {clientId && (
-          <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="ml-2 font-normal text-[#5B5FE8] underline-offset-2 hover:underline">
+          <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="ml-2 font-normal text-primary underline-offset-2 hover:underline">
             {open ? 'Ocultar revisión' : 'Ver revisión de ese lote'}
           </button>
         )}
@@ -114,15 +114,15 @@ function fanoutLabel(ads: Array<{ rowNumber: number; adsetKey: string; badge: Pl
 
 function Section({ title, count, actions, children }: { title: string; count: number; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-[#ececea] bg-white">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f0f0ed] px-4 py-2.5">
-        <h3 className="text-[12.5px] font-semibold text-[#141414]">{title}</h3>
+    <section className="rounded-xl border border-border bg-card">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+        <h3 className="text-[12.5px] font-semibold text-foreground">{title}</h3>
         <div className="flex items-center gap-3">
           {actions}
-          <span className="text-[11px] text-[#999]">{count}</span>
+          <span className="text-[11px] text-muted-foreground">{count}</span>
         </div>
       </header>
-      <ul className="divide-y divide-[#f3f3f0]">{children}</ul>
+      <ul className="divide-y divide-border">{children}</ul>
     </section>
   )
 }
@@ -212,12 +212,12 @@ export function StepPlan() {
   const bulkActions = (
     <>
       {problemRows.size > 0 && (
-        <button type="button" onClick={excludeProblemRows} className="rounded-full border border-[#f0d4cc] px-2.5 py-0.5 text-[11px] font-medium text-[#c0432c] hover:bg-[#fcefeb]">
+        <button type="button" onClick={excludeProblemRows} className="rounded-full border border-[#f0d4cc] px-2.5 py-0.5 text-[11px] font-medium text-destructive hover:bg-[#fcefeb]">
           {`Deseleccionar ${problemRows.size} con problemas`}
         </button>
       )}
       {(overrides.excludedRows?.length ?? 0) > 0 && (
-        <button type="button" onClick={includeAllRows} className="text-[11px] text-[#777] underline-offset-2 hover:text-[#141414] hover:underline">
+        <button type="button" onClick={includeAllRows} className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
           Seleccionar todas
         </button>
       )}
@@ -271,35 +271,35 @@ export function StepPlan() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-wide text-[#999]">Plan de carga</p>
-          <h2 className="truncate text-[15px] font-semibold text-[#141414]">{`${context.grid.title} · ${context.sheetTitle}`}</h2>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Plan de carga</p>
+          <h2 className="truncate text-[15px] font-semibold text-foreground">{`${context.grid.title} · ${context.sheetTitle}`}</h2>
           {statusExcluded.length > 0 && (
-            <details className="text-[11.5px] text-[#777]">
-              <summary className="cursor-pointer hover:text-[#141414]">{`Excluidas por estado (${statusExcluded.length})`}</summary>
+            <details className="text-[11.5px] text-muted-foreground">
+              <summary className="cursor-pointer hover:text-foreground">{`Excluidas por estado (${statusExcluded.length})`}</summary>
               <ul className="mt-1 flex flex-col gap-0.5 pl-3">
                 {statusExcluded.map((item) => <li key={item.rowNumber}>{`Fila ${item.rowNumber} · ${item.status}`}</li>)}
               </ul>
             </details>
           )}
         </div>
-        <button type="button" onClick={exitSheetPlan} className="inline-flex items-center gap-1 text-[11.5px] text-[#777] hover:text-[#141414]">
+        <button type="button" onClick={exitSheetPlan} className="inline-flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground">
           <X className="size-3.5" aria-hidden="true" />
           Descartar plan
         </button>
-        <dl className="flex w-full flex-wrap gap-x-6 gap-y-2 border-t border-[#f0f0ed] pt-3">
+        <dl className="flex w-full flex-wrap gap-x-6 gap-y-2 border-t border-border pt-3">
           {stats.map((stat) => (
             <div key={stat.label} className="flex flex-col">
-              <dt className="text-[10.5px] text-[#999]">{stat.label}</dt>
-              <dd className="font-mono text-[16px] font-semibold text-[#141414]">{stat.value}</dd>
+              <dt className="text-[10.5px] text-muted-foreground">{stat.label}</dt>
+              <dd className="font-mono text-[16px] font-semibold text-foreground">{stat.value}</dd>
             </div>
           ))}
         </dl>
       </div>
 
       {context.warnings.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-lg border border-[#f0e2c2] bg-[#fdf8ec] px-3 py-2 text-[11.5px] text-[#8a5f0d]">
+        <ul className="flex flex-col gap-1 rounded-lg border border-[#f0e2c2] bg-[#fdf8ec] px-3 py-2 text-[11.5px] text-primary">
           {context.warnings.map((warning) => <li key={warning}>{warning}</li>)}
         </ul>
       )}
@@ -311,14 +311,14 @@ export function StepPlan() {
       <Section title="Filas del sheet" count={visibleRows.length} actions={bulkActions}>
         {visibleRows.map((row) => (
           <li key={row.rowNumber} className={cn('flex flex-wrap items-center gap-3 px-4 py-2', row.excluded && 'opacity-50')}>
-            <input type="checkbox" checked={!row.excluded} onChange={() => toggleRow(row.rowNumber)} aria-label={`Incluir fila ${row.rowNumber}`} className="accent-[#5B5FE8]" />
-            <span className="w-10 font-mono text-[11px] text-[#999]">{`#${row.rowNumber}`}</span>
+            <input type="checkbox" checked={!row.excluded} onChange={() => toggleRow(row.rowNumber)} aria-label={`Incluir fila ${row.rowNumber}`} className="accent-primary" />
+            <span className="w-10 font-mono text-[11px] text-muted-foreground">{`#${row.rowNumber}`}</span>
             {!row.excluded && <StateIcon state={row.state} />}
             <div className="flex min-w-[180px] flex-1 flex-col">
               {row.accountStatus === 'resolved' ? (
-                <span className="text-[12px] text-[#141414]">{accountName(row.accountId)}</span>
+                <span className="text-[12px] text-foreground">{accountName(row.accountId)}</span>
               ) : (
-                <label className="flex items-center gap-2 text-[11.5px] text-[#8a5f0d]">
+                <label className="flex items-center gap-2 text-[11.5px] text-primary">
                   Cuenta
                   <select value={overrides.accountByRow?.[row.rowNumber] ?? ''} onChange={(event) => setAccount(row.rowNumber, event.target.value)} className={selectClass}>
                     <option value="">Elegir cuenta…</option>
@@ -327,10 +327,10 @@ export function StepPlan() {
                 </label>
               )}
               {row.previous && <PreviousBatch previous={row.previous} />}
-              {!row.excluded && row.issues.length > 0 ? <IssueLine issues={row.issues} /> : <span className="text-[10.5px] text-[#999]">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>}
+              {!row.excluded && row.issues.length > 0 ? <IssueLine issues={row.issues} /> : <span className="text-[10.5px] text-muted-foreground">{row.driveError ?? row.actionWarning ?? row.accountReason}</span>}
               {!row.excluded && row.instructions && row.instructions.length > 0 && <InstructionChips chips={row.instructions} />}
             </div>
-            <label className="flex items-center gap-1.5 text-[11px] text-[#777]">
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className="sr-only">{`Acción fila ${row.rowNumber}`}</span>
               <select value={row.action} onChange={(event) => update({ actionByRow: { ...overrides.actionByRow, [row.rowNumber]: event.target.value as CanonicalAction } })} className={selectClass}>
                 {CANONICAL_ACTIONS.filter((action) => action !== 'unknown' || row.action === 'unknown').map((action) => <option key={action} value={action}>{ACTION_LABELS[action]}</option>)}
@@ -346,10 +346,10 @@ export function StepPlan() {
           <li key={campaign.key} className="flex flex-col gap-2 px-4 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <StateIcon state={campaign.state} />
-              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#141414]">{campaign.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-foreground">{campaign.name}</span>
               <Badge label={campaign.mode === 'existing' ? 'Usar existente' : 'Crear campaña'} />
             </div>
-            <p className="text-[11px] text-[#777]">{`${accountName(campaign.accountId)} · ${campaign.reason}`}</p>
+            <p className="text-[11px] text-muted-foreground">{`${accountName(campaign.accountId)} · ${campaign.reason}`}</p>
             <div className="flex flex-wrap items-center gap-2">
               {campaign.candidates.length > 0 && (
                 <select aria-label={`Decisión para ${campaign.name}`} value={overrides.campaignDecision?.[campaign.key] ?? (campaign.mode === 'existing' ? campaign.existingId ?? 'use_existing' : 'create')} onChange={(event) => update({ campaignDecision: { ...overrides.campaignDecision, [campaign.key]: event.target.value } })} className={selectClass}>
@@ -364,7 +364,7 @@ export function StepPlan() {
                     {context.inventory.campaigns.filter((item) => item.accountId === campaign.accountId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                   {campaign.isCbo && (
-                    <label className="flex items-center gap-1 text-[11px] text-[#777]">
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       Diario
                       <input type="number" min={1} value={campaign.dailyBudget ?? ''} onChange={(event) => setField(campaign.key, { dailyBudget: Number(event.target.value) || undefined })} className={cn(selectClass, 'w-24')} />
                     </label>
@@ -372,7 +372,7 @@ export function StepPlan() {
                 </>
               )}
             </div>
-            {campaign.issues.map((issue) => <p key={issue.field + issue.message} className="text-[11px] text-[#c0432c]">{issue.message}</p>)}
+            {campaign.issues.map((issue) => <p key={issue.field + issue.message} className="text-[11px] text-destructive">{issue.message}</p>)}
           </li>
         ))}
       </Section>
@@ -382,10 +382,10 @@ export function StepPlan() {
           <li key={adset.key} className="flex flex-col gap-2 px-4 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <StateIcon state={adset.state} />
-              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#141414]">{adset.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-foreground">{adset.name}</span>
               <Badge label={adset.mode === 'existing' ? 'Usar existente' : 'Crear conjunto'} />
             </div>
-            <p className="text-[11px] text-[#777]">{adset.reason}</p>
+            <p className="text-[11px] text-muted-foreground">{adset.reason}</p>
             <div className="flex flex-wrap items-center gap-2">
               {adset.options.length > 1 && (
                 <fieldset className="flex flex-wrap gap-1.5">
@@ -394,7 +394,7 @@ export function StepPlan() {
                     const checked = adset.existingIds.includes(option.id)
                     const next = checked ? adset.existingIds.filter((id) => id !== option.id) : [...adset.existingIds, option.id]
                     return (
-                      <button key={option.id} type="button" aria-pressed={checked} onClick={() => update({ adsetChoice: { ...overrides.adsetChoice, [adset.key]: next } })} className={cn('rounded-full border px-2.5 py-0.5 text-[11px]', checked ? 'border-[#5B5FE8] bg-[#5B5FE8]/10 text-[#4347c9]' : 'border-[#e5e5e0] text-[#555]')}>
+                      <button key={option.id} type="button" aria-pressed={checked} onClick={() => update({ adsetChoice: { ...overrides.adsetChoice, [adset.key]: next } })} className={cn('rounded-full border px-2.5 py-0.5 text-[11px]', checked ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground')}>
                         {`${option.name} · ${option.status === 'ACTIVE' ? 'activo' : 'pausado'}`}
                       </button>
                     )
@@ -407,14 +407,14 @@ export function StepPlan() {
                     <option value="">Copiar segmentación de…</option>
                     {context.inventory.adsets.filter((item) => item.accountId === adset.accountId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
-                  <label className="flex items-center gap-1 text-[11px] text-[#777]">
+                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
                     Diario
                     <input type="number" min={1} value={adset.dailyBudget ?? ''} onChange={(event) => setField(adset.key, { dailyBudget: Number(event.target.value) || undefined })} className={cn(selectClass, 'w-24')} />
                   </label>
                 </>
               )}
             </div>
-            {adset.issues.map((issue) => <p key={issue.field + issue.message} className="text-[11px] text-[#c0432c]">{issue.message}</p>)}
+            {adset.issues.map((issue) => <p key={issue.field + issue.message} className="text-[11px] text-destructive">{issue.message}</p>)}
           </li>
         ))}
       </Section>
@@ -422,45 +422,45 @@ export function StepPlan() {
       <Section title="Anuncios" count={ads.length} actions={bulkActions}>
         {ads.map((ad) => (
           <li key={ad.id} className={cn('flex flex-wrap items-center gap-3 px-4 py-2.5', ad.badge === 'Sin cambios' && 'opacity-60')}>
-            <input type="checkbox" checked onChange={() => toggleRow(ad.rowNumber)} aria-label={`Incluir fila ${ad.rowNumber}`} className="accent-[#5B5FE8]" />
+            <input type="checkbox" checked onChange={() => toggleRow(ad.rowNumber)} aria-label={`Incluir fila ${ad.rowNumber}`} className="accent-primary" />
             <StateIcon state={ad.state} />
             <div className="flex min-w-[200px] flex-1 flex-col">
-              <span className="truncate text-[12.5px] font-medium text-[#141414]">{ad.name}</span>
-                <span className="text-[11px] text-[#777]">{`${fanoutLabel(ads, ad.rowNumber)} · ${ad.piece} · ${ad.formats.join(', ') || 'sin formatos'}`}</span>
-                {ad.issues.length > 0 ? <IssueLine issues={ad.issues} /> : <span className="text-[10.5px] text-[#999]">{ad.reason}</span>}
-                {ad.leadFormNote && <span className="text-[10.5px] text-[#555]">{`Formulario: ${ad.leadFormNote}`}</span>}
+              <span className="truncate text-[12.5px] font-medium text-foreground">{ad.name}</span>
+                <span className="text-[11px] text-muted-foreground">{`${fanoutLabel(ads, ad.rowNumber)} · ${ad.piece} · ${ad.formats.join(', ') || 'sin formatos'}`}</span>
+                {ad.issues.length > 0 ? <IssueLine issues={ad.issues} /> : <span className="text-[10.5px] text-muted-foreground">{ad.reason}</span>}
+                {ad.leadFormNote && <span className="text-[10.5px] text-muted-foreground">{`Formulario: ${ad.leadFormNote}`}</span>}
             </div>
             {ad.match && !ad.match.certain && (
-              <div className="flex items-center gap-1.5 text-[11px] text-[#8a5f0d]">
+              <div className="flex items-center gap-1.5 text-[11px] text-primary">
                 {`¿Es "${ad.match.name}"?`}
-                <button type="button" onClick={() => update({ pieceMatch: { ...overrides.pieceMatch, [ad.id]: 'confirm' } })} className="rounded-full border border-[#e5e5e0] px-2 py-0.5 hover:border-[#141414]">Sí</button>
-                <button type="button" onClick={() => update({ pieceMatch: { ...overrides.pieceMatch, [ad.id]: 'reject' } })} className="rounded-full border border-[#e5e5e0] px-2 py-0.5 hover:border-[#141414]">No</button>
+                <button type="button" onClick={() => update({ pieceMatch: { ...overrides.pieceMatch, [ad.id]: 'confirm' } })} className="rounded-full border border-border px-2 py-0.5 hover:border-foreground">Sí</button>
+                <button type="button" onClick={() => update({ pieceMatch: { ...overrides.pieceMatch, [ad.id]: 'reject' } })} className="rounded-full border border-border px-2 py-0.5 hover:border-foreground">No</button>
               </div>
             )}
-            {ad.aiCopy && <span className="text-[10.5px] text-[#5B5FE8]">Copy IA</span>}
+            {ad.aiCopy && <span className="text-[10.5px] text-primary">Copy IA</span>}
             <Badge label={ad.badge} />
           </li>
         ))}
-        {!ads.length && <li className="px-4 py-6 text-center text-[12px] text-[#999]">No hay anuncios para crear con las filas incluidas.</li>}
+        {!ads.length && <li className="px-4 py-6 text-center text-[12px] text-muted-foreground">No hay anuncios para crear con las filas incluidas.</li>}
       </Section>
 
-      <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
+      <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1" role="status">
-          <p className={cn('text-[11.5px]', blockers.length ? 'text-[#c0432c]' : 'text-[#777]')}>
+          <p className={cn('text-[11.5px]', blockers.length ? 'text-destructive' : 'text-muted-foreground')}>
             {saveWarning ?? (unanswered.length ? `Respondé ${unanswered.length} pregunta${unanswered.length > 1 ? 's' : ''} arriba para seguir.` : blockers.length ? `${blockers.length} puntos por resolver antes de seguir:` : `${acting.length} anuncios listos. Nada se crea en Meta hasta que apruebes en el último paso.`)}
           </p>
           {!saveWarning && blockerSummary.length > 0 && (
-            <ul className="flex flex-col text-[11px] text-[#777]">
+            <ul className="flex flex-col text-[11px] text-muted-foreground">
               {blockerSummary.map(([message, count]) => <li key={message}>{`${count}× ${message}`}</li>)}
             </ul>
           )}
           {!saveWarning && problemRows.size > 0 && (
-            <button type="button" onClick={excludeProblemRows} className="self-start text-[11px] font-medium text-[#c0432c] underline underline-offset-2">
+            <button type="button" onClick={excludeProblemRows} className="self-start text-[11px] font-medium text-destructive underline underline-offset-2">
               {`Excluir las ${problemRows.size} filas con problemas y seguir con el resto`}
             </button>
           )}
         </div>
-        <Button size="sm" disabled={Boolean(blockers.length) || Boolean(unanswered.length) || !acting.length || saving} onClick={continueToConfigure} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+        <Button size="sm" disabled={Boolean(blockers.length) || Boolean(unanswered.length) || !acting.length || saving} onClick={continueToConfigure} className="h-9 rounded-full bg-foreground px-5 text-[11.5px] text-background hover:bg-foreground">
           {saving && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
           {'Configurar anuncios →'}
         </Button>

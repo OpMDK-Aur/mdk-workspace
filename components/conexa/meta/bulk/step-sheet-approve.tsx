@@ -99,43 +99,43 @@ export function StepSheetApprove() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-xl border border-[#ececea] bg-white px-4 py-3">
-        <p className="text-[11px] uppercase tracking-wide text-[#999]">Aprobar y crear</p>
-        <h2 className="text-[15px] font-semibold text-[#141414]">{`${items.length} anuncios · ${plan.summary.newCampaigns} campañas y ${plan.summary.newAdsets} conjuntos nuevos`}</h2>
-        <p className="text-pretty text-[12px] leading-relaxed text-[#777]">Todo se crea en pausa. Si una fila ya se creó antes, se reutiliza en vez de duplicarse, así que podés reintentar sin riesgo.</p>
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Aprobar y crear</p>
+        <h2 className="text-[15px] font-semibold text-foreground">{`${items.length} anuncios · ${plan.summary.newCampaigns} campañas y ${plan.summary.newAdsets} conjuntos nuevos`}</h2>
+        <p className="text-pretty text-[12px] leading-relaxed text-muted-foreground">Todo se crea en pausa. Si una fila ya se creó antes, se reutiliza en vez de duplicarse, así que podés reintentar sin riesgo.</p>
       </div>
 
-      <ul className="divide-y divide-[#f3f3f0] rounded-xl border border-[#ececea] bg-white">
+      <ul className="divide-y divide-border rounded-xl border border-border bg-card">
         {items.map(({ row, ad }) => {
           const result = results[row.id]
           const campaign = plan.campaigns.find((item) => item.key === ad.campaignKey)
           const adset = plan.adsets.find((item) => item.key === ad.adsetKey)
           return (
             <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-              {row.status === 'creating' ? <Loader2 className="size-3.5 animate-spin text-[#5B5FE8]" aria-label="Creando" /> : result?.ok ? <CheckCircle2 className="size-3.5 text-[#1e9e6b]" aria-label="Creado" /> : result ? <AlertTriangle className="size-3.5 text-[#c0432c]" aria-label="Error" /> : <span className="size-3.5 rounded-full border border-[#dcdcd8]" aria-hidden="true" />}
+              {row.status === 'creating' ? <Loader2 className="size-3.5 animate-spin text-primary" aria-label="Creando" /> : result?.ok ? <CheckCircle2 className="size-3.5 text-status-verde" aria-label="Creado" /> : result ? <AlertTriangle className="size-3.5 text-destructive" aria-label="Error" /> : <span className="size-3.5 rounded-full border border-border" aria-hidden="true" />}
               <div className="flex min-w-[220px] flex-1 flex-col">
-                <span className="truncate text-[12.5px] font-medium text-[#141414]">{row.adName || ad.name}</span>
-                <span className="truncate text-[11px] text-[#777]">{`${campaign?.mode === 'create' ? 'Nueva: ' : ''}${campaign?.name ?? ''} › ${adset?.mode === 'create' ? 'Nuevo: ' : ''}${adset?.name ?? ''}`}</span>
+                <span className="truncate text-[12.5px] font-medium text-foreground">{row.adName || ad.name}</span>
+                <span className="truncate text-[11px] text-muted-foreground">{`${campaign?.mode === 'create' ? 'Nueva: ' : ''}${campaign?.name ?? ''} › ${adset?.mode === 'create' ? 'Nuevo: ' : ''}${adset?.name ?? ''}`}</span>
               </div>
-              <span className={cn('text-[11px]', result ? (result.ok ? 'text-[#147a52]' : 'text-[#c0432c]') : 'text-[#999]')}>{result?.message ?? `Fila ${ad.rowNumber}`}</span>
+              <span className={cn('text-[11px]', result ? (result.ok ? 'text-[#147a52]' : 'text-destructive') : 'text-muted-foreground')}>{result?.message ?? `Fila ${ad.rowNumber}`}</span>
             </li>
           )
         })}
       </ul>
 
       {!finished && (
-        <p className="text-pretty text-[11.5px] leading-relaxed text-[#777]">
+        <p className="text-pretty text-[11.5px] leading-relaxed text-muted-foreground">
           No se escribe nada en el sheet. Al terminar, revisá cada anuncio en el Administrador de anuncios desde el listado de revisión.
         </p>
       )}
 
-      {stopNote && <p className="text-pretty rounded-lg border border-[#f0d9a8] bg-[#fdf6e7] px-3 py-2 text-[11.5px] leading-relaxed text-[#8a5f0d]" role="status">{stopNote}</p>}
+      {stopNote && <p className="text-pretty rounded-lg border border-[#f0d9a8] bg-[#fdf6e7] px-3 py-2 text-[11.5px] leading-relaxed text-primary" role="status">{stopNote}</p>}
 
       {doneCount > 0 && <SheetReviewList planId={context.planId} clientId={clientId} />}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#ececea] bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" disabled={running} onClick={() => setStep(2)} className="h-9 rounded-full border-[#dcdcd8] bg-white px-4 text-[11.5px] text-[#333] hover:bg-[#f5f5f3] hover:text-[#141414]">{'← Volver a configurar'}</Button>
+          <Button size="sm" variant="outline" disabled={running} onClick={() => setStep(2)} className="h-9 rounded-full border-border bg-card px-4 text-[11.5px] text-foreground hover:bg-muted hover:text-foreground">{'← Volver a configurar'}</Button>
           {running ? (
             <Button
               size="sm"
@@ -145,28 +145,28 @@ export function StepSheetApprove() {
                 cancelRef.current = true
                 setCancelling(true)
               }}
-              className="h-9 rounded-full border-[#e8c4bc] bg-white px-4 text-[11.5px] text-[#c0432c] hover:bg-[#fbefec] hover:text-[#a33722]"
+              className="h-9 rounded-full border-[#e8c4bc] bg-card px-4 text-[11.5px] text-destructive hover:bg-[#fbefec] hover:text-[#a33722]"
             >
               {cancelling ? 'Cancelando… termina el anuncio en curso' : 'Cancelar'}
             </Button>
           ) : (
             !finished && (
-              <Button size="sm" variant="ghost" onClick={exitSheetPlan} className="h-9 rounded-full px-4 text-[11.5px] text-[#777] hover:bg-[#f5f5f3] hover:text-[#141414]">
+              <Button size="sm" variant="ghost" onClick={exitSheetPlan} className="h-9 rounded-full px-4 text-[11.5px] text-muted-foreground hover:bg-muted hover:text-foreground">
                 Cancelar carga
               </Button>
             )
           )}
         </div>
         {finished ? (
-          <Button size="sm" onClick={exitSheetPlan} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">Terminar</Button>
+          <Button size="sm" onClick={exitSheetPlan} className="h-9 rounded-full bg-foreground px-5 text-[11.5px] text-background hover:bg-foreground">Terminar</Button>
         ) : (
           <div className="flex flex-wrap items-center gap-3">
-            {missingCopy.length > 0 && <span className="text-[11.5px] text-[#c0432c]">{`${missingCopy.length} anuncios sin texto o título`}</span>}
-            <label className="flex items-center gap-2 text-[11.5px] text-[#333]">
-              <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={running} className="accent-[#5B5FE8]" />
+            {missingCopy.length > 0 && <span className="text-[11.5px] text-destructive">{`${missingCopy.length} anuncios sin texto o título`}</span>}
+            <label className="flex items-center gap-2 text-[11.5px] text-foreground">
+              <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={running} className="accent-primary" />
               Revisé el plan y quiero crearlo en Meta
             </label>
-            <Button size="sm" disabled={!confirmed || running || !pending.length || missingCopy.length > 0 || unanswered.length > 0} onClick={run} className="h-9 rounded-full bg-[#141414] px-5 text-[11.5px] text-white hover:bg-[#333]">
+            <Button size="sm" disabled={!confirmed || running || !pending.length || missingCopy.length > 0 || unanswered.length > 0} onClick={run} className="h-9 rounded-full bg-foreground px-5 text-[11.5px] text-background hover:bg-foreground">
               {running && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
               {failedCount ? `Reintentar ${pending.length}` : `Crear ${pending.length} anuncios`}
             </Button>
