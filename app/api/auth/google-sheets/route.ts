@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('scope', scopes)
   authUrl.searchParams.set('access_type', 'offline')
-  authUrl.searchParams.set('prompt', 'consent')
+  authUrl.searchParams.set('prompt', 'consent select_account')
 
   const returnTo = safeReturnPath(new URL(request.url).searchParams.get('return'))
   if (returnTo) authUrl.searchParams.set('state', returnTo)

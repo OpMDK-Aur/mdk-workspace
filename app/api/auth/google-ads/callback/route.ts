@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { safeReturnPath } from '@/lib/google/return-path'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -10,12 +11,12 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[google-ads-callback] OAuth error:', error)
-    return NextResponse.redirect(new URL('/dashboard/platform?error=oauth_error', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/apps?error=oauth_error', appUrl))
   }
 
   if (!code) {
     console.error('[google-ads-callback] No code provided')
-    return NextResponse.redirect(new URL('/dashboard/platform?error=no_code', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/apps?error=no_code', appUrl))
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret) {
     console.error('[google-ads-callback] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET')
-    return NextResponse.redirect(new URL('/dashboard/platform?error=config_error', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/apps?error=config_error', appUrl))
   }
 
   try {
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok || tokens.error) {
       console.error('[google-ads-callback] Token exchange failed:', tokens)
-      return NextResponse.redirect(new URL('/dashboard/platform?error=token_error', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/apps?error=token_error', appUrl))
     }
 
     // Get user email
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
     
     if (!user) {
       console.error('[google-ads-callback] No authenticated user')
-      return NextResponse.redirect(new URL('/dashboard/platform?error=not_authenticated', appUrl))
+      return NextResponse.redirect(new URL('/dashboard/apps?error=not_authenticated', appUrl))
     }
     
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
@@ -93,12 +94,13 @@ export async function GET(request: NextRequest) {
 
     if (dbError) {
       console.error('[google-ads-callback] DB error:', dbError.message, dbError.details, dbError.hint)
-      return NextResponse.redirect(new URL(`/dashboard/platform?error=db_error&msg=${encodeURIComponent(dbError.message)}`, appUrl))
+      return NextResponse.redirect(new URL(`/dashboard/apps?error=db_error&msg=${encodeURIComponent(dbError.message)}`, appUrl))
     }
 
-    return NextResponse.redirect(new URL('/dashboard/platform?connected=google_ads', appUrl))
+    const returnTo = safeReturnPath(requestUrl.searchParams.get('state'))
+    return NextResponse.redirect(new URL(returnTo ?? '/dashboard/apps?connected=google_ads', appUrl))
   } catch (err) {
     console.error('[google-ads-callback] Error:', err)
-    return NextResponse.redirect(new URL('/dashboard/platform?error=unknown', appUrl))
+    return NextResponse.redirect(new URL('/dashboard/apps?error=unknown', appUrl))
   }
 }
