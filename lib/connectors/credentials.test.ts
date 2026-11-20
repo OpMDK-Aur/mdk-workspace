@@ -1,5 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { decryptCredentials, encryptCredentials, MissingEncryptionKeyError } from './secrets'
+import { randomBytes } from 'node:crypto'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// `server-only` falla fuera del bundler de Next; en los tests no aplica.
+vi.mock('server-only', () => ({}))
+
+import { decryptCredentials, encryptCredentials, InvalidEncryptionKeyError, MissingEncryptionKeyError, parseEncryptionKey } from './secrets'
 import { verifyConnectorCredentials } from './verify'
 import { buildConnectorStatuses, CREDENTIALS_UNVERIFIED_SCOPE } from './catalog'
 
@@ -8,22 +13,35 @@ afterEach(() => { process.env.CONNECTORS_ENCRYPTION_KEY = originalKey })
 
 describe('cifrado de credenciales', () => {
   it('cifra y descifra sin dejar el valor en texto plano', () => {
-    process.env.CONNECTORS_ENCRYPTION_KEY = 'clave-de-prueba'
+    process.env.CONNECTORS_ENCRYPTION_KEY = randomBytes(32).toString('base64')
     const stored = encryptCredentials({ token: 'secreto-123' })
     expect(stored).not.toContain('secreto-123')
     expect(decryptCredentials(stored)).toEqual({ token: 'secreto-123' })
   })
 
   it('no descifra con otra clave', () => {
-    process.env.CONNECTORS_ENCRYPTION_KEY = 'clave-a'
+    process.env.CONNECTORS_ENCRYPTION_KEY = randomBytes(32).toString('base64')
     const stored = encryptCredentials({ token: 'x' })
-    process.env.CONNECTORS_ENCRYPTION_KEY = 'clave-b'
+    process.env.CONNECTORS_ENCRYPTION_KEY = randomBytes(32).toString('hex')
     expect(() => decryptCredentials(stored)).toThrow()
   })
 
   it('exige la clave de cifrado', () => {
     delete process.env.CONNECTORS_ENCRYPTION_KEY
     expect(() => encryptCredentials({ token: 'x' })).toThrow(MissingEncryptionKeyError)
+  })
+
+  it('acepta 32 bytes en base64, base64url o hex', () => {
+    const key = randomBytes(32)
+    expect(parseEncryptionKey(key.toString('base64'))).toEqual(key)
+    expect(parseEncryptionKey(key.toString('base64url'))).toEqual(key)
+    expect(parseEncryptionKey(` ${key.toString('hex')}\n`)).toEqual(key)
+  })
+
+  it('rechaza contraseñas y claves de otro largo', () => {
+    for (const value of ['clave-de-prueba', randomBytes(16).toString('base64'), randomBytes(48).toString('base64'), randomBytes(31).toString('hex')]) {
+      expect(() => parseEncryptionKey(value)).toThrow(InvalidEncryptionKeyError)
+    }
   })
 })
 

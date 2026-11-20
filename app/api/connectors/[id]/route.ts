@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { CONNECTOR_BY_ID, CREDENTIALS_UNVERIFIED_SCOPE, CREDENTIALS_VERIFIED_SCOPE, isConnectorId } from '@/lib/connectors/catalog'
-import { encryptCredentials, MissingEncryptionKeyError } from '@/lib/connectors/secrets'
+import { encryptCredentials, InvalidEncryptionKeyError, MissingEncryptionKeyError } from '@/lib/connectors/secrets'
 import { verifyConnectorCredentials } from '@/lib/connectors/verify'
 
 async function sessionUser() {
@@ -37,6 +37,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     encrypted = encryptCredentials(result.values)
   } catch (error) {
     if (error instanceof MissingEncryptionKeyError) return NextResponse.json({ error: 'Las credenciales son válidas, pero falta configurar el cifrado en el servidor (CONNECTORS_ENCRYPTION_KEY).' }, { status: 503 })
+    if (error instanceof InvalidEncryptionKeyError) {
+      console.error('[connectors]', error.message)
+      return NextResponse.json({ error: 'Las credenciales son válidas, pero la clave de cifrado del servidor (CONNECTORS_ENCRYPTION_KEY) no tiene el formato correcto.' }, { status: 503 })
+    }
     throw error
   }
 

@@ -1,3 +1,4 @@
+import 'server-only'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { CONNECTOR_BY_ID, type ConnectorId } from './catalog'
 import { decryptCredentials } from './secrets'

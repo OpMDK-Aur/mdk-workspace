@@ -1,6 +1,10 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import 'server-only'
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 const PREFIX = 'enc:v1:'
+const KEY_BYTES = 32
+
+export const ENCRYPTION_KEY_FORMAT_HELP = 'CONNECTORS_ENCRYPTION_KEY tiene que ser una clave aleatoria de 32 bytes en base64 (44 caracteres, por ejemplo la salida de `openssl rand -base64 32`) o en hex (64 caracteres, `openssl rand -hex 32`).'
 
 export class MissingEncryptionKeyError extends Error {
   constructor() {
@@ -8,10 +12,30 @@ export class MissingEncryptionKeyError extends Error {
   }
 }
 
-function encryptionKey() {
-  const secret = process.env.CONNECTORS_ENCRYPTION_KEY?.trim()
+export class InvalidEncryptionKeyError extends Error {
+  constructor() {
+    super(ENCRYPTION_KEY_FORMAT_HELP)
+  }
+}
+
+/**
+ * Lee la clave AES-256 desde CONNECTORS_ENCRYPTION_KEY. Solo acepta 32 bytes
+ * aleatorios codificados en hex o base64 (también base64url), para que una
+ * contraseña corta o adivinable no se pueda usar como clave.
+ */
+export function parseEncryptionKey(raw: string | undefined): Buffer {
+  const secret = raw?.trim()
   if (!secret) throw new MissingEncryptionKeyError()
-  return createHash('sha256').update(secret).digest()
+  if (/^[0-9a-fA-F]{64}$/.test(secret)) return Buffer.from(secret, 'hex')
+  if (/^[A-Za-z0-9+/_-]{43}={0,1}$/.test(secret)) {
+    const key = Buffer.from(secret.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+    if (key.length === KEY_BYTES) return key
+  }
+  throw new InvalidEncryptionKeyError()
+}
+
+function encryptionKey() {
+  return parseEncryptionKey(process.env.CONNECTORS_ENCRYPTION_KEY)
 }
 
 /** Cifra las credenciales con AES-256-GCM antes de guardarlas en `plataformas_tokens.access_token`. */
