@@ -54,12 +54,10 @@ import {
   Smile,
   FileText,
   Megaphone,
-  AppWindow,
-  Database,
-  Webhook,
   ListChecks,
   Gem,
 } from 'lucide-react'
+import { LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
 import { UserSettingsDialog } from './user-settings-dialog'
 import { NotificationsPanel } from './notifications-panel'
 
@@ -121,10 +119,8 @@ const adminItems: NavItem[] = [
 
 // Integraciones section (formerly Platforms)
 const platformItems: NavItem[] = [
-  { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: Megaphone },
-  { id: 'apps', name: 'Apps', href: '/dashboard/apps', icon: AppWindow },
-  { id: 'crm', name: 'CRM', href: '/dashboard/crm', icon: Database, badge: 'proximamente' },
-  { id: 'webhooks', name: 'Webhooks', href: '/dashboard/webhooks', icon: Webhook },
+  { id: 'apps', name: 'Conectores', href: '/dashboard/apps', icon: LinkedServicesIcon },
+  { id: 'ad-accounts', name: 'Cuentas publicitarias', href: '/dashboard/platform', icon: ManageAccountsIcon },
 ]
 
 export function Sidebar({
@@ -453,12 +449,10 @@ export function Sidebar({
                 </div>
               )}
 
-              {/* Integraciones section */}
-              {unitAccess.mdk && (
-                <div className="space-y-1 pt-2 border-t border-border">
-                  {platformItems.map(item => renderNavItem(item, true))}
-                </div>
-              )}
+              {/* Integraciones section: visible para todos los usuarios */}
+              <div className="space-y-1 pt-2 border-t border-border">
+                {platformItems.map(item => renderNavItem(item, true))}
+              </div>
             </div>
           </ScrollArea>
 
@@ -696,8 +690,8 @@ export function Sidebar({
                   </div>
                 )}
 
-                {/* Integraciones section */}
-                {unitAccess.mdk && (
+                {/* Integraciones section: visible para todos los usuarios */}
+                {(
                   <div className="space-y-1">
                     <Collapsible open={platformsOpen} onOpenChange={setPlatformsOpen}>
                       <div className="flex items-center">
@@ -707,7 +701,7 @@ export function Sidebar({
                             platformsOpen ? 'text-foreground' : 'text-foreground hover:bg-muted'
                           )}
                         >
-                          <Database className="h-4 w-4" />
+                          <SdkIcon className="h-4 w-4" />
                           <span>Integraciones</span>
                         </div>
                         <CollapsibleTrigger asChild>
