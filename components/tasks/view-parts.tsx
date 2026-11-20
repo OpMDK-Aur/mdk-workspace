@@ -374,3 +374,46 @@ export function CardSkeleton() {
     </div>
   )
 }
+
+export function formatMeetingRange(meeting: NonNullable<Task['meeting']>) {
+  if (!meeting.start) return null
+  const start = format(meeting.start, 'HH:mm')
+  return meeting.end ? `${start}–${format(meeting.end, 'HH:mm')}` : start
+}
+
+/** Distingue las tareas que son reuniones de Google Calendar. */
+export function MeetingChip({ meeting, className }: { meeting: NonNullable<Task['meeting']>; className?: string }) {
+  const range = formatMeetingRange(meeting)
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[10.5px] font-semibold leading-4',
+        'bg-[var(--tasks-meet-bg)] text-[var(--tasks-meet-fg)]',
+        className,
+      )}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <rect x="2" y="3" width="12" height="11" rx="2" />
+        <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" strokeLinecap="round" />
+      </svg>
+      Reunión{range ? ` · ${range}` : ''}
+    </span>
+  )
+}
+
+export function MeetJoinLink({ meeting }: { meeting: NonNullable<Task['meeting']> }) {
+  if (!meeting.meetUrl) return null
+  return (
+    <a
+      href={meeting.meetUrl}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      className="inline-flex shrink-0 items-center rounded-full border border-[var(--tasks-meet-border)] px-2 py-0.5 text-[10.5px] font-semibold leading-4 text-[var(--tasks-meet-fg)] hover:bg-[var(--tasks-meet-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tasks-meet-fg)]/50"
+    >
+      Unirse
+      <span className="sr-only"> a la videollamada (se abre en otra pestaña)</span>
+    </a>
+  )
+}

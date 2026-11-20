@@ -1,6 +1,7 @@
 // Tools que el supervisor siempre expone, aunque no tengan fila habilitada en ai_agent_tools.
 export const SUPERVISOR_REQUIRED_TOOL_KEYS = [
   'get_account_context',
+  'get_meeting_transcripts',
   'get_google_metrics',
   'get_meta_metrics',
   'get_industry_benchmark',

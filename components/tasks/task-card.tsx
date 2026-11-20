@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { CircleCheck, Paperclip } from 'lucide-react'
 import {
   ClientSquares,
+  MeetJoinLink,
+  MeetingChip,
   PeopleStack,
   PriorityPill,
   TypeChip,
@@ -72,14 +74,22 @@ export function TaskCard({ task, onClick, subtasks }: TaskCardProps) {
         'group flex w-full min-w-0 cursor-pointer flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left transition-colors',
         'border-[var(--tasks-border)] bg-[var(--tasks-card)] hover:border-[var(--tasks-border-hover)]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tasks-brand)]/50',
+        task.meeting && 'border-[var(--tasks-meet-border)]',
         isResuelto && 'opacity-[.62]',
       )}
     >
       <ClientSquares clients={clients} conexa={Boolean(task.isSystemTask)} />
 
-      <div className="flex min-w-0">
-        <TypeChip label={getTypeLabel(task)} />
-      </div>
+      {task.meeting ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          <MeetingChip meeting={task.meeting} />
+          <MeetJoinLink meeting={task.meeting} />
+        </div>
+      ) : (
+        <div className="flex min-w-0">
+          <TypeChip label={getTypeLabel(task)} />
+        </div>
+      )}
 
       {isEditingTitle ? (
         <Input
