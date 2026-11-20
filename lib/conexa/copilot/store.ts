@@ -106,13 +106,15 @@ export async function listClientContext(supabase: SupabaseClient, clientId: stri
 }
 
 export async function getCopilotContext(supabase: SupabaseClient, clientId: string, clientName: string, platforms: CopilotContext['platforms']) {
-  const [{ data: profile }, { data: tasks }, { data: comments }, notes] = await Promise.all([
+  const [{ data: profile }, { data: tasks }, { data: comments }, notes, { data: transcripts }] = await Promise.all([
     supabase.from('ai_client_profile').select('industry, commercial_objective, product_type, primary_conversion_type, target_monthly_sales, target_cpl, additional_context').eq('client_id', clientId).maybeSingle(),
     supabase.from('tareas').select('id, titulo, descripcion, estado, prioridad, fecha_vencimiento').or(`cliente_id.eq.${clientId},cliente_ids.cs.{${clientId}}`).order('updated_at', { ascending: false }).limit(40),
     supabase.from('comentarios_clientes').select('id, contenido, autor, creado_en').eq('cliente_id', clientId).order('creado_en', { ascending: false }).limit(40),
     listClientContext(supabase, clientId),
+    // Solo se lee desde el servidor; el acceso al cliente ya se validó con assertClientAccess.
+    createAdminClient().from('transcripciones_clientes').select('id, titulo, fecha_reunion, contenido').eq('cliente_id', clientId).order('fecha_reunion', { ascending: false, nullsFirst: false }).limit(5),
   ])
-  return { clientName, profile: profile as Record<string, unknown> | null, tasks: (tasks ?? []) as Array<Record<string, unknown>>, comments: (comments ?? []) as Array<Record<string, unknown>>, notes, platforms }
+  return { clientName, profile: profile as Record<string, unknown> | null, tasks: (tasks ?? []) as Array<Record<string, unknown>>, comments: (comments ?? []) as Array<Record<string, unknown>>, notes, transcripts: (transcripts ?? []) as CopilotContext['transcripts'], platforms }
 }
 
 const UNIQUE_VIOLATION = '23505'

@@ -220,6 +220,11 @@ export async function getUserGoogleCalendarAccessToken(userId: string): Promise<
   return getUserToken('google_calendar', userId)
 }
 
+/** Token de Google Docs/Drive que conectó esa persona en Conectores (solo lectura). */
+export async function getUserGoogleDocsAccessToken(userId: string): Promise<string | null> {
+  return getUserToken('google_docs', userId)
+}
+
 export async function getGoogleCalendarAccessToken(options: { userId?: string } = {}): Promise<TokenResult> {
   // Con `userId` se usa primero el calendario que conectó esa persona.
   if (options.userId) {
