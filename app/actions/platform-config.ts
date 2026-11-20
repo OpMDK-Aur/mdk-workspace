@@ -55,38 +55,77 @@ export async function updateClientPlatformIds(
   if (error) return { error: error.message }
   if (!updatedClient) return { error: 'No se actualizó el cliente: no se encontró el ID del cliente o la fila no es accesible.' }
 
-  const accountRows = [
-    ...(metaAdsAccountId ? metaAdsAccountId.split(',').map((id) => ({ plataforma: 'meta', id_cuenta: id.trim() })) : []),
-    ...(googleAdsCustomerId ? googleAdsCustomerId.split(',').map((id) => ({ plataforma: 'google', id_cuenta: id.trim() })) : []),
-  ].filter((account) => account.id_cuenta)
+  const accountKey = (account: { plataforma: string; id_cuenta: string }) => `${account.plataforma}:${account.id_cuenta}`
+  const desiredByKey = new Map(
+    [
+      ...splitAccountIds(metaAdsAccountId).map((id) => ({ plataforma: 'meta', id_cuenta: id })),
+      ...splitAccountIds(googleAdsCustomerId).map((id) => ({ plataforma: 'google', id_cuenta: id })),
+    ].map((account) => [accountKey(account), account]),
+  )
+  // Solo se sincronizan las plataformas que vinieron en esta llamada (undefined = no tocar).
+  const syncedPlatforms = [
+    ...(metaAdsAccountId !== undefined ? ['meta'] : []),
+    ...(googleAdsCustomerId !== undefined ? ['google'] : []),
+  ]
 
-  const { data: existingAccounts, error: existingAccountsError } = await admin
-    .from('cuentas_publicitarias')
-    .select('id, plataforma')
-    .eq('cliente_id', clientId)
-  if (existingAccountsError) return { error: existingAccountsError.message }
+  let warning: string | undefined
+  if (syncedPlatforms.length) {
+    const { data: existingAccounts, error: existingAccountsError } = await admin
+      .from('cuentas_publicitarias')
+      .select('id, plataforma, id_cuenta')
+      .eq('cliente_id', clientId)
+      .in('plataforma', syncedPlatforms)
+    if (existingAccountsError) return { error: existingAccountsError.message }
 
-  const staleIds = (existingAccounts ?? [])
-    .filter((account) => ['meta', 'google'].includes(account.plataforma))
-    .map((account) => account.id)
-  if (staleIds.length) {
-    const { error: deleteError } = await admin.from('cuentas_publicitarias').delete().in('id', staleIds)
-    if (deleteError) return { error: deleteError.message }
-  }
+    const existingKeys = new Set((existingAccounts ?? []).map((account) => accountKey(account)))
+    const staleIds = (existingAccounts ?? []).filter((account) => !desiredByKey.has(accountKey(account))).map((account) => account.id)
+    if (staleIds.length) {
+      const { error: deleteError } = await admin.from('cuentas_publicitarias').delete().in('id', staleIds)
+      if (deleteError) return { error: deleteError.message }
+    }
 
-  if (accountRows.length) {
-    // La base existente no siempre tiene una restricción UNIQUE sobre
-    // cliente_id/plataforma/id_cuenta, por lo que no podemos depender de
-    // ON CONFLICT. Los registros anteriores ya fueron sincronizados arriba.
-    const { error: insertError } = await admin.from('cuentas_publicitarias').insert(
-      accountRows.map((account) => ({ cliente_id: clientId, plataforma: account.plataforma, id_cuenta: account.id_cuenta, nombre_cuenta: account.id_cuenta, activo: true })),
-    )
-    if (insertError) return { error: insertError.message }
+    const missing = [...desiredByKey.values()].filter((account) => !existingKeys.has(accountKey(account)))
+    if (missing.length) {
+      // `cuentas_publicitarias` es única por plataforma + id_cuenta en toda la base:
+      // una cuenta ya vinculada a otro cliente no se puede insertar acá.
+      const { data: takenRows, error: takenError } = await admin
+        .from('cuentas_publicitarias')
+        .select('plataforma, id_cuenta, cliente_id')
+        .in('id_cuenta', missing.map((account) => account.id_cuenta))
+        .neq('cliente_id', clientId)
+      if (takenError) return { error: takenError.message }
+      const taken = (takenRows ?? []).filter((row) => desiredByKey.has(accountKey(row)))
+      const takenKeys = new Set(taken.map((row) => accountKey(row)))
+      const toInsert = missing.filter((account) => !takenKeys.has(accountKey(account)))
+
+      if (toInsert.length) {
+        const { error: insertError } = await admin.from('cuentas_publicitarias').insert(
+          toInsert.map((account) => ({ cliente_id: clientId, plataforma: account.plataforma, id_cuenta: account.id_cuenta, nombre_cuenta: account.id_cuenta, activo: true })),
+        )
+        if (insertError) return { error: insertError.message }
+      }
+
+      if (taken.length) {
+        const ownerIds = [...new Set(taken.map((row) => row.cliente_id).filter(Boolean))]
+        const { data: owners } = ownerIds.length
+          ? await admin.from('clientes').select('id, nombre_del_negocio').in('id', ownerIds)
+          : { data: [] as Array<{ id: string; nombre_del_negocio: string | null }> }
+        const ownerName = new Map((owners ?? []).map((owner) => [owner.id, owner.nombre_del_negocio ?? 'otro cliente']))
+        const detail = taken
+          .map((row) => `${row.plataforma === 'meta' ? 'Meta' : 'Google Ads'} ${row.id_cuenta} (ya está en ${ownerName.get(row.cliente_id) ?? 'otro cliente'})`)
+          .join(', ')
+        warning = `Se guardó el resto de la configuración, pero estas cuentas no se vincularon porque ya pertenecen a otro cliente: ${detail}.`
+      }
+    }
   }
 
   revalidatePath('/dashboard')
   revalidatePath('/dashboard/clients/config')
-  return { success: true }
+  return { success: true, warning }
+}
+
+function splitAccountIds(value: string | null | undefined) {
+  return [...new Set((value ?? '').split(',').map((id) => id.trim()).filter(Boolean))]
 }
 
 export async function updateClientMetaPage(clientId: string, pageId: string | null) {
