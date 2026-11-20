@@ -4,7 +4,33 @@ export const AR_TIME_ZONE = 'America/Argentina/Buenos_Aires'
 
 export type InicioTask = { id: string; titulo: string; estado: string; clienteNombre: string | null; vence: string | null; reunionInicio: string | null; reunionFin: string | null; meetUrl: string | null; esReunion: boolean }
 export type InicioAlert = { id: string; clienteId: string; clienteNombre: string; subtipo: string; plataforma: string | null; desde: string | null; mensaje: string | null }
-export type InicioData = { nombre: string; tareas: InicioTask[]; vencidas: number; alertas: InicioAlert[]; segundosHoy: number; timerCorriendo: boolean }
+export type ConnectionKey = 'meta' | 'google' | 'analytics' | 'tag_manager'
+export type InicioConnection = { clienteId: string; clienteNombre: string; conectadas: Record<ConnectionKey, boolean> }
+export type InicioData = { nombre: string; tareas: InicioTask[]; vencidas: number; alertas: InicioAlert[]; conexiones: InicioConnection[]; segundosHoy: number; timerCorriendo: boolean }
+
+export const CONNECTION_LABELS: Record<ConnectionKey, string> = { meta: 'Meta Ads', google: 'Google Ads', analytics: 'GA4', tag_manager: 'GTM' }
+/** Meta y Google son las cuentas publicitarias; GA4 y GTM se muestran pero no cuentan como faltantes. */
+export const REQUIRED_CONNECTIONS: ConnectionKey[] = ['meta', 'google']
+
+type ClientConnectionRow = {
+  meta_ads_account_id?: string | null; meta_ads_account_ids?: string[] | null; google_ads_customer_id?: string | null; google_ads_customer_ids?: string[] | null
+  analytics_property_id?: string | null; tag_manager_container_id?: string | null; cuentas_publicitarias?: Array<{ plataforma: string | null; activo?: boolean | null }> | null
+}
+
+export function connectionsOf(row: ClientConnectionRow): Record<ConnectionKey, boolean> {
+  const linked = (platform: string) => Boolean(row.cuentas_publicitarias?.some((account) => account.plataforma === platform && account.activo !== false))
+  return {
+    meta: Boolean(row.meta_ads_account_id || row.meta_ads_account_ids?.length || linked('meta')),
+    google: Boolean(row.google_ads_customer_id || row.google_ads_customer_ids?.length || linked('google')),
+    analytics: Boolean(row.analytics_property_id),
+    tag_manager: Boolean(row.tag_manager_container_id),
+  }
+}
+
+export const missingConnections = (connection: InicioConnection) => REQUIRED_CONNECTIONS.filter((key) => !connection.conectadas[key])
+
+/** Primero los clientes a los que les falta conectar más cuentas publicitarias. */
+export const sortConnections = (items: InicioConnection[]) => [...items].sort((a, b) => missingConnections(b).length - missingConnections(a).length || a.clienteNombre.localeCompare(b.clienteNombre, 'es'))
 
 /** Inicio y fin del día de hoy en Argentina, como ISO con offset. */
 export function todayRange(now = new Date()) {

@@ -1,14 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import useSWR from 'swr'
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Quote, Timer, Video } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Plug, Quote, Timer, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
-import { AR_TIME_ZONE, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseOfTheDay, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
+import { AR_TIME_ZONE, CONNECTION_LABELS, missingConnections, type ConnectionKey, type InicioConnection, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseOfTheDay, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
 
 const fetchInicio = async (url: string) => {
   const response = await dashboardApiFetch(url)
@@ -52,6 +53,7 @@ export function InicioView({ onOpenClient }: { onOpenClient: (clientId: string) 
           <TasksSection loading={isLoading && !data} tasks={data?.tareas ?? []} overdue={data?.vencidas ?? 0} />
           <AlertsSection loading={isLoading && !data} alerts={data?.alertas ?? []} onOpenClient={onOpenClient} />
         </div>
+        <ConnectionsSection loading={isLoading && !data} connections={data?.conexiones ?? []} />
         </>}
       </div>
     </div>
@@ -156,6 +158,57 @@ function AlertsSection({ loading, alerts, onOpenClient }: { loading: boolean; al
             </div>
           ))}
         </div>
+      )}
+    </SectionCard>
+  )
+}
+
+const CONNECTION_ORDER: ConnectionKey[] = ['meta', 'google', 'analytics', 'tag_manager']
+
+function ConnectionsSection({ loading, connections }: { loading: boolean; connections: InicioConnection[] }) {
+  const [showComplete, setShowComplete] = useState(false)
+  const pending = connections.filter((item) => missingConnections(item).length > 0)
+  const complete = connections.filter((item) => missingConnections(item).length === 0)
+  const visible = showComplete ? [...pending, ...complete] : pending
+  return (
+    <SectionCard
+      title="Conexión de cuentas publicitarias"
+      icon={<Plug className="size-4" aria-hidden="true" />}
+      action={!loading && connections.length > 0 ? <span className="text-xs text-muted-foreground">{`${complete.length} de ${connections.length} con Meta y Google conectados`}</span> : undefined}
+    >
+      {loading ? <ListSkeleton /> : connections.length === 0 ? (
+        <p className="px-3 py-6 text-center text-sm leading-relaxed text-muted-foreground">No tenés clientes asignados como project o account manager.</p>
+      ) : (
+        <>
+          {pending.length === 0 && !showComplete && <p className="px-3 py-4 text-center text-sm leading-relaxed text-muted-foreground">Todos tus clientes tienen Meta Ads y Google Ads conectados.</p>}
+          {visible.length > 0 && (
+            <ul className="flex flex-col">
+              {visible.map((item) => {
+                const missing = missingConnections(item)
+                return (
+                  <li key={item.clienteId} className="flex flex-col gap-2 rounded-lg px-3 py-2.5 hover:bg-muted sm:flex-row sm:items-center">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{item.clienteNombre}</span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {CONNECTION_ORDER.map((key) => (
+                        <span key={key} className={cn('flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium', item.conectadas[key] ? 'border-border text-muted-foreground' : missing.includes(key) ? 'border-primary/40 bg-primary/10 text-primary' : 'border-dashed border-border text-muted-foreground/70')}>
+                          <span className={cn('size-1.5 rounded-full', item.conectadas[key] ? 'bg-status-verde' : missing.includes(key) ? 'bg-primary' : 'bg-muted-foreground/40')} aria-hidden="true" />
+                          {CONNECTION_LABELS[key]}
+                          <span className="sr-only">{item.conectadas[key] ? 'conectada' : 'sin conectar'}</span>
+                        </span>
+                      ))}
+                    </span>
+                    {missing.length > 0 && <Button asChild size="sm" variant="outline" className="h-7 shrink-0 px-2.5 text-xs"><Link href="/dashboard/platform">Conectar</Link></Button>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {complete.length > 0 && (
+            <button type="button" onClick={() => setShowComplete((value) => !value)} className="mx-2 mb-1 mt-1 rounded-lg px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+              {showComplete ? 'Ocultar los clientes completos' : `Ver también los ${complete.length} clientes con todo conectado`}
+            </button>
+          )}
+        </>
       )}
     </SectionCard>
   )

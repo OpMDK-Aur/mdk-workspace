@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireDashboardUser } from '@/lib/conexa/dashboard-api'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
-import { todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
+import { connectionsOf, sortConnections, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
 
 export const runtime = 'nodejs'
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     admin.from('tareas').select('id, titulo, estado, fecha_vencimiento, reunion_inicio, reunion_fin, google_meet_url, google_calendar_event_id, cliente:cliente_id(nombre_del_negocio)')
       .or(assigned).gte('reunion_inicio', start).lt('reunion_inicio', end).order('reunion_inicio').limit(MAX_TASKS),
     admin.from('tareas').select('id', { count: 'exact', head: true }).or(assigned).not('estado', 'in', DONE_STATES).lt('fecha_vencimiento', start),
-    admin.from('clientes').select('id, nombre_del_negocio').or(`project_manager_id.eq.${me},account_manager_id.eq.${me}`).limit(300),
+    admin.from('clientes').select('id, nombre_del_negocio, activo, meta_ads_account_id, meta_ads_account_ids, google_ads_customer_id, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, cuentas_publicitarias(plataforma, activo)').or(`project_manager_id.eq.${me},account_manager_id.eq.${me}`).limit(300),
     admin.from('entradas_de_tiempo').select('iniciado_en, finalizado_en, duracion_seg').eq('colaborador_id', me).gte('iniciado_en', start).lt('iniciado_en', end).limit(200),
   ])
 
@@ -57,6 +57,7 @@ export async function GET(request: Request) {
   const tareas = [...byId.values()].sort((a, b) => (a.reunionInicio ?? a.vence ?? '').localeCompare(b.reunionInicio ?? b.vence ?? ''))
 
   const clientNames = new Map((myClients.data ?? []).map((row) => [String(row.id), String(row.nombre_del_negocio ?? 'Cliente')]))
+  const conexiones = sortConnections((myClients.data ?? []).filter((row) => row.activo !== false).map((row) => ({ clienteId: String(row.id), clienteNombre: String(row.nombre_del_negocio ?? 'Cliente'), conectadas: connectionsOf(row) })))
   let alertas: InicioAlert[] = []
   if (clientNames.size) {
     const { data: fired } = await admin.from('controller_alertas').select('id, cliente_id, subtipo, plataforma, disparada_desde')
@@ -86,6 +87,6 @@ export async function GET(request: Request) {
     else { timerCorriendo = true; segundosHoy += Math.max(0, (now - new Date(String(entry.iniciado_en)).getTime()) / 1000) }
   }
 
-  const body: InicioData = { nombre: String(colaborador?.nombre ?? user.user_metadata?.nombre ?? ''), tareas, vencidas: overdue.count ?? 0, alertas, segundosHoy: Math.round(segundosHoy), timerCorriendo }
+  const body: InicioData = { nombre: String(colaborador?.nombre ?? user.user_metadata?.nombre ?? ''), tareas, vencidas: overdue.count ?? 0, alertas, conexiones, segundosHoy: Math.round(segundosHoy), timerCorriendo }
   return NextResponse.json(body)
 }
