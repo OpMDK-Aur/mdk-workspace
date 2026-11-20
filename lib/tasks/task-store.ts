@@ -35,6 +35,11 @@ interface TareaDB {
   created_at: string
   updated_at: string
   contexto_chat: string | null
+  google_calendar_event_id?: string | null
+  google_calendar_url?: string | null
+  google_meet_url?: string | null
+  reunion_inicio?: string | null
+  reunion_fin?: string | null
   // Joined relations
   clientes?: { id: string; nombre_del_negocio: string } | null
   colaboradores?: { id: string; nombre: string; apellido?: string | null; avatar_url?: string | null } | null
@@ -233,6 +238,15 @@ function mapTareaToTask(
     files: [],
     quotation: null,
     hitoPoe: tarea.hito_poe || null,
+    meeting: tarea.google_calendar_event_id
+      ? {
+          eventId: tarea.google_calendar_event_id,
+          start: tarea.reunion_inicio ? parseISO(tarea.reunion_inicio) : null,
+          end: tarea.reunion_fin ? parseISO(tarea.reunion_fin) : null,
+          calendarUrl: tarea.google_calendar_url ?? null,
+          meetUrl: tarea.google_meet_url ?? null,
+        }
+      : null,
     createdById: tarea.creado_por || null,
     createdByName: (() => {
       if (tarea.creado_por && colaboradoresMap) {
@@ -1728,9 +1742,16 @@ addTask: async (taskData) => {
       }
     }
     
-    const { error } = await supabase
-    .from('tareas')
-    .insert({
+    const meetingColumns = taskData.meeting
+      ? {
+          google_calendar_event_id: taskData.meeting.eventId,
+          google_calendar_url: taskData.meeting.calendarUrl,
+          google_meet_url: taskData.meeting.meetUrl,
+          reunion_inicio: taskData.meeting.start?.toISOString() ?? null,
+          reunion_fin: taskData.meeting.end?.toISOString() ?? null,
+        }
+      : null
+    const baseRow = {
     id,
     titulo: taskData.title,
     descripcion: taskData.description,
@@ -1745,7 +1766,12 @@ addTask: async (taskData) => {
     fecha_vencimiento: dueDate,
     hito_poe: taskData.hitoPoe || null,
     creado_por: resolvedCreatedById,
-    })
+    }
+    let { error } = await supabase.from('tareas').insert(meetingColumns ? { ...baseRow, ...meetingColumns } : baseRow)
+    // PGRST204: la base todavía no tiene las columnas de reuniones; se guarda la tarea sin el vínculo.
+    if (error?.code === 'PGRST204' && meetingColumns) {
+      ;({ error } = await supabase.from('tareas').insert(baseRow))
+    }
     
     if (error) {
       console.error('Error creating task:', error)

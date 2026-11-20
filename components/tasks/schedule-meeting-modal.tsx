@@ -212,6 +212,10 @@ export function ScheduleMeetingModal({ open, onOpenChange }: ScheduleMeetingModa
         priority,
         type: reunionTipo?.id || '',
         dueDate: startDateTime,
+        startDate: startDateTime,
+        meeting: result.event?.id
+          ? { eventId: result.event.id, start: startDateTime, end: endDateTime, calendarUrl: result.event.htmlLink ?? null, meetUrl: result.event.hangoutLink ?? null }
+          : null,
         customFields: {},
         createdById: submittingUser.id,
         createdByName: fullName,
