@@ -5,6 +5,8 @@ import { AlertTriangle, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { formatDate, isInternalAccount, type AureliaClient } from '@/lib/aurelia/metrics'
@@ -24,6 +26,7 @@ function daysLabel(days: number | null) {
 export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { clients: AureliaClient[]; onboarding: AureliaOnboardingData; onOpenClient: (client: AureliaClient) => void }) {
   const [stageFilter, setStageFilter] = useState<string>(ALL)
   const [search, setSearch] = useState('')
+  const [hideUnmatched, setHideUnmatched] = useState(false)
   const deferredSearch = useDeferredValue(search)
 
   const activeClients = useMemo(() => clients.filter((client) => client.status === 'active' && !isInternalAccount(client)), [clients])
@@ -32,17 +35,19 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
     if (!onboarding.available) return null
     const { matches } = matchOnboarding(activeClients, onboarding)
     const now = Date.now()
-    const rows: Row[] = activeClients.map((client) => {
-      const match = matches.get(client.id) ?? null
-      return { client, match, daysInStage: match ? daysSince(match.stageAt ?? match.updatedAt, now) : null }
-    })
+    const rows: Row[] = activeClients
+      .map((client) => {
+        const match = matches.get(client.id) ?? null
+        return { client, match, daysInStage: match ? daysSince(match.stageAt ?? match.updatedAt, now) : null }
+      })
+      .filter((row) => !hideUnmatched || row.match)
     const counts = new Map<string, number>()
     for (const row of rows) {
       const key = row.match?.stage?.id ?? NO_OPPORTUNITY
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return { rows, counts, stalled: rows.filter((row) => (row.daysInStage ?? 0) >= STALLED_AFTER_DAYS).length }
-  }, [activeClients, onboarding])
+  }, [activeClients, onboarding, hideUnmatched])
 
   const filteredRows = useMemo(() => {
     if (!view) return []
@@ -69,7 +74,7 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
   const total = view.rows.length
   const segments = [
     ...onboarding.stages.map((stage) => ({ id: stage.id, name: stage.name, count: view.counts.get(stage.id) ?? 0 })),
-    { id: NO_OPPORTUNITY, name: 'Sin oportunidad', count: view.counts.get(NO_OPPORTUNITY) ?? 0 },
+    ...(hideUnmatched ? [] : [{ id: NO_OPPORTUNITY, name: 'Sin oportunidad', count: view.counts.get(NO_OPPORTUNITY) ?? 0 }]),
   ]
   const lastStageIndex = onboarding.stages.length - 1
 
@@ -104,9 +109,22 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
           </div>
         </div>
 
-        <div className="relative max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente u oportunidad" className="pl-9" aria-label="Buscar cliente u oportunidad" />
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente u oportunidad" className="pl-9" aria-label="Buscar cliente u oportunidad" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="onboarding-hide-unmatched"
+              checked={hideUnmatched}
+              onCheckedChange={(checked) => {
+                setHideUnmatched(checked)
+                if (checked && stageFilter === NO_OPPORTUNITY) setStageFilter(ALL)
+              }}
+            />
+            <Label htmlFor="onboarding-hide-unmatched" className="text-xs">Ocultar sin oportunidad</Label>
+          </div>
         </div>
 
         <div className="overflow-x-auto rounded-lg border">
