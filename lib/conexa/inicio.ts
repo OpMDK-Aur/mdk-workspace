@@ -71,30 +71,37 @@ export function formatWorked(seconds: number) {
 
 export const firstName = (name: string | null | undefined) => (name ?? '').trim().split(/\s+/)[0] || ''
 
-const PHRASES = [
-  'Lo urgente rara vez es importante. Lo importante rara vez es urgente.',
-  'Una campaña sin conversiones es solo una opinión con presupuesto.',
-  'Tomate un vaso de agua. El algoritmo de Meta puede esperar dos minutos.',
-  'Hecho es mejor que perfecto. Y publicado es mejor que hecho.',
-  'Si el CPL sube, respirá. Si baja, también respirá, pero sonriendo.',
-  'Nadie se acuerda del día que todo salió bien, pero vos sí vas a saber por qué.',
-  'Pará cinco minutos y mirá por la ventana. Los mejores insights no aparecen en el Ads Manager.',
-  'Un cliente bien informado es un cliente tranquilo. Un mensaje a tiempo vale más que diez reportes.',
-  'Hoy es un buen día para apagar ese anuncio que nadie se anima a apagar.',
-  'El mate se enfría, las campañas no. Priorizá en consecuencia.',
-  'No compitas con la competencia: competí con tu versión de ayer.',
-  'Las métricas cuentan qué pasó. Vos decidís qué pasa después.',
-  'Cerrá una pestaña. Ahora otra. ¿Ves? El día ya pesa menos.',
-  'Si una tarea lleva menos de dos minutos, hacela ahora y tachala con ganas.',
-  'El mejor momento para revisar el presupuesto fue ayer. El segundo mejor es ahora.',
-  'Dato curioso: los pulpos tienen tres corazones. Vos con uno solo ya bancás a todos tus clientes.',
-  'Trabajar mucho no es lo mismo que avanzar. Elegí las tres cosas que mueven la aguja hoy.',
-  'Estirá la espalda. En serio, ahora. Te lo agradece el yo de las seis de la tarde.',
+export const PHRASES = [
+  '🎯 Lo urgente rara vez es importante. Lo importante rara vez es urgente.',
+  '📉 Una campaña sin conversiones es solo una opinión con presupuesto.',
+  '💧 Tomate un vaso de agua. El algoritmo de Meta puede esperar dos minutos.',
+  '🚀 Hecho es mejor que perfecto. Y publicado es mejor que hecho.',
+  '😮‍💨 Si el CPL sube, respirá. Si baja, también respirá, pero sonriendo.',
+  '🧠 Nadie se acuerda del día que todo salió bien, pero vos sí vas a saber por qué.',
+  '🪟 Pará cinco minutos y mirá por la ventana. Los mejores insights no aparecen en el Ads Manager.',
+  '💬 Un mensaje a tiempo al cliente vale más que diez reportes.',
+  '🔌 Hoy es un buen día para apagar ese anuncio que nadie se anima a apagar.',
+  '🧉 El mate se enfría, las campañas no. Priorizá en consecuencia.',
+  '🏃 No compitas con la competencia: competí con tu versión de ayer.',
+  '📊 Las métricas cuentan qué pasó. Vos decidís qué pasa después.',
+  '🗂️ Cerrá una pestaña. Ahora otra. ¿Ves? El día ya pesa menos.',
+  '✅ Si una tarea lleva menos de dos minutos, hacela ahora y tachala con ganas.',
+  '💸 El mejor momento para revisar el presupuesto fue ayer. El segundo mejor es ahora.',
+  '🐙 Dato curioso: los pulpos tienen tres corazones. Vos con uno solo ya bancás a todos tus clientes.',
+  '🪡 Trabajar mucho no es lo mismo que avanzar. Elegí las tres cosas que mueven la aguja hoy.',
+  '🧘 Estirá la espalda. En serio, ahora. Te lo agradece tu yo de las seis de la tarde.',
+  '🌱 Las campañas también necesitan tiempo de aprendizaje. Vos también.',
+  '🎧 Poné tu playlist favorita y atacá la tarea que venís pateando.',
+  '🍕 Ningún reporte se arruinó por frenar a comer algo rico.',
+  '⭐ Celebrá lo chico: un CTR que sube también es una buena noticia.',
 ]
 
-/** Una frase distinta cada día, la misma durante todo el día para la misma persona. */
-export function phraseOfTheDay(day: string, seed = '') {
+/** Índice de partida distinto cada día y persona; desde ahí las frases van rotando. */
+export function phraseStartIndex(day: string, seed = '') {
   let hash = 0
   for (const char of `${day}:${seed}`) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-  return PHRASES[hash % PHRASES.length]
+  return hash % PHRASES.length
 }
+
+export const phraseAt = (index: number) => PHRASES[((index % PHRASES.length) + PHRASES.length) % PHRASES.length]
+export const phraseOfTheDay = (day: string, seed = '') => phraseAt(phraseStartIndex(day, seed))

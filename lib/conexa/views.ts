@@ -38,3 +38,6 @@ export function conexaSlugFromView(view: string): ConexaViewSlug | null {
 }
 
 export const conexaViewHref = (slug: ConexaViewSlug) => `${CONEXA_PATH}?${CONEXA_VIEW_PARAM}=${slug}`
+
+/** Hasta esta fecha Conexa muestra la etiqueta "Nuevo" en el menú lateral. */
+export const CONEXA_NEW_UNTIL = '2027-01-15'

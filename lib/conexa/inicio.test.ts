@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionsOf, missingConnections, sortConnections, firstName, formatWorked, groupAlerts, phraseOfTheDay, todayRange, type InicioAlert } from './inicio'
+import { PHRASES, phraseAt, connectionsOf, missingConnections, sortConnections, firstName, formatWorked, groupAlerts, phraseOfTheDay, todayRange, type InicioAlert } from './inicio'
 
 const alert = (subtipo: string, desde: string | null, id = subtipo): InicioAlert => ({ id, clienteId: 'c', clienteNombre: 'Cliente', subtipo, plataforma: 'meta', desde, mensaje: null })
 
@@ -33,6 +33,8 @@ describe('Inicio de Conexa', () => {
 
   it('elige la misma frase todo el día', () => {
     expect(phraseOfTheDay('2026-11-20', 'u1')).toBe(phraseOfTheDay('2026-11-20', 'u1'))
+    expect(phraseAt(PHRASES.length + 1)).toBe(PHRASES[1])
+    expect(PHRASES.every((phrase) => /\p{Extended_Pictographic}/u.test(phrase))).toBe(true)
   })
 
   it('detecta qué cuentas publicitarias le faltan conectar a cada cliente', () => {

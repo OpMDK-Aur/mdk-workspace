@@ -4,6 +4,8 @@ import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { ChevronRight, Sparkles } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { CONEXA_NEW_UNTIL } from '@/lib/conexa/views'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
@@ -47,6 +49,7 @@ export function ConexaNavGroup() {
         >
           <Sparkles className="h-4 w-4" />
           <span>Conexa</span>
+          {new Date() < new Date(CONEXA_NEW_UNTIL) && <Badge className="ml-auto h-5 px-1.5 text-[10px] font-semibold uppercase tracking-wider bg-primary text-primary-foreground">Nuevo</Badge>}
         </Link>
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={open ? 'Ocultar opciones de Conexa' : 'Ver opciones de Conexa'}>

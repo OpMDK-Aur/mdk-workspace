@@ -1,15 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import useSWR from 'swr'
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Plug, Quote, Timer, Video } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, Plug, Quote, RefreshCw, Timer, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { useTimerStore } from '@/lib/time-tracking/timer-store'
-import { AR_TIME_ZONE, CONNECTION_LABELS, missingConnections, type ConnectionKey, type InicioConnection, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseOfTheDay, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
+import { AR_TIME_ZONE, CONNECTION_LABELS, missingConnections, type ConnectionKey, type InicioConnection, alertLabel, firstName, formatWorked, groupAlerts, isRecentAlert, phraseAt, phraseStartIndex, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
 
 const fetchInicio = async (url: string) => {
   const response = await dashboardApiFetch(url)
@@ -38,10 +38,7 @@ export function InicioView({ onOpenClient }: { onOpenClient: (clientId: string) 
               <h1 className="font-display text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl">Hola <span aria-hidden="true" className="font-sans font-normal" style={{ fontFamily: "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif" }}>👋🏼</span>{name ? ` ${name}` : ''}</h1>
             )}
           </div>
-          <figure className="flex max-w-md items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3">
-            <Quote className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-            <blockquote className="text-pretty text-sm leading-relaxed text-foreground">{phraseOfTheDay(day, data?.nombre ?? '')}</blockquote>
-          </figure>
+          <RotatingPhrase start={phraseStartIndex(day, data?.nombre ?? '')} />
         </header>
 
         {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error.message}</p>}
@@ -211,5 +208,24 @@ function ConnectionsSection({ loading, connections }: { loading: boolean; connec
         </>
       )}
     </SectionCard>
+  )
+}
+
+const PHRASE_INTERVAL_MS = 20_000
+
+function RotatingPhrase({ start }: { start: number }) {
+  const [offset, setOffset] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setOffset((value) => value + 1), PHRASE_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [])
+  return (
+    <figure className="flex max-w-md items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3">
+      <Quote className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+      <blockquote key={offset} className="min-h-10 flex-1 text-pretty text-sm leading-relaxed text-foreground motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700">{phraseAt(start + offset)}</blockquote>
+      <button type="button" onClick={() => setOffset((value) => value + 1)} aria-label="Ver otra frase" title="Otra frase" className="-mr-1 -mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+        <RefreshCw className="size-3.5" aria-hidden="true" />
+      </button>
+    </figure>
   )
 }
