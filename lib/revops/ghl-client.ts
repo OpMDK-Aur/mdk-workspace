@@ -256,6 +256,9 @@ export async function fetchGhlConversationMessages(creds: GhlCreds, conversation
 
 export interface GhlContact {
   id: string
+  name: string | null
+  email: string | null
+  phone: string | null
   source: string | null
   tags: string[]
   dateAdded: string | null
@@ -265,7 +268,8 @@ export interface GhlContact {
 
 function toGhlContact(raw: any): GhlContact {
   const attributions = [raw.attributionSource, ...(Array.isArray(raw.attributions) ? raw.attributions : []), raw.lastAttributionSource].filter((item) => item && typeof item === 'object')
-  return { id: raw.id ?? '', source: raw.source ?? null, tags: Array.isArray(raw.tags) ? raw.tags.filter((tag: unknown) => typeof tag === 'string') : [], dateAdded: raw.dateAdded ?? null, attributions }
+  const name = (typeof raw.contactName === 'string' && raw.contactName.trim()) || [raw.firstName, raw.lastName].filter((part) => typeof part === 'string' && part.trim()).join(' ').trim() || null
+  return { id: raw.id ?? '', name, email: typeof raw.email === 'string' && raw.email.trim() ? raw.email.trim() : null, phone: typeof raw.phone === 'string' && raw.phone.trim() ? raw.phone.trim() : null, source: raw.source ?? null, tags: Array.isArray(raw.tags) ? raw.tags.filter((tag: unknown) => typeof tag === 'string') : [], dateAdded: raw.dateAdded ?? null, attributions }
 }
 
 const dateAddedMs = (value: string | number | null) => {
