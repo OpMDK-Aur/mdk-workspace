@@ -12,11 +12,11 @@ import { dashboardApiFetch } from '@/lib/conexa/dashboard-fetch'
 import { MessageContent } from '@/components/chat/message-content'
 import { useDismiss } from './use-dismiss'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { ContextStatus } from '@/components/conexa/copilot/context-status'
 import { useClientContext } from '@/components/conexa/copilot/use-client-context'
+import { ContextFormDialog } from '@/components/conexa/copilot/context-form-dialog'
 
 type Platform = { name: string; key: string; color: string; iconUrl: string | null; connected: boolean; detail: string }
 type MetricMap = Record<string, Array<{ label: string; value: number }>>
@@ -125,7 +125,6 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
   const [resettingChat, setResettingChat] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
   const [manualContextOpen, setManualContextOpen] = useState(false)
-  const [manualContext, setManualContext] = useState('')
   const clientContext = useClientContext(clientId)
   // El chat del tablero comparte el hilo con Chat / Análisis: reiniciar archiva el
   // hilo actual (queda en el historial) y arranca uno nuevo para este cliente.
@@ -144,16 +143,6 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
     } finally {
       setResettingChat(false)
     }
-  }
-  const saveManualContext = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (manualContext.trim().length < 3) return
-    try {
-      await clientContext.addContext(manualContext.trim())
-      setManualContext('')
-      setManualContextOpen(false)
-      toast.success('Contexto guardado para este cliente')
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contexto') }
   }
   const boards = boardResult?.dashboards ?? []
   const messages = useMemo(() => (messageResult?.messages ?? []).map(chatMessage).filter((item): item is ChatMessage => Boolean(item)), [messageResult])
@@ -474,12 +463,7 @@ export function DashboardWorkspace({ clientId, clientName, userId, period, platf
         <DialogFooter><Button variant="outline" disabled={resettingChat} onClick={() => setResetOpen(false)}>Cancelar</Button><Button disabled={resettingChat} onClick={() => void resetChat()} className="bg-primary text-background hover:bg-primary">{resettingChat ? <><LoaderCircle className="size-3.5 animate-spin" />Reiniciando…</> : 'Reiniciar'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={manualContextOpen} onOpenChange={setManualContextOpen}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Agregar contexto del cliente</DialogTitle><DialogDescription>Este dato se suma al contexto de Recomendaciones, sin modificar el formulario existente del cliente.</DialogDescription></DialogHeader>
-        <form onSubmit={saveManualContext} className="flex flex-col gap-3"><label htmlFor="dashboard-manual-context" className="text-xs font-medium">Contexto para tener en cuenta</label><Textarea id="dashboard-manual-context" value={manualContext} maxLength={2000} onChange={(event) => setManualContext(event.target.value)} placeholder="Objetivos, estacionalidad, promociones o restricciones…" /><DialogFooter><Button type="button" variant="outline" onClick={() => setManualContextOpen(false)}>Cancelar</Button><Button type="submit" disabled={manualContext.trim().length < 3}>Guardar contexto</Button></DialogFooter></form>
-      </DialogContent>
-    </Dialog>
+    <ContextFormDialog open={manualContextOpen} onOpenChange={setManualContextOpen} assessment={clientContext.assessment} onSaveProfile={clientContext.saveProfile} onAddNote={clientContext.addContext} />
     {reportOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="dashboard-save-report-title"><form onSubmit={saveReport} className="w-full max-w-md rounded-xl bg-card p-5 shadow-xl"><header className="mb-4 flex items-start justify-between gap-3"><div><h2 id="dashboard-save-report-title" className="text-base font-semibold text-foreground">Guardar informe</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Se guardará una copia fija del tablero, sus datos, período y cliente.</p></div><button type="button" onClick={() => setReportOpen(false)} aria-label="Cerrar" className="rounded-md p-1.5 hover:bg-muted"><X className="size-4" /></button></header><label htmlFor="dashboard-report-name" className="text-xs font-medium text-muted-foreground">Nombre del informe</label><input id="dashboard-report-name" autoFocus required maxLength={180} value={reportName} onChange={(event) => setReportName(event.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-border px-3 text-sm outline-none focus:border-primary" />{reportError && <p role="alert" className="mt-2 text-xs text-destructive">{reportError}</p>}<footer className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReportOpen(false)} className="rounded-md border border-border px-3 py-2 text-xs font-medium text-muted-foreground">Cancelar</button><button type="submit" disabled={reportBusy || !reportName.trim()} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{reportBusy && <LoaderCircle className="size-3.5 animate-spin" />}{reportBusy ? 'Guardando…' : 'Guardar snapshot'}</button></footer></form></div>}
   </div>
 }

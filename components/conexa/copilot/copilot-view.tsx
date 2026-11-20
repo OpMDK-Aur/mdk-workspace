@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useCopilot } from './use-copilot'
 import { COMPLETE_CONTEXT_MESSAGE, ContextStatus, type CompetitorControls } from './context-status'
+import { ContextFormDialog } from './context-form-dialog'
 import type { ContextAssessment, ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
 import { PROFILE_FIELD_LABEL } from '@/lib/conexa/copilot/profile-fields'
 import { createdCampaignNote, describeOperation, executionLines, PLATFORM_LABEL, readableEvidenceExcerpt, RECOMMENDATION_TYPE_LABEL, type DecisionRecord, type ExecutionPlan, type PlanStep, type Recommendation, type RecommendationOperation, type RecommendationPlatform, type RecommendationPriority, type RecommendationType } from '@/lib/conexa/copilot/types'
@@ -68,7 +69,6 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
   const [manualContextOpen, setManualContextOpen] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [manualContext, setManualContext] = useState('')
   const [hydratedPanels, setHydratedPanels] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -179,17 +179,6 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
     onPromptConsumed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrompt?.id])
-
-  async function saveManualContext(event: FormEvent) {
-    event.preventDefault()
-    if (manualContext.trim().length < 3) return
-    try {
-      await copilot.addContext(manualContext.trim())
-      setManualContext('')
-      setManualContextOpen(false)
-      toast.success('Contexto guardado para este cliente')
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el contexto') }
-  }
 
   async function publish() {
     if (!publishTarget || !plan || publishing) return
@@ -319,12 +308,7 @@ function RecommendationsWorkspace({ client, initialPrompt, onPromptConsumed }: {
         }} className="bg-primary text-background hover:bg-primary">{resetting ? <><LoaderCircle className="size-3.5 animate-spin" />Reiniciando…</> : 'Reiniciar'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-    <Dialog open={manualContextOpen} onOpenChange={setManualContextOpen}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Agregar contexto del cliente</DialogTitle><DialogDescription>Este dato se suma al contexto de Recomendaciones, sin modificar el formulario existente del cliente.</DialogDescription></DialogHeader>
-        <form onSubmit={saveManualContext} className="flex flex-col gap-3"><label htmlFor="manual-recommendation-context" className="text-xs font-medium">Contexto para tener en cuenta</label><Textarea id="manual-recommendation-context" value={manualContext} maxLength={2000} onChange={(event) => setManualContext(event.target.value)} placeholder="Objetivos, estacionalidad, promociones o restricciones…" /><DialogFooter><Button type="button" variant="outline" onClick={() => setManualContextOpen(false)}>Cancelar</Button><Button type="submit" disabled={manualContext.trim().length < 3}>Guardar contexto</Button></DialogFooter></form>
-      </DialogContent>
-    </Dialog>
+    <ContextFormDialog open={manualContextOpen} onOpenChange={setManualContextOpen} assessment={copilot.assessment} onSaveProfile={copilot.saveProfile} onAddNote={copilot.addContext} />
   </div>
 }
 

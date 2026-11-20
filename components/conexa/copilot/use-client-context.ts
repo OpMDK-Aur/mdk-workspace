@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { toast } from 'sonner'
 import { copilotApi } from '@/lib/conexa/copilot/api'
 import type { CompetitorControls } from './context-status'
+import type { ProfileUpdate } from '@/lib/conexa/copilot/client-profile'
 
 /**
  * Solo la parte de contexto del cliente de Recomendaciones (evaluación y
@@ -47,6 +48,12 @@ export function useClientContext(clientId: string | null) {
     assessment: profile.data?.assessment ?? null,
     unavailable: Boolean(profile.error),
     competitors,
+    saveProfile: async (updates: ProfileUpdate[]) => {
+      if (!clientId) return
+      const result = await copilotApi.saveProfile(clientId, updates)
+      await profile.mutate(result, { revalidate: false })
+      return result
+    },
     addContext: async (content: string) => {
       if (!clientId) return
       await copilotApi.addContext({ clientId, content })
