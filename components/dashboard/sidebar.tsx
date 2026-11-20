@@ -271,7 +271,7 @@ export function Sidebar({
   }
 
   // Render a navigation item
-  const renderNavItem = (item: NavItem, collapsed = false) => {
+  const renderNavItem = (item: NavItem, collapsed = false, onCollapsedClick?: () => void) => {
     // Check masterOnly
     if (item.masterOnly && !userIsMaster) return null
     
@@ -300,6 +300,7 @@ export function Sidebar({
             ) : (
               <Link
                 href={item.href}
+                onClick={onCollapsedClick}
                 className={cn(
                   'flex items-center justify-center h-9 w-full rounded-lg transition-colors relative',
                   isActive
@@ -421,7 +422,7 @@ export function Sidebar({
             <div className="p-2 space-y-4">
               {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
-                {unitAccess.mdk && renderNavItem(conexaItem, true)}
+                {unitAccess.mdk && renderNavItem(conexaItem, true, () => setIsCollapsed(false))}
                 {unitAccess.aurelia && renderNavItem(aureliaItem, true)}
                 {unitAccess.mdk && mainItems.map(item => renderNavItem(item, true))}
                 {unitAccess.mdk && tareasSubItems.map(item => renderNavItem(item, true))}
