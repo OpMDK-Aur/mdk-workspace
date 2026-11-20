@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, DatabaseZap } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   PERIOD_OPTIONS,
@@ -11,6 +13,7 @@ import {
   computePeriodMetrics,
   computePlanBreakdown,
   computeSnapshot,
+  isInternalAccount,
   previousRange,
   resolvePeriod,
   selectKpiClients,
@@ -30,26 +33,35 @@ import { AureliaKpiGrid } from './aurelia-kpi-grid'
 import { AureliaGrowthChart } from './aurelia-growth-chart'
 import { AureliaPlanBreakdown } from './aurelia-plan-breakdown'
 import { AureliaClientsTable } from './aurelia-clients-table'
+import { AureliaOnboardingPanel } from './aurelia-onboarding-panel'
+import type { AureliaOnboardingData } from '@/lib/aurelia/onboarding-shared'
 
-export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
+export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaDataset; onboarding: AureliaOnboardingData }) {
   const [period, setPeriod] = useState<PeriodKey>('this_month')
   const [customRange, setCustomRange] = useState(() => ({ from: todayInArgentina().slice(0, 8) + '01', to: todayInArgentina() }))
   const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
   const [selectedClient, setSelectedClient] = useState<AureliaClient | null>(null)
+  const [onlyActive, setOnlyActive] = useState(false)
+  const [hideInternal, setHideInternal] = useState(false)
   const time = useAureliaTime()
+
+  const clients = useMemo(() => {
+    if (!dataset.available) return []
+    return dataset.clients.filter((client) => (!onlyActive || client.status === 'active') && (!hideInternal || !isInternalAccount(client)))
+  }, [dataset, onlyActive, hideInternal])
 
   const computed = useMemo(() => {
     if (!dataset.available) return null
     const range = resolvePeriod(period, new Date(), customRange)
     return {
       range,
-      current: computePeriodMetrics(dataset.clients, range),
-      previous: computePeriodMetrics(dataset.clients, previousRange(range)),
-      snapshot: computeSnapshot(dataset.clients),
-      series: computeMonthlySeries(dataset.clients),
-      plans: computePlanBreakdown(dataset.clients),
+      current: computePeriodMetrics(clients, range),
+      previous: computePeriodMetrics(clients, previousRange(range)),
+      snapshot: computeSnapshot(clients),
+      series: computeMonthlySeries(clients),
+      plans: computePlanBreakdown(clients),
     }
-  }, [dataset, period, customRange])
+  }, [dataset, clients, period, customRange])
 
   const timeData = time.data
   const periodSeconds = useMemo(() => {
@@ -90,9 +102,19 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
   return (
     <div className="flex flex-col gap-6 p-6">
       <AureliaHeading
-        subtitle={`${dataset.clients.length.toLocaleString('es-AR')} clientes del CRM · actualizado ${updatedAt}`}
+        subtitle={`${clients.length.toLocaleString('es-AR')}${clients.length !== dataset.clients.length ? ` de ${dataset.clients.length.toLocaleString('es-AR')}` : ''} clientes del CRM · actualizado ${updatedAt}`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch id="aurelia-only-active" checked={onlyActive} onCheckedChange={setOnlyActive} />
+              <Label htmlFor="aurelia-only-active" className="text-xs">Solo activos</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch id="aurelia-hide-internal" checked={hideInternal} onCheckedChange={setHideInternal} />
+              <Label htmlFor="aurelia-hide-internal" className="text-xs" title="Cuentas propias de Aurelia, MDK o Madketing">Ocultar internos</Label>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Período</span>
             <Select value={period} onValueChange={(value) => setPeriod(value as PeriodKey)}>
@@ -130,7 +152,7 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
 
       <AureliaKpiSheet
         kpi={selectedKpi}
-        clients={selectedKpi ? selectKpiClients(selectedKpi, dataset.clients, computed.range) : []}
+        clients={selectedKpi ? selectKpiClients(selectedKpi, clients, computed.range) : []}
         currency={dataset.currency}
         periodLabel={periodLabel}
         range={computed.range}
@@ -144,11 +166,13 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
         <AureliaGrowthChart series={computed.series} currency={dataset.currency} className="lg:col-span-2" />
         <div className="flex flex-col gap-4">
           <AureliaPlanBreakdown rows={computed.plans} totalMrr={computed.snapshot.mrr} currency={dataset.currency} />
-          <AureliaTimeSummary data={timeData} secondsByClient={periodSeconds} clients={dataset.clients} periodLabel={periodLabel} onOpenClient={openClient} />
+          <AureliaTimeSummary data={timeData} secondsByClient={periodSeconds} clients={clients} periodLabel={periodLabel} onOpenClient={openClient} />
         </div>
       </div>
 
-      <AureliaClientsTable clients={dataset.clients} currency={dataset.currency} time={tableTime} onOpenClient={openClient} range={computed.range} rangeLabel={periodLabel} />
+      <AureliaOnboardingPanel clients={dataset.clients} onboarding={onboarding} onOpenClient={openClient} />
+
+      <AureliaClientsTable clients={clients} currency={dataset.currency} time={tableTime} onOpenClient={openClient} range={computed.range} rangeLabel={periodLabel} />
     </div>
   )
 }
