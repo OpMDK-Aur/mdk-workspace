@@ -17,6 +17,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { CONNECTORS, CONNECTOR_BY_ID, type ConnectorDefinition, type ConnectorId, type ConnectorStatus } from '@/lib/connectors/catalog'
 import { cn } from '@/lib/utils'
+import { CredentialsDialog } from './credentials-dialog'
 
 const CONNECTED_MESSAGES: Record<string, ConnectorId> = {
   google: 'google_ads',
@@ -51,6 +52,7 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [pending, setPending] = useState<ConnectorId | null>(null)
   const [confirming, setConfirming] = useState<ConnectorDefinition | null>(null)
+  const [editing, setEditing] = useState<ConnectorDefinition | null>(null)
   const statusById = new Map(statuses.map((status) => [status.id, status]))
 
   useEffect(() => {
@@ -70,6 +72,10 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
   }, [searchParams, router])
 
   const connect = async (connector: ConnectorDefinition) => {
+    if (connector.kind === 'credentials') {
+      setEditing(connector)
+      return
+    }
     setPending(connector.id)
     if (connector.connectPath) {
       window.location.href = connector.connectPath
@@ -99,8 +105,16 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
     router.refresh()
   }
 
+  const saved = (connector: ConnectorDefinition, label: string, verified: boolean) => {
+    setEditing(null)
+    setNotice({ type: 'success', message: verified ? `${connector.name} quedó conectado (${label}).` : `Guardamos los datos de ${connector.name}.` })
+    router.refresh()
+  }
+
   const groups = [
     { key: 'google', title: 'Google', description: 'Cada persona conecta su propia cuenta de Google.' },
+    { key: 'crm', title: 'CRM', description: 'Al conectar te pedimos los datos de acceso a la API.' },
+    { key: 'hosting', title: 'Hosting, dominios y email', description: null },
     { key: 'other', title: 'Otras apps', description: null },
   ] as const
 
@@ -134,6 +148,8 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
         </section>
       ))}
 
+      <CredentialsDialog connector={editing} onClose={() => setEditing(null)} onSaved={saved} />
+
       <AlertDialog open={Boolean(confirming)} onOpenChange={(open) => { if (!open) setConfirming(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -155,7 +171,8 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
 function ConnectorCard({ connector, status, pending, onConnect, onDisconnect }: { connector: ConnectorDefinition; status?: ConnectorStatus; pending: boolean; onConnect: () => void; onDisconnect: () => void }) {
   const connected = Boolean(status?.connected)
   const expired = Boolean(status?.expired)
-  const statusLabel = !connected ? 'Sin conectar' : expired ? 'Vencido' : 'Conectado'
+  const unverified = connected && status?.verified === false
+  const statusLabel = !connected ? 'Sin conectar' : expired ? 'Vencido' : unverified ? 'Guardado' : 'Conectado'
 
   return (
     <li id={connector.id} className="flex scroll-mt-24 flex-col gap-4 rounded-xl border border-border bg-card p-4 target:ring-2 target:ring-primary/40">
@@ -166,6 +183,11 @@ function ConnectorCard({ connector, status, pending, onConnect, onDisconnect }: 
               <img src={logo} alt="" className="size-6 object-contain" />
             </span>
           ))}
+          {!connector.logos.length && connector.monogram && (
+            <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-lg border border-border bg-card font-mono text-xs font-bold tracking-tight" style={{ color: connector.monogram.color }}>
+              {connector.monogram.text}
+            </span>
+          )}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
@@ -182,13 +204,13 @@ function ConnectorCard({ connector, status, pending, onConnect, onDisconnect }: 
       <div className="mt-auto flex flex-col gap-3 border-t border-border pt-3">
         <p className="min-h-5 truncate text-xs text-muted-foreground">
           {connected
-            ? <>Como <span className="font-medium text-foreground">{status?.email ?? 'tu cuenta'}</span>{status?.connectedAt ? ` · desde ${dateFormatter.format(new Date(status.connectedAt))}` : ''}</>
+            ? <>{connector.kind === 'credentials' ? '' : 'Como '}<span className="font-medium text-foreground">{status?.email ?? 'tu cuenta'}</span>{unverified ? ' · sin prueba automática' : ''}{status?.connectedAt ? ` · desde ${dateFormatter.format(new Date(status.connectedAt))}` : ''}</>
             : connector.fallbackLabel ?? 'Conectá tu cuenta para usarlo.'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant={connected && !expired ? 'outline' : 'default'} onClick={onConnect} disabled={pending}>
             {pending && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
-            {!connected ? 'Conectar' : expired ? 'Reconectar' : 'Cambiar cuenta'}
+            {!connected ? 'Conectar' : expired ? 'Reconectar' : connector.kind === 'credentials' ? 'Editar datos' : 'Cambiar cuenta'}
           </Button>
           {connected && connector.platform && (
             <Button type="button" size="sm" variant="ghost" className="text-muted-foreground" onClick={onDisconnect} disabled={pending}>

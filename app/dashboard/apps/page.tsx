@@ -9,7 +9,7 @@ import { buildConnectorStatuses, CONNECTORS, type ConnectorId } from '@/lib/conn
 
 export const metadata: Metadata = {
   title: 'Conectores',
-  description: 'Conectá tus cuentas de Google, Meta y Discord, y asigná las cuentas publicitarias de tus clientes.',
+  description: 'Conectá tus cuentas de Google, Meta, CRM, hosting y Discord, y asigná las cuentas publicitarias de tus clientes.',
 }
 
 const hasValue = (value: unknown) => Array.isArray(value) ? value.length > 0 : Boolean(value)
@@ -23,7 +23,7 @@ export default async function ConnectorsPage() {
   const [{ data: tokenRows }, { data: discordInfo }, { data: assignedClients }] = await Promise.all([
     createAdminClient()
       .from('plataformas_tokens')
-      .select('plataforma, email_conectado, token_expiry, updated_at, refresh_token')
+      .select('plataforma, email_conectado, token_expiry, updated_at, refresh_token, scope')
       .eq('cliente_id', user.id)
       .eq('activo', true)
       .in('plataforma', platforms),
