@@ -12,6 +12,8 @@ alter table public.tareas
 
 -- Evita importar dos veces el mismo evento para la misma persona.
 -- Parcial: solo indexa las filas que son reuniones de calendario.
-create unique index if not exists tareas_creador_evento_calendar_key
+-- CONCURRENTLY no bloquea escrituras en tareas mientras se construye (correr fuera de una transacción).
+set statement_timeout = '60s';
+create unique index concurrently if not exists tareas_creador_evento_calendar_key
   on public.tareas (creado_por, google_calendar_event_id)
   where google_calendar_event_id is not null;
