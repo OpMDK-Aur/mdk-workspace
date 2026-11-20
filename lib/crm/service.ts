@@ -45,7 +45,21 @@ export type CrmAcquisitionReport =
       contactRowsTruncated?: boolean
     }
 
-export type CrmAttributedContactRow = { name: string | null; campaign: string; channel: string | null; tags: string[]; sales: number }
+export type CrmAttributedContactRow = {
+  name: string | null
+  email: string | null
+  phone: string | null
+  /** Fecha de creación del contacto en el CRM. */
+  createdAt: string | null
+  /** Primer mensaje entrante con referral (el que define la campaña). */
+  referralAt: string | null
+  campaign: string
+  channel: string | null
+  tags: string[]
+  sales: number
+  /** Estado y asesor de cada oportunidad del contacto en el período. */
+  opportunities: Array<{ status: string; vendor: string; team: string }>
+}
 const CONTACT_ROWS_LIMIT = 500
 
 const UNASSIGNED_CAMPAIGN = 'Sin campaña asignada'
@@ -126,7 +140,11 @@ function extractCampaignFromMessage(message: { metadata?: Record<string, unknown
   return campaign ?? adTitle ?? null
 }
 
-type ContactRecord = { contactId: string; name: string | null; tagNames: string[]; channelName: string | null; campaign: string | null }
+type ContactDetails = { name: string | null; email: string | null; phone: string | null; createdAt: string | null }
+type ContactRecord = ContactDetails & { contactId: string; tagNames: string[]; channelName: string | null; campaign: string | null; referralAt: string | null }
+
+const cleanText = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null)
+const toContactDetails = (row: Record<string, unknown> | undefined): ContactDetails => ({ name: cleanText(row?.name), email: cleanText(row?.email), phone: cleanText(row?.phone), createdAt: cleanText(row?.created_at) })
 type OpportunityRecord = { contactId: string; vendorName: string; teamName: string; statusLabel: string; isWon: boolean }
 
 function passesContactFilters(record: ContactRecord, filters: Required<CrmAcquisitionFilters>): boolean {
@@ -191,7 +209,7 @@ async function getGhlAcquisitionReport(creds: GhlCreds, start: string, end: stri
   // "Sin campaña asignada" en lugar de descartarlos.
   for (const contact of contacts) {
     if (!contact.id) continue
-    contactRecords.set(contact.id, { contactId: contact.id, name: contact.name?.trim() || null, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign: campaignFromGhlContact(contact) })
+    contactRecords.set(contact.id, { contactId: contact.id, name: contact.name?.trim() || null, email: contact.email, phone: contact.phone, createdAt: contact.dateAdded, referralAt: null, tagNames: contact.tags, channelName: contact.source?.trim() || null, campaign: campaignFromGhlContact(contact) })
   }
   const opportunityRecords: OpportunityRecord[] = opportunities
     .filter((row) => { const created = new Date(row.createdAt).getTime(); return row.contactId && created >= startMs && created < endMs })
@@ -244,7 +262,7 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
     }
 
     const [contactsRaw, opportunitiesRaw] = await Promise.all([
-      fetchAll('contacts', 'id,client_id,created_at,name'),
+      fetchAll('contacts', 'id,client_id,created_at,name,email,phone'),
       fetchAll('opportunities', 'id,client_id,contact_id,assigned_user,assigned_team_id,status,amount,created_at'),
     ])
 
@@ -296,16 +314,26 @@ export async function getCrmAcquisitionReport(clientId: string, dateFrom: string
       if (name) channelByContact.set(row.contact_id, name)
     }
     const campaignByContact = new Map<string, string>()
+    const referralAtByContact = new Map<string, string>()
     for (const message of messageRows.sort((a, b) => a.created_at.localeCompare(b.created_at))) {
       if (campaignByContact.has(message.contact_id)) continue
       const campaign = extractCampaignFromMessage(message)
-      if (campaign) campaignByContact.set(message.contact_id, campaign)
+      if (campaign) {
+        campaignByContact.set(message.contact_id, campaign)
+        referralAtByContact.set(message.contact_id, message.created_at)
+      }
     }
 
     const attributedContactIds = contactIds.filter((id) => campaignByContact.has(id))
+    const detailsById = new Map<string, ContactDetails>(contactsRaw.map((row) => [row.id as string, toContactDetails(row)]))
+    // Los contactos que llegan por una oportunidad del período pueden haberse creado antes: se completan sus datos por id.
+    const missingDetailIds = attributedContactIds.filter((id) => !detailsById.has(id))
+    for (const batch of chunk(missingDetailIds, 150)) {
+      const { data } = await crm.from('contacts').select('id,created_at,name,email,phone').in('client_id', crmAccountIds).in('id', batch)
+      for (const row of (data ?? []) as Array<Record<string, unknown>>) detailsById.set(String(row.id), toContactDetails(row))
+    }
     const contactRecords = new Map<string, ContactRecord>()
-    const contactNameById = new Map(contactsRaw.map((row) => [row.id as string, typeof row.name === 'string' && row.name.trim() ? row.name.trim() : null]))
-    for (const id of attributedContactIds) contactRecords.set(id, { contactId: id, name: contactNameById.get(id) ?? null, tagNames: tagNamesByContact.get(id) ?? [], channelName: channelByContact.get(id) ?? null, campaign: campaignByContact.get(id) ?? null })
+    for (const id of attributedContactIds) contactRecords.set(id, { contactId: id, ...toContactDetails(undefined), ...detailsById.get(id), referralAt: referralAtByContact.get(id) ?? null, tagNames: tagNamesByContact.get(id) ?? [], channelName: channelByContact.get(id) ?? null, campaign: campaignByContact.get(id) ?? null })
 
     const opportunityRecords: OpportunityRecord[] = opportunitiesRaw.filter((row) => row.contact_id).map((row) => ({
       contactId: row.contact_id,
@@ -383,7 +411,21 @@ function aggregateReport(attributedContactIds: string[], contactRecords: Map<str
     const contactRows: CrmAttributedContactRow[] = eligibleContactIds
       .map((id) => {
         const record = contactRecords.get(id)!
-        return { name: record.name, campaign: record.campaign ?? UNASSIGNED_CAMPAIGN, channel: record.channelName, tags: record.tagNames, sales: salesByContact(id) }
+        return {
+          name: record.name,
+          email: record.email,
+          phone: record.phone,
+          createdAt: record.createdAt,
+          referralAt: record.referralAt,
+          campaign: record.campaign ?? UNASSIGNED_CAMPAIGN,
+          channel: record.channelName,
+          tags: record.tagNames,
+          sales: salesByContact(id),
+          opportunities: opportunityRecords
+            .filter((opportunity) => opportunity.contactId === id && passesOpportunityFilters(opportunity, normalizedFilters))
+            .slice(0, 5)
+            .map((opportunity) => ({ status: opportunity.statusLabel, vendor: opportunity.vendorName, team: opportunity.teamName })),
+        }
       })
       .sort((a, b) => a.campaign.localeCompare(b.campaign) || (a.name ?? '').localeCompare(b.name ?? ''))
 
