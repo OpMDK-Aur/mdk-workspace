@@ -6,7 +6,7 @@ import { AureliaClientsTable } from './aurelia-clients-table'
 
 export function AureliaKpiSheet({ kpi, clients, currency, periodLabel, range, onClose, onOpenClient }: { kpi: KpiKey | null; clients: AureliaClient[]; currency: string; periodLabel: string; range: DateRange; onClose: () => void; onOpenClient: (client: AureliaClient) => void }) {
   const detail = kpi ? KPI_DETAIL[kpi] : null
-  const isPeriodKpi = kpi === 'altas' || kpi === 'activaciones' || kpi === 'bajas' || kpi === 'netas' || kpi === 'churn'
+  const isPeriodKpi = kpi === 'altas' || kpi === 'activaciones' || kpi === 'bajas' || kpi === 'bajas_pagas' || kpi === 'netas' || kpi === 'churn' || kpi === 'churn_pago'
   const totalMrr = clients.reduce((sum, client) => sum + client.mrr, 0)
   return (
     <Sheet open={kpi !== null} onOpenChange={(open) => { if (!open) onClose() }}>
