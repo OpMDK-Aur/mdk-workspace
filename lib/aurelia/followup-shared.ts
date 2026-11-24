@@ -112,7 +112,11 @@ export function latestSurvey(followup: OnboardingFollowup | undefined): (Survey 
 
 export type NpsCategory = 'promotor' | 'pasivo' | 'detractor'
 
-export const npsCategory = (nota: number): NpsCategory => (nota >= 9 ? 'promotor' : nota >= 7 ? 'pasivo' : 'detractor')
+/** Las encuestas de Aurelia se califican de 1 a 5. */
+export const NPS_MIN = 1
+export const NPS_MAX = 5
+
+export const npsCategory = (nota: number): NpsCategory => (nota >= 5 ? 'promotor' : nota >= 4 ? 'pasivo' : 'detractor')
 
 /** NPS clásico (% promotores − % detractores) sobre la última nota de cada cliente. */
 export function computeNps(followups: OnboardingFollowup[]) {
@@ -150,10 +154,10 @@ export function parseDateOnly(value: unknown): string | null {
   return text
 }
 
-/** Nota NPS entera de 0 a 10 o null. */
+/** Nota NPS entera de 1 a 5 o null. */
 export function parseScore(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const score = Number(value)
-  if (!Number.isInteger(score) || score < 0 || score > 10) throw new Error('La nota tiene que ser un número entero de 0 a 10.')
+  if (!Number.isInteger(score) || score < NPS_MIN || score > NPS_MAX) throw new Error(`La nota tiene que ser un número entero de ${NPS_MIN} a ${NPS_MAX}.`)
   return score
 }

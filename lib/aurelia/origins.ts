@@ -1,9 +1,9 @@
 import 'server-only'
 import { createCrmClient } from '@/lib/supabase/crm'
-import { campaignFromGhlContact, extractCampaignFromMessage } from '@/lib/crm/service'
+import { extractCampaignFromMessage } from '@/lib/crm/service'
 import { fetchAllGhlContacts, type GhlContact } from '@/lib/revops/ghl-client'
 import { ONBOARDING_PIPELINE_ID } from './onboarding-shared'
-import { mergeOrigins, normalizeEmail, originFromLabel, phoneKey, type AureliaOriginsData, type ClientOrigin } from './origins-shared'
+import { describeGhlAttribution, mergeOrigins, normalizeEmail, originFromGhlTouches, originFromLabel, phoneKey, type AureliaOriginsData, type ClientOrigin } from './origins-shared'
 
 const PAGE_SIZE = 1000
 const MAX_CONTACTS = 30000
@@ -81,7 +81,7 @@ function ghlOrigin(index: GhlIndex, client: { email: string | null; phone: strin
   const phone = phoneKey(client.phone)
   const contact = (email && index.byEmail.get(email)) || (phone && index.byPhone.get(phone)) || null
   if (!contact) return null
-  return originFromLabel(campaignFromGhlContact(contact), contact.dateAdded ?? null, 'ghl')
+  return originFromGhlTouches(describeGhlAttribution(contact.firstAttribution, contact.source), describeGhlAttribution(contact.lastAttribution, contact.source), contact.dateAdded ?? null)
 }
 
 async function loadOrigins(): Promise<AureliaOriginsData> {

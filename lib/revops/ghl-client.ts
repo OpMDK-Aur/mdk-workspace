@@ -264,12 +264,15 @@ export interface GhlContact {
   dateAdded: string | null
   /** attributionSource, lastAttributionSource y attributions[] tal como los devuelve GHL; se interpretan en lib/crm/service. */
   attributions: Record<string, unknown>[]
+  /** Primera atribución (attributionSource) y última (lastAttributionSource), por separado. */
+  firstAttribution: Record<string, unknown> | null
+  lastAttribution: Record<string, unknown> | null
 }
 
 function toGhlContact(raw: any): GhlContact {
   const attributions = [raw.attributionSource, ...(Array.isArray(raw.attributions) ? raw.attributions : []), raw.lastAttributionSource].filter((item) => item && typeof item === 'object')
   const name = (typeof raw.contactName === 'string' && raw.contactName.trim()) || [raw.firstName, raw.lastName].filter((part) => typeof part === 'string' && part.trim()).join(' ').trim() || null
-  return { id: raw.id ?? '', name, email: typeof raw.email === 'string' && raw.email.trim() ? raw.email.trim() : null, phone: typeof raw.phone === 'string' && raw.phone.trim() ? raw.phone.trim() : null, source: raw.source ?? null, tags: Array.isArray(raw.tags) ? raw.tags.filter((tag: unknown) => typeof tag === 'string') : [], dateAdded: raw.dateAdded ?? null, attributions }
+  return { id: raw.id ?? '', name, email: typeof raw.email === 'string' && raw.email.trim() ? raw.email.trim() : null, phone: typeof raw.phone === 'string' && raw.phone.trim() ? raw.phone.trim() : null, source: raw.source ?? null, tags: Array.isArray(raw.tags) ? raw.tags.filter((tag: unknown) => typeof tag === 'string') : [], dateAdded: raw.dateAdded ?? null, attributions, firstAttribution: raw.attributionSource && typeof raw.attributionSource === 'object' ? raw.attributionSource : null, lastAttribution: raw.lastAttributionSource && typeof raw.lastAttributionSource === 'object' ? raw.lastAttributionSource : null }
 }
 
 const dateAddedMs = (value: string | number | null) => {
