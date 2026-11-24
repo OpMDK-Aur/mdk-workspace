@@ -319,6 +319,51 @@ export async function fetchGhlContactsInRange(creds: GhlCreds, startIso: string,
   return found.slice(0, maxContacts)
 }
 
+async function searchContactsPage(creds: GhlCreds, body: Record<string, unknown>) {
+  const res = await fetchWithRetry(`${GHL_BASE}/contacts/search`, {
+    method: 'POST',
+    headers: authHeaders(creds.token, VERSION_2021_07_28),
+    body: JSON.stringify({ locationId: creds.locationId, pageLimit: 500, sort: [{ field: 'dateAdded', direction: 'asc' }], ...body }),
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`GHL contacts/search HTTP ${res.status}`)
+  const raw: any[] = (await res.json()).contacts ?? []
+  return { contacts: raw.map(toGhlContact), searchAfter: raw.length ? raw[raw.length - 1]?.searchAfter ?? null : null }
+}
+
+/**
+ * Todos los contactos de una location. La búsqueda por páginas corta en 10.000 resultados, así que se
+ * recorre con `searchAfter` y, para no tardar un minuto en cuentas grandes, en varias ventanas de
+ * fecha en paralelo.
+ */
+export async function fetchAllGhlContacts(creds: GhlCreds, { windows = 12, maxContacts = 100000 } = {}): Promise<GhlContact[]> {
+  const first = await searchContactsPage(creds, { pageLimit: 1 })
+  const firstMs = dateAddedMs(first.contacts[0]?.dateAdded ?? null)
+  if (!Number.isFinite(firstMs)) return []
+  const endMs = Date.now() + 86_400_000
+  const step = Math.ceil((endMs - firstMs) / windows)
+  const perWindow = maxContacts
+
+  const loadWindow = async (fromMs: number, toMs: number) => {
+    const found: GhlContact[] = []
+    const filters = [{ field: 'dateAdded', operator: 'range', value: { gte: new Date(fromMs).toISOString(), lt: new Date(toMs).toISOString() } }]
+    let searchAfter: unknown = null
+    while (found.length < perWindow) {
+      const page = await searchContactsPage(creds, searchAfter ? { filters, searchAfter } : { filters })
+      found.push(...page.contacts)
+      if (page.contacts.length < 500 || !page.searchAfter) break
+      searchAfter = page.searchAfter
+    }
+    return found
+  }
+
+  const ranges = Array.from({ length: windows }, (_, index) => [firstMs + index * step, index === windows - 1 ? endMs : firstMs + (index + 1) * step] as const)
+  const results = await Promise.all(ranges.map(([from, to]) => loadWindow(from, to)))
+  const byId = new Map<string, GhlContact>()
+  for (const contact of results.flat()) if (contact.id) byId.set(contact.id, contact)
+  return [...byId.values()]
+}
+
 // ── Usuarios (para resolver assignedTo → nombre de vendedor) ──────────────
 
 export interface GhlUser {

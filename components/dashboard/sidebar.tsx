@@ -51,6 +51,7 @@ import {
   Smile,
   FileText,
   Gem,
+  SquareKanban,
 } from 'lucide-react'
 import { KeyboardArrowLeftIcon, KeyboardArrowRightIcon, LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
 import { UserSettingsDialog } from './user-settings-dialog'
@@ -83,7 +84,13 @@ interface NavSection {
 }
 
 const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles, badge: 'nuevo', badgeUntil: CONEXA_NEW_UNTIL }
-const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem }
+const AURELIA_DASHBOARD_HREF = '/dashboard/aurelia'
+// Sección Aurelia: unidad de negocio separada de MDK.
+const aureliaItems: NavItem[] = [
+  { id: 'aurelia', name: 'Dashboard', href: AURELIA_DASHBOARD_HREF, icon: Gem },
+  { id: 'aurelia-clientes', name: 'Clientes', href: '/dashboard/aurelia/clientes', icon: Users },
+  { id: 'aurelia-desarrollo', name: 'Tareas dev', href: '/dashboard/aurelia/desarrollo', icon: SquareKanban },
+]
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
@@ -268,6 +275,8 @@ export function Sidebar({
   const isItemActive = (href: string) => {
     const basePath = href.split('?')[0]
     if (basePath === '/dashboard') return pathname === '/dashboard'
+    // Las subpáginas de Aurelia tienen su propio ítem: Dashboard solo se marca en su tablero.
+    if (basePath === AURELIA_DASHBOARD_HREF) return pathname === basePath
     return pathname === basePath || pathname.startsWith(basePath + '/')
   }
 
@@ -424,10 +433,15 @@ export function Sidebar({
               {/* Main items (Tareas + sub-items) */}
               <div className="space-y-1">
                 {unitAccess.mdk && renderNavItem(conexaItem, true, () => setIsCollapsed(false))}
-                {unitAccess.aurelia && renderNavItem(aureliaItem, true)}
                 {unitAccess.mdk && mainItems.map(item => renderNavItem(item, true))}
                 {unitAccess.mdk && tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
+
+              {unitAccess.aurelia && (
+                <div className="space-y-1 pt-2 border-t border-border" role="group" aria-label="Aurelia">
+                  {aureliaItems.map(item => renderNavItem(item, true))}
+                </div>
+              )}
 
               {/* Primary items (Clientes, Performance) */}
               {unitAccess.mdk && (
@@ -577,7 +591,6 @@ export function Sidebar({
                 {/* Main navigation - Tareas with collapsible sub-items */}
                 <div className="space-y-1">
                   {unitAccess.mdk && <ConexaNavGroup />}
-                  {unitAccess.aurelia && renderNavItem(aureliaItem)}
                   {/* Tareas as collapsible parent */}
                   {unitAccess.mdk && (
                   <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
@@ -629,6 +642,13 @@ export function Sidebar({
                   </Collapsible>
                   )}
                 </div>
+
+                {unitAccess.aurelia && (
+                  <div className="space-y-1" role="group" aria-labelledby="sidebar-aurelia-title">
+                    <p id="sidebar-aurelia-title" className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Aurelia</p>
+                    {aureliaItems.map(item => renderNavItem(item))}
+                  </div>
+                )}
 
                 {/* Primary items (Clientes, Performance) */}
                 {unitAccess.mdk && (

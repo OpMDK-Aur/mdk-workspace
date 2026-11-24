@@ -92,7 +92,7 @@ function referralValue(referral: Record<string, unknown>, ...keys: string[]) {
 // metadata plana. Aplanamos esos objetos para leer la misma información que el
 // usuario ve en el panel de origen del contacto (facebook, ctwa_ad, título del
 // anuncio, etc.) y contar leads únicos por campaña.
-function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
+export function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
   const metadata = message.metadata
   if (!metadata || typeof metadata !== 'object') return null
 
@@ -166,7 +166,7 @@ function passesOpportunityFilters(opportunity: OpportunityRecord, filters: Requi
 // attributions[] con claves en camelCase (utmSource, utmCampaign, sessionSource,
 // medium, gclid, fbclid, ctwaClid…). La traducimos a las mismas etiquetas que
 // usa el CRM de Aurelia ("Google · …", "Meta Formulario · …", "Meta WhatsApp · …").
-function campaignFromGhlContact(contact: GhlContact): string | null {
+export function campaignFromGhlContact(contact: GhlContact): string | null {
   const read = (...keys: string[]) => {
     for (const attribution of contact.attributions) {
       const found = referralValue(attribution, ...keys)
