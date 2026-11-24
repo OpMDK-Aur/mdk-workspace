@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PHRASES, phraseAt, connectionsOf, missingConnections, sortConnections, firstName, formatWorked, groupAlerts, phraseOfTheDay, todayRange, type InicioAlert } from './inicio'
+import { checkSummary, PHRASES, phraseAt, connectionsOf, missingConnections, sortConnections, firstName, formatWorked, groupAlerts, phraseOfTheDay, todayRange, type InicioAlert } from './inicio'
 
 const alert = (subtipo: string, desde: string | null, id = subtipo): InicioAlert => ({ id, clienteId: 'c', clienteNombre: 'Cliente', subtipo, plataforma: 'meta', desde, mensaje: null })
 
@@ -47,5 +47,18 @@ describe('Inicio de Conexa', () => {
     ])
     expect(rows.map((row) => row.clienteId)).toEqual(['b', 'a'])
     expect(missingConnections(rows[1])).toEqual([])
+  })
+})
+
+describe('checkSummary', () => {
+  const base = { evaluadas: 0, nuevas_disparadas: 0, re_notificadas: 0, resueltas: 0, omitidas: 0, pendientes: 0, errores: [] }
+  it('avisa cuando no hay alertas configuradas', () => {
+    expect(checkSummary(base)).toMatch(/no tienen alertas/)
+  })
+  it('resume nuevas, resueltas y pendientes', () => {
+    expect(checkSummary({ ...base, evaluadas: 5, nuevas_disparadas: 2, resueltas: 1, pendientes: 3 })).toBe('Revisamos 5 alertas · 2 nuevas · 1 resuelta. Quedaron 3 sin revisar por tiempo; volvé a tocar el botón.')
+  })
+  it('marca sin cambios', () => {
+    expect(checkSummary({ ...base, evaluadas: 1 })).toBe('Revisamos 1 alerta · sin cambios.')
   })
 })

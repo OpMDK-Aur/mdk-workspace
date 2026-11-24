@@ -1,6 +1,6 @@
 import { createCrmClient } from '@/lib/supabase/crm'
 import type { AureliaClient, AureliaDataset, SubscriptionStatus } from './metrics'
-import { estimateActivation, type SubscriptionHistoryRow } from './activation'
+import { estimateActivation, isIncompleteStatus, type SubscriptionHistoryRow } from './activation'
 
 const PAGE_SIZE = 1000
 const MAX_ROWS = 20000
@@ -36,8 +36,8 @@ function normalizeStatus(raw: string | null, endedAt: string | null, now: number
   const status = String(raw ?? '').toLowerCase().trim()
   if (endedAt && new Date(endedAt).getTime() <= now) return 'churned'
   if (['canceled', 'cancelled', 'cancelada', 'ended', 'expired', 'inactive', 'incomplete_expired', 'churned', 'baja'].includes(status)) return 'churned'
-  if (['trialing', 'trial', 'prueba'].includes(status)) return 'trial'
-  if (['past_due', 'unpaid', 'pending', 'incomplete'].includes(status)) return 'past_due'
+  if (['trialing', 'trial', 'prueba'].includes(status) || isIncompleteStatus(status)) return 'trial'
+  if (['past_due', 'unpaid', 'pending'].includes(status)) return 'past_due'
   if (['active', 'activa', 'activo', 'paid'].includes(status)) return 'active'
   return 'other'
 }

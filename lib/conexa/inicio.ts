@@ -105,3 +105,30 @@ export function phraseStartIndex(day: string, seed = '') {
 
 export const phraseAt = (index: number) => PHRASES[((index % PHRASES.length) + PHRASES.length) % PHRASES.length]
 export const phraseOfTheDay = (day: string, seed = '') => phraseAt(phraseStartIndex(day, seed))
+
+export type AlertCheckSummary = {
+  evaluadas: number
+  nuevas_disparadas: number
+  re_notificadas: number
+  resueltas: number
+  omitidas: number
+  pendientes: number
+  errores: string[]
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
+
+/** Texto corto con el resultado de "Revisar ahora". */
+export function checkSummary(summary: AlertCheckSummary | undefined) {
+  if (!summary || summary.evaluadas === 0) return 'Tus clientes no tienen alertas configuradas en el Controller.'
+  const parts = [`Revisamos ${plural(summary.evaluadas, 'alerta', 'alertas')}`]
+  if (summary.nuevas_disparadas) parts.push(plural(summary.nuevas_disparadas, 'nueva', 'nuevas'))
+  if (summary.re_notificadas) parts.push(plural(summary.re_notificadas, 'volvió a avisar', 'volvieron a avisar'))
+  if (summary.resueltas) parts.push(plural(summary.resueltas, 'resuelta', 'resueltas'))
+  if (summary.omitidas) parts.push(`${plural(summary.omitidas, 'sin datos o sin evaluar', 'sin datos o sin evaluar')}`)
+  if (!summary.nuevas_disparadas && !summary.re_notificadas && !summary.resueltas) parts.push('sin cambios')
+  let text = parts.join(' · ') + '.'
+  if (summary.pendientes) text += ` Quedaron ${summary.pendientes} sin revisar por tiempo; volvé a tocar el botón.`
+  if (summary.errores.length) text += ` ${plural(summary.errores.length, 'no se pudo evaluar', 'no se pudieron evaluar')}.`
+  return text
+}
