@@ -8,51 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { DEV_CATEGORIES, DEV_STAGES, type DevCategory, type DevStage, type DevTask } from '@/lib/aurelia/followup-shared'
-import { ClientPicker, type PickedClient } from './client-picker'
-
-type Range = { from: string; to: string }
-
-export type DevFilters = {
-  pedido: Range
-  fin: Range
-  prioridad: 'all' | 'si' | 'no'
-  categoria: 'all' | DevCategory
-  etapas: DevStage[]
-  client: PickedClient
-}
-
-export const EMPTY_FILTERS: DevFilters = {
-  pedido: { from: '', to: '' },
-  fin: { from: '', to: '' },
-  prioridad: 'all',
-  categoria: 'all',
-  etapas: [],
-  client: null,
-}
-
-const inRange = (value: string | null, range: Range) =>
-  (!range.from && !range.to) || (value !== null && (!range.from || value >= range.from) && (!range.to || value <= range.to))
-
-export function matchesFilters(task: DevTask, filters: DevFilters) {
-  return inRange(task.fechaPedido, filters.pedido)
-    && inRange(task.fechaFin, filters.fin)
-    && (filters.prioridad === 'all' || task.prioridad === (filters.prioridad === 'si'))
-    && (filters.categoria === 'all' || task.categoria === filters.categoria)
-    && (filters.etapas.length === 0 || filters.etapas.includes(task.etapa))
-    && (!filters.client || task.clientId === filters.client.id)
-}
-
-export function countActiveFilters(filters: DevFilters) {
-  return [
-    filters.pedido.from || filters.pedido.to,
-    filters.fin.from || filters.fin.to,
-    filters.prioridad !== 'all',
-    filters.categoria !== 'all',
-    filters.etapas.length > 0,
-    filters.client,
-  ].filter(Boolean).length
-}
+import { DEV_CATEGORIES, DEV_STAGES } from '@/lib/aurelia/followup-shared'
+import { EMPTY_FILTERS, countActiveFilters, type DevFilters, type Range } from '@/lib/aurelia/dev-filters'
+import { ClientPicker } from './client-picker'
 
 export function DevBoardFilters({ filters, onChange }: { filters: DevFilters; onChange: (filters: DevFilters) => void }) {
   const active = countActiveFilters(filters)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { DevTask } from '@/lib/aurelia/followup-shared'
-import { EMPTY_FILTERS, countActiveFilters, matchesFilters } from './dev-board-filters'
+import type { DevTask } from './followup-shared'
+import { EMPTY_FILTERS, countActiveFilters, matchesFilters } from './dev-filters'
 
 const task: DevTask = {
   id: '1', titulo: 'Arreglar login', descripcion: null, etapa: 'testing', categoria: 'error',
