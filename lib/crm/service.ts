@@ -92,7 +92,7 @@ function referralValue(referral: Record<string, unknown>, ...keys: string[]) {
 // metadata plana. Aplanamos esos objetos para leer la misma información que el
 // usuario ve en el panel de origen del contacto (facebook, ctwa_ad, título del
 // anuncio, etc.) y contar leads únicos por campaña.
-function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
+export function extractCampaignFromMessage(message: { metadata?: Record<string, unknown> | null }): string | null {
   const metadata = message.metadata
   if (!metadata || typeof metadata !== 'object') return null
 

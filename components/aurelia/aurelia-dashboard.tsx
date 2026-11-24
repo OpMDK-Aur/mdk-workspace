@@ -32,6 +32,7 @@ import type { ClientsTableTime } from './aurelia-clients-table'
 import { AureliaHeading } from './aurelia-heading'
 import { AureliaKpiGrid } from './aurelia-kpi-grid'
 import { AureliaOnboardingKpis } from './aurelia-onboarding-kpis'
+import { AureliaOriginBreakdown } from './aurelia-origin-breakdown'
 import { AureliaGrowthChart } from './aurelia-growth-chart'
 import { AureliaPlanBreakdown } from './aurelia-plan-breakdown'
 import { AureliaClientsTable } from './aurelia-clients-table'
@@ -168,6 +169,7 @@ export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
         <AureliaGrowthChart series={computed.series} currency={dataset.currency} className="lg:col-span-2" />
         <div className="flex flex-col gap-4">
           <AureliaPlanBreakdown rows={computed.plans} totalMrr={computed.snapshot.mrr} currency={dataset.currency} />
+          <AureliaOriginBreakdown clients={clients} range={computed.range} periodLabel={periodLabel} />
           <AureliaTimeSummary data={timeData} secondsByClient={periodSeconds} clients={clients} periodLabel={periodLabel} onOpenClient={openClient} />
         </div>
       </div>
