@@ -125,6 +125,13 @@ function checkTask(error: { code?: string; message: string } | null) {
   check(error)
 }
 
+/** Confirma que la prioridad quedó guardada; si la columna no vuelve, la API todavía no la ve. */
+function assertPriority(values: { prioridad?: boolean }, rows: Record<string, unknown>[] | null) {
+  if (typeof values.prioridad !== 'boolean') return
+  const saved = rows?.[0]?.prioridad
+  if (saved !== values.prioridad) throw new Error(`${PRIORITY_MIGRATION_MESSAGE} Si ya la corriste, ejecutá NOTIFY pgrst, 'reload schema'; para que la API vea la columna nueva.`)
+}
+
 function devTaskValues(input: DevTaskInput) {
   const titulo = cleanText(input.titulo, 200)
   if (!titulo) throw new Error('Poné un título.')
@@ -151,8 +158,10 @@ function devTaskValues(input: DevTaskInput) {
 export async function createDevTask(input: DevTaskInput): Promise<Result> {
   return run(async () => {
     const viewer = await requireViewer()
-    const { error } = await createAdminClient().from(DEV_TASKS_TABLE).insert({ ...devTaskValues(input), creado_por: viewer.userId, posicion: Date.now() / 1000 })
+    const values = devTaskValues(input)
+    const { data, error } = await createAdminClient().from(DEV_TASKS_TABLE).insert({ ...values, creado_por: viewer.userId, posicion: Date.now() / 1000 }).select('*')
     checkTask(error)
+    assertPriority(values, data)
   })
 }
 
@@ -160,8 +169,11 @@ export async function updateDevTask(id: string, input: DevTaskInput): Promise<Re
   return run(async () => {
     await requireViewer()
     if (!UUID.test(String(id))) throw new Error('Tarea inválida.')
-    const { error } = await createAdminClient().from(DEV_TASKS_TABLE).update({ ...devTaskValues(input), updated_at: new Date().toISOString() }).eq('id', id)
+    const values = devTaskValues(input)
+    const { data, error } = await createAdminClient().from(DEV_TASKS_TABLE).update({ ...values, updated_at: new Date().toISOString() }).eq('id', id).select('*')
     checkTask(error)
+    if (!data?.length) throw new Error('La tarea ya no existe.')
+    assertPriority(values, data)
   })
 }
 

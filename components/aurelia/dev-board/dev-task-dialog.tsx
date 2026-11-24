@@ -52,6 +52,7 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
   const [asignadoId, setAsignadoId] = useState(existing?.asignadoId ?? UNASSIGNED)
   const [client, setClient] = useState<PickedClient>(existing?.clientId ? { id: existing.clientId, name: existing.clientName ?? 'Cliente' } : prefill?.client ?? null)
   const [prioridad, setPrioridad] = useState(existing?.prioridad ?? false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   const creator = existing ? existing.creadoPorName ?? 'Desconocido' : team.find((member) => member.id === viewerId)?.name ?? 'Vos'
@@ -71,8 +72,10 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
         clientName: client?.name ?? null,
         ...(prioridad !== (existing?.prioridad ?? false) ? { prioridad } : {}),
       }
+      setSaveError(null)
       const result = existing ? await updateDevTask(existing.id, input) : await createDevTask(input)
       if (result.error) {
+        setSaveError(result.error)
         toast.error(result.error)
         return
       }
@@ -172,6 +175,8 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
         <Label htmlFor="dev-cliente">Cliente</Label>
         <ClientPicker id="dev-cliente" value={client} onChange={setClient} />
       </div>
+
+      {saveError && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{saveError}</p>}
 
       <DialogFooter className="gap-2 sm:justify-between">
         {existing ? (
