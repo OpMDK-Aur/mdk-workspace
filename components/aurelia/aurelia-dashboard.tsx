@@ -88,7 +88,7 @@ export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaData
   const periodLabel = period === 'custom'
     ? `${shortDate(computed.range.start)} – ${shortDate(new Date(computed.range.end.getTime() - 1))}`
     : PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? ''
-  const updatedAt = new Date(dataset.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  const updatedAt = new Date(dataset.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
   const running = timeData?.available ? timeData.running : null
   const openClient = (client: AureliaClient) => { setSelectedKpi(null); setSelectedClient(client) }
   const tableTime: ClientsTableTime | undefined = timeData?.available

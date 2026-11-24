@@ -282,5 +282,5 @@ export function formatMoney(value: number, currency: string) {
 export function formatDate(value: string | null) {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Argentina/Buenos_Aires' })
 }
