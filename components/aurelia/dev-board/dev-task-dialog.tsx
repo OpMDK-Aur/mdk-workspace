@@ -17,6 +17,7 @@ import { DEV_CATEGORIES, DEV_STAGES, formatDay, type DevCategory, type DevStage,
 import { todayInArgentina } from '@/lib/aurelia/time-shared'
 import { ClientPicker, type PickedClient } from './client-picker'
 import { DevTaskComments } from './dev-task-comments'
+import { DevTaskTimerButton } from './dev-task-timer-button'
 
 const UNASSIGNED = '__none__'
 
@@ -102,10 +103,13 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
   const form = (
     <form onSubmit={submit} className="flex min-w-0 flex-col gap-4">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
-          {prioridad && <Flag className="size-4 shrink-0 fill-destructive text-destructive" aria-label="Prioritaria" />}
-          {existing ? 'Editar tarea de desarrollo' : 'Nueva tarea de desarrollo'}
-        </DialogTitle>
+        <div className="flex items-center gap-3 pr-6">
+          <DialogTitle className="flex items-center gap-2">
+            {prioridad && <Flag className="size-4 shrink-0 fill-destructive text-destructive" aria-label="Prioritaria" />}
+            {existing ? 'Editar tarea de desarrollo' : 'Nueva tarea de desarrollo'}
+          </DialogTitle>
+          {existing && <DevTaskTimerButton task={existing} showLabel className="ml-auto" />}
+        </div>
         <DialogDescription>
           {!existing && 'Se suma al panel de Desarrollo. '}Creada por {creator}
           {existing && <> · actualizada {formatDay(existing.updatedAt)}</>}

@@ -3,6 +3,7 @@
 import { Bug, CalendarDays, Flag, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDay, type DevTask } from '@/lib/aurelia/followup-shared'
+import { DevTaskTimerButton } from './dev-task-timer-button'
 
 const SHORT_DATE: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short' }
 
@@ -22,11 +23,7 @@ export function CategoryPill({ categoria }: { categoria: DevTask['categoria'] })
 export function DevTaskCard({ task, today, showCategory, onOpen }: { task: DevTask; today: string; showCategory: boolean; onOpen: () => void }) {
   const overdue = Boolean(task.fechaFin && task.fechaFin < today && task.etapa !== 'produccion')
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full flex-col gap-2 rounded-[10px] border border-[var(--tasks-border)] bg-[var(--tasks-card)] p-3 text-left transition-colors hover:border-[var(--tasks-border-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tasks-brand)]"
-    >
+    <div className="relative flex w-full flex-col gap-2 rounded-[10px] border border-[var(--tasks-border)] bg-[var(--tasks-card)] p-3 text-left transition-colors focus-within:ring-2 focus-within:ring-[var(--tasks-brand)] hover:border-[var(--tasks-border-hover)]">
       {(showCategory || task.clientName || task.prioridad) && (
         <div className="flex min-w-0 items-center gap-1.5">
           {showCategory && <CategoryPill categoria={task.categoria} />}
@@ -39,7 +36,9 @@ export function DevTaskCard({ task, today, showCategory, onOpen }: { task: DevTa
           )}
         </div>
       )}
-      <span className="line-clamp-3 text-[13px] font-semibold leading-snug text-[var(--tasks-text)]">{task.titulo}</span>
+      <button type="button" onClick={onOpen} className="line-clamp-3 text-left text-[13px] font-semibold leading-snug text-[var(--tasks-text)] after:absolute after:inset-0 after:rounded-[10px] focus-visible:outline-none">
+        {task.titulo}
+      </button>
       <div className="flex items-center justify-between gap-2">
         <span className={cn('inline-flex items-center gap-1 text-[11.5px] tabular-nums', overdue ? 'font-semibold text-[var(--tasks-overdue)]' : 'text-[var(--tasks-text-3)]')}>
           <CalendarDays className="size-3" aria-hidden="true" />
@@ -47,6 +46,8 @@ export function DevTaskCard({ task, today, showCategory, onOpen }: { task: DevTa
           {task.fechaFin && <> → {formatDay(task.fechaFin, SHORT_DATE)}</>}
           {overdue && <span className="sr-only"> (vencida)</span>}
         </span>
+        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-1.5">
+        {task.etapa !== 'produccion' && <DevTaskTimerButton task={task} />}
         {task.asignadoName ? (
           <span title={`Asignada a ${task.asignadoName}`} className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--tasks-count)] text-[10px] font-bold text-[var(--tasks-text-2)]">
             {initials(task.asignadoName)}
@@ -55,7 +56,8 @@ export function DevTaskCard({ task, today, showCategory, onOpen }: { task: DevTa
         ) : (
           <span className="text-[11px] text-[var(--tasks-text-3)]">Sin asignar</span>
         )}
+        </div>
       </div>
-    </button>
+    </div>
   )
 }
