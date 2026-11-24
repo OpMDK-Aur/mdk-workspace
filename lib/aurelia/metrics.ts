@@ -129,6 +129,9 @@ export function isInternalAccount(client: Pick<AureliaClient, 'name' | 'email'>)
 
 const isAlta = (client: AureliaClient, range: DateRange) => inRange(client.startedAt, range) && !isInternalAccount(client)
 const isActivation = (client: AureliaClient, range: DateRange) => inRange(client.activatedAt, range) && !isInternalAccount(client)
+const isBaja = (client: AureliaClient, range: DateRange) => client.status === 'churned' && inRange(client.churnedAt, range)
+/** Baja de un cliente que llegó a pagar al menos una vez (tiene una suscripción cobrada en su historial). */
+const isBajaPaga = (client: AureliaClient, range: DateRange) => isBaja(client, range) && client.activatedAt !== null && !isInternalAccount(client)
 
 /** Un cliente en prueba hoy no pagó nunca, así que no cuenta como activo en el histórico. */
 export function isActiveAt(client: AureliaClient, date: Date): boolean {
@@ -144,30 +147,35 @@ export type PeriodMetrics = {
   altas: number
   activaciones: number
   bajas: number
+  bajasPagas: number
   netas: number
   activosInicio: number
   churnRate: number | null
+  churnPagoRate: number | null
   mrrNuevo: number
   mrrPerdido: number
 }
 
 export function computePeriodMetrics(clients: AureliaClient[], range: DateRange): PeriodMetrics {
   const altas = clients.filter((client) => isAlta(client, range))
-  const bajas = clients.filter((client) => client.status === 'churned' && inRange(client.churnedAt, range))
+  const bajas = clients.filter((client) => isBaja(client, range))
+  const bajasPagas = clients.filter((client) => isBajaPaga(client, range)).length
   const activosInicio = clients.filter((client) => isActiveAt(client, range.start)).length
   return {
     altas: altas.length,
     activaciones: clients.filter((client) => isActivation(client, range)).length,
     bajas: bajas.length,
+    bajasPagas,
     netas: altas.length - bajas.length,
     activosInicio,
     churnRate: activosInicio > 0 ? bajas.length / activosInicio : null,
+    churnPagoRate: activosInicio > 0 ? bajasPagas / activosInicio : null,
     mrrNuevo: altas.reduce((sum, client) => sum + client.mrr, 0),
     mrrPerdido: bajas.reduce((sum, client) => sum + (client.planMonthlyPrice ?? 0), 0),
   }
 }
 
-export type KpiKey = 'mrr' | 'altas' | 'activaciones' | 'bajas' | 'netas' | 'activos' | 'past_due' | 'trial' | 'churn' | 'arpa'
+export type KpiKey = 'mrr' | 'altas' | 'activaciones' | 'bajas' | 'bajas_pagas' | 'netas' | 'activos' | 'past_due' | 'trial' | 'churn' | 'churn_pago' | 'arpa'
 
 export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> = {
   mrr: { title: 'Clientes que suman MRR', description: 'Suscripciones activas o con pago pendiente, ordenadas por MRR.' },
@@ -175,6 +183,8 @@ export const KPI_DETAIL: Record<KpiKey, { title: string; description: string }> 
   activaciones: { title: 'Activaciones del período', description: 'Clientes que activaron su plan actual en el período, aunque se hayan dado de alta antes (fecha estimada con su suscripción vigente).' },
   past_due: { title: 'Clientes con pago pendiente', description: 'Suscripción vigente con un cobro sin acreditar.' },
   bajas: { title: 'Bajas del período', description: 'Clientes cuya suscripción finalizó en el período.' },
+  bajas_pagas: { title: 'Bajas de clientes que pagaron', description: 'Bajas del período de clientes que llegaron a pagar al menos una vez. No incluye pruebas que no se convirtieron.' },
+  churn_pago: { title: 'Bajas que forman el churn pago', description: 'Bajas de clientes que pagaron al menos una vez, sobre los activos al inicio.' },
   netas: { title: 'Altas y bajas del período', description: 'Altas menos bajas: los dos grupos que forman el neto.' },
   activos: { title: 'Clientes activos', description: 'Suscripción activa y al día (los de pago pendiente se ven en MRR).' },
   trial: { title: 'Clientes en prueba', description: 'Trial vigente, todavía sin aportar MRR.' },
@@ -193,6 +203,8 @@ export function selectKpiClients(key: KpiKey, clients: AureliaClient[], range: D
     case 'altas': return altas()
     case 'bajas':
     case 'churn': return bajas()
+    case 'bajas_pagas':
+    case 'churn_pago': return clients.filter((client) => isBajaPaga(client, range))
     case 'netas': return [...altas(), ...bajas().filter((client) => !isAlta(client, range))]
     case 'activos': return clients.filter((client) => client.status === 'active')
     case 'trial': return clients.filter((client) => client.status === 'trial')
