@@ -127,6 +127,11 @@ export function isInternalAccount(client: Pick<AureliaClient, 'name' | 'email'>)
   return INTERNAL_NAME.test(normalize(client.name)) || INTERNAL_EMAIL.test(normalize(client.email))
 }
 
+/** Cliente que nunca pagó: está en prueba o se dio de baja sin que se le cobrara una suscripción. */
+export function isTrialOnly(client: Pick<AureliaClient, 'status' | 'activatedAt'>): boolean {
+  return client.status === 'trial' || (client.status === 'churned' && client.activatedAt === null)
+}
+
 const isAlta = (client: AureliaClient, range: DateRange) => inRange(client.startedAt, range) && !isInternalAccount(client)
 const isActivation = (client: AureliaClient, range: DateRange) => inRange(client.activatedAt, range) && !isInternalAccount(client)
 const isBaja = (client: AureliaClient, range: DateRange) => client.status === 'churned' && inRange(client.churnedAt, range)

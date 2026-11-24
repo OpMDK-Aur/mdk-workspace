@@ -14,6 +14,7 @@ import {
   computePlanBreakdown,
   computeSnapshot,
   isInternalAccount,
+  isTrialOnly,
   previousRange,
   resolvePeriod,
   selectKpiClients,
@@ -41,14 +42,14 @@ export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaData
   const [customRange, setCustomRange] = useState(() => ({ from: todayInArgentina().slice(0, 8) + '01', to: todayInArgentina() }))
   const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
   const [selectedClient, setSelectedClient] = useState<AureliaClient | null>(null)
-  const [onlyActive, setOnlyActive] = useState(false)
+  const [excludeTrial, setExcludeTrial] = useState(false)
   const [hideInternal, setHideInternal] = useState(false)
   const time = useAureliaTime()
 
   const clients = useMemo(() => {
     if (!dataset.available) return []
-    return dataset.clients.filter((client) => (!onlyActive || client.status === 'active') && (!hideInternal || !isInternalAccount(client)))
-  }, [dataset, onlyActive, hideInternal])
+    return dataset.clients.filter((client) => (!excludeTrial || !isTrialOnly(client)) && (!hideInternal || !isInternalAccount(client)))
+  }, [dataset, excludeTrial, hideInternal])
 
   const computed = useMemo(() => {
     if (!dataset.available) return null
@@ -107,8 +108,8 @@ export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaData
           <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Switch id="aurelia-only-active" checked={onlyActive} onCheckedChange={setOnlyActive} />
-              <Label htmlFor="aurelia-only-active" className="text-xs">Solo activos</Label>
+              <Switch id="aurelia-exclude-trial" checked={excludeTrial} onCheckedChange={setExcludeTrial} />
+              <Label htmlFor="aurelia-exclude-trial" className="text-xs" title="Saca a los clientes en prueba y a los que se dieron de baja sin haber pagado nunca">Excluir trials</Label>
             </div>
             <div className="flex items-center gap-2">
               <Switch id="aurelia-hide-internal" checked={hideInternal} onCheckedChange={setHideInternal} />
