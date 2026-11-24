@@ -7,11 +7,18 @@ export type ClientOrigin = {
   /** Etiqueta completa, p. ej. "Meta WhatsApp · Campaña Noviembre". */
   label: string | null
   referralAt: string | null
+  /** De dónde salió el dato: el referral de los mensajes del CRM o la atribución del contacto en GoHighLevel. */
+  source?: 'crm' | 'ghl'
 }
 
 export type AureliaOriginsData =
   | { available: false; message: string }
-  | { available: true; origins: Record<string, ClientOrigin>; generatedAt: string }
+  | { available: true; origins: Record<string, ClientOrigin>; generatedAt: string; ghl: { connected: boolean; contacts: number; error: string | null } }
+
+export const normalizeEmail = (value: string | null | undefined) => {
+  const email = (value ?? '').trim().toLowerCase()
+  return email.includes('@') ? email : null
+}
 
 export const ORGANIC_LABEL = 'Sin referral'
 export const NO_CONTACT_LABEL = 'Sin contacto en el CRM'
@@ -22,10 +29,20 @@ export const phoneKey = (value: string | null | undefined) => {
   return digits.length >= 8 ? digits : null
 }
 
-export function originFromLabel(label: string | null, referralAt: string | null): ClientOrigin {
-  if (!label) return { kind: 'organic', channel: null, label: null, referralAt: null }
+export function originFromLabel(label: string | null, referralAt: string | null, source: ClientOrigin['source'] = 'crm'): ClientOrigin {
+  if (!label) return { kind: 'organic', channel: null, label: null, referralAt: null, source }
   const separator = label.indexOf(' · ')
-  return { kind: 'referral', channel: separator === -1 ? 'Otro' : label.slice(0, separator), label, referralAt }
+  return { kind: 'referral', channel: separator === -1 ? 'Otro' : label.slice(0, separator), label, referralAt, source }
+}
+
+/**
+ * Combina el origen del CRM con el de GoHighLevel: manda el referral del CRM; si no hay, se usa la
+ * atribución de GHL; y si ninguno tiene campaña, cuenta como sin referral cuando el contacto existe en alguno.
+ */
+export function mergeOrigins(crm: ClientOrigin, ghl: ClientOrigin | null): ClientOrigin {
+  if (crm.kind === 'referral' || !ghl) return crm
+  if (ghl.kind === 'referral') return ghl
+  return crm.kind === 'no-contact' ? ghl : crm
 }
 
 export function originChannelLabel(origin: ClientOrigin | undefined) {

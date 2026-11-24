@@ -166,7 +166,7 @@ function passesOpportunityFilters(opportunity: OpportunityRecord, filters: Requi
 // attributions[] con claves en camelCase (utmSource, utmCampaign, sessionSource,
 // medium, gclid, fbclid, ctwaClid…). La traducimos a las mismas etiquetas que
 // usa el CRM de Aurelia ("Google · …", "Meta Formulario · …", "Meta WhatsApp · …").
-function campaignFromGhlContact(contact: GhlContact): string | null {
+export function campaignFromGhlContact(contact: GhlContact): string | null {
   const read = (...keys: string[]) => {
     for (const attribution of contact.attributions) {
       const found = referralValue(attribution, ...keys)

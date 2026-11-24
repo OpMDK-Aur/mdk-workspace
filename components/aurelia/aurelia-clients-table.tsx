@@ -168,7 +168,10 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                       const campaign = originCampaign(origin)
                       return (
                         <div className="flex flex-col" title={origin?.label ?? undefined}>
-                          <span className={cn('truncate', origin?.kind !== 'referral' && 'text-muted-foreground')}>{originChannelLabel(origin)}</span>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={cn('truncate', origin?.kind !== 'referral' && 'text-muted-foreground')}>{originChannelLabel(origin)}</span>
+                            {origin?.source === 'ghl' && <span title="Dato de GoHighLevel" className="shrink-0 rounded border px-1 text-[10px] font-semibold text-muted-foreground">GHL</span>}
+                          </span>
                           {campaign && <span className="truncate text-xs text-muted-foreground">{campaign}</span>}
                         </div>
                       )

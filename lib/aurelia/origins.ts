@@ -1,8 +1,9 @@
 import 'server-only'
 import { createCrmClient } from '@/lib/supabase/crm'
-import { extractCampaignFromMessage } from '@/lib/crm/service'
+import { campaignFromGhlContact, extractCampaignFromMessage } from '@/lib/crm/service'
+import { fetchAllGhlContacts, type GhlContact } from '@/lib/revops/ghl-client'
 import { ONBOARDING_PIPELINE_ID } from './onboarding-shared'
-import { originFromLabel, phoneKey, type AureliaOriginsData, type ClientOrigin } from './origins-shared'
+import { mergeOrigins, normalizeEmail, originFromLabel, phoneKey, type AureliaOriginsData, type ClientOrigin } from './origins-shared'
 
 const PAGE_SIZE = 1000
 const MAX_CONTACTS = 30000
@@ -55,12 +56,46 @@ async function aureliaAccountId(crm: Crm) {
   return id
 }
 
+type GhlIndex = { byEmail: Map<string, GhlContact>; byPhone: Map<string, GhlContact>; contacts: number }
+
+/** Todos los contactos de la subcuenta de GHL de Aurelia, indexados por email y teléfono (gana el más viejo). */
+async function loadGhlIndex(): Promise<GhlIndex | null> {
+  const locationId = process.env.AURELIA_GHL_LOCATION_ID?.trim()
+  const token = process.env.AURELIA_GHL_TOKEN?.trim()
+  if (!locationId || !token) return null
+  const contacts = await fetchAllGhlContacts({ locationId, token })
+  const byEmail = new Map<string, GhlContact>()
+  const byPhone = new Map<string, GhlContact>()
+  const oldestFirst = [...contacts].sort((a, b) => String(a.dateAdded ?? '').localeCompare(String(b.dateAdded ?? '')))
+  for (const contact of oldestFirst) {
+    const email = normalizeEmail(contact.email)
+    if (email && !byEmail.has(email)) byEmail.set(email, contact)
+    const phone = phoneKey(contact.phone)
+    if (phone && !byPhone.has(phone)) byPhone.set(phone, contact)
+  }
+  return { byEmail, byPhone, contacts: contacts.length }
+}
+
+function ghlOrigin(index: GhlIndex, client: { email: string | null; phone: string | null }): ClientOrigin | null {
+  const email = normalizeEmail(client.email)
+  const phone = phoneKey(client.phone)
+  const contact = (email && index.byEmail.get(email)) || (phone && index.byPhone.get(phone)) || null
+  if (!contact) return null
+  return originFromLabel(campaignFromGhlContact(contact), contact.dateAdded ?? null, 'ghl')
+}
+
 async function loadOrigins(): Promise<AureliaOriginsData> {
   const crm = createCrmClient()
   const accountId = await aureliaAccountId(crm)
 
+  // GHL es un complemento: si falla, se sigue con lo del CRM y se avisa.
+  const ghlPromise = loadGhlIndex().then(
+    (index) => ({ index, error: null as string | null }),
+    (error) => ({ index: null, error: error instanceof Error ? error.message : 'No se pudo consultar GoHighLevel' }),
+  )
+
   const [clients, contacts] = await Promise.all([
-    paged<{ id: string; phone: string | null }>((from, to) => crm.from('clients').select('id,phone').order('id').range(from, to), 'clients', 20000),
+    paged<{ id: string; phone: string | null; email: string | null }>((from, to) => crm.from('clients').select('id,phone,email').order('id').range(from, to), 'clients', 20000),
     paged<{ id: string; phone: string | null; created_at: string | null }>((from, to) => crm.from('contacts').select('id,phone,created_at').eq('client_id', accountId).order('id').range(from, to), 'contacts', MAX_CONTACTS),
   ])
 
@@ -102,16 +137,25 @@ async function loadOrigins(): Promise<AureliaOriginsData> {
     }
   }
 
+  const ghl = await ghlPromise
+  if (ghl.error) console.error('[Aurelia] Error leyendo contactos de GHL:', ghl.error)
+
   const origins: Record<string, ClientOrigin> = {}
   for (const client of clients) {
     const ids = contactIdsByClient.get(String(client.id))
-    if (!ids) {
-      origins[String(client.id)] = { kind: 'no-contact', channel: null, label: null, referralAt: null }
-      continue
+    let origin: ClientOrigin
+    if (!ids) origin = { kind: 'no-contact', channel: null, label: null, referralAt: null }
+    else {
+      const referral = ids.map((id) => firstReferral.get(id)).filter((value): value is { label: string; at: string } => Boolean(value)).sort((a, b) => a.at.localeCompare(b.at))[0]
+      origin = originFromLabel(referral?.label ?? null, referral?.at ?? null)
     }
-    const referral = ids.map((id) => firstReferral.get(id)).filter((value): value is { label: string; at: string } => Boolean(value)).sort((a, b) => a.at.localeCompare(b.at))[0]
-    origins[String(client.id)] = originFromLabel(referral?.label ?? null, referral?.at ?? null)
+    origins[String(client.id)] = mergeOrigins(origin, ghl.index ? ghlOrigin(ghl.index, client) : null)
   }
 
-  return { available: true, origins, generatedAt: new Date().toISOString() }
+  return {
+    available: true,
+    origins,
+    generatedAt: new Date().toISOString(),
+    ghl: { connected: Boolean(ghl.index), contacts: ghl.index?.contacts ?? 0, error: ghl.error },
+  }
 }

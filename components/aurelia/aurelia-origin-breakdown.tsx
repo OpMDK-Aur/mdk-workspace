@@ -25,7 +25,8 @@ export function AureliaOriginBreakdown({ clients, range, periodLabel }: { client
     <Card>
       <CardHeader>
         <CardTitle className="text-base font-medium">Origen de las ventas</CardTitle>
-        <CardDescription>Altas · {periodLabel} · según el referral de sus mensajes</CardDescription>
+        <CardDescription>Altas · {periodLabel} · referral del CRM y atribución de GoHighLevel</CardDescription>
+        {data?.available && data.ghl.error && <p className="text-xs text-destructive">No se pudo leer GoHighLevel: {data.ghl.error}. Se muestra solo el CRM.</p>}
       </CardHeader>
       <CardContent>
         {isLoading && !data ? (

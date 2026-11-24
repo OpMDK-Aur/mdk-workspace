@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NO_CONTACT_LABEL, ORGANIC_LABEL, groupOrigins, originCampaign, originFromLabel, phoneKey, type ClientOrigin } from './origins-shared'
+import { NO_CONTACT_LABEL, ORGANIC_LABEL, groupOrigins, mergeOrigins, originCampaign, originFromLabel, phoneKey, type ClientOrigin } from './origins-shared'
 
 describe('phoneKey', () => {
   it('matches Argentine numbers with or without country code and mobile 9', () => {
@@ -29,5 +29,19 @@ describe('origins', () => {
     expect(groups[0]).toEqual({ channel: 'Meta WhatsApp', count: 2, campaigns: [{ name: 'A', count: 2 }] })
     expect(groups.find((group) => group.channel === NO_CONTACT_LABEL)?.count).toBe(2)
     expect(groups.find((group) => group.channel === ORGANIC_LABEL)?.campaigns).toEqual([])
+  })
+})
+
+describe('mergeOrigins', () => {
+  const noContact: ClientOrigin = { kind: 'no-contact', channel: null, label: null, referralAt: null }
+  it('keeps the CRM referral over GHL', () => {
+    const crm = originFromLabel('Meta WhatsApp · A', 'x')
+    expect(mergeOrigins(crm, originFromLabel('Google · B', 'y', 'ghl'))).toBe(crm)
+  })
+  it('falls back to GHL attribution', () => {
+    const ghl = originFromLabel('Google · B', 'y', 'ghl')
+    expect(mergeOrigins(originFromLabel(null, null), ghl)).toBe(ghl)
+    expect(mergeOrigins(noContact, originFromLabel(null, null, 'ghl')).kind).toBe('organic')
+    expect(mergeOrigins(noContact, null)).toBe(noContact)
   })
 })
