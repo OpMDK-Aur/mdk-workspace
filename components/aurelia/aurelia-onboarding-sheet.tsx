@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Trash2 } from 'lucide-react'
+import { ListPlus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,9 +23,11 @@ type Props = {
   observations: OnboardingObservation[]
   onClose: () => void
   onChanged: () => Promise<unknown>
+  canCreateTask: boolean
+  onCreateTask: (prefill?: { titulo?: string; descripcion?: string }) => void
 }
 
-export function AureliaOnboardingSheet({ target, followup, observations, onClose, onChanged }: Props) {
+export function AureliaOnboardingSheet({ target, followup, observations, onClose, onChanged, canCreateTask, onCreateTask }: Props) {
   return (
     <Sheet open={target !== null} onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
@@ -34,11 +36,15 @@ export function AureliaOnboardingSheet({ target, followup, observations, onClose
             <SheetHeader className="border-b">
               <SheetTitle>{target.name}</SheetTitle>
               <SheetDescription>Seguimiento de onboarding, encuestas NPS y observaciones.</SheetDescription>
+              <Button type="button" variant="outline" size="sm" className="mt-2 gap-1.5 self-start" disabled={!canCreateTask} onClick={() => onCreateTask()}>
+                <ListPlus className="size-3.5" aria-hidden="true" />
+                Crear tarea de desarrollo
+              </Button>
             </SheetHeader>
             {/* La key reinicia el formulario al cambiar de cliente o al recargar los datos guardados. */}
             <FollowupForm key={`${target.id}-${followup?.updatedAt ?? 'nuevo'}`} target={target} followup={followup ?? emptyFollowup(target.id, target.name)} onChanged={onChanged} />
             <Separator />
-            <ObservationsSection target={target} observations={observations} onChanged={onChanged} />
+            <ObservationsSection target={target} observations={observations} onChanged={onChanged} canCreateTask={canCreateTask} onCreateTask={onCreateTask} />
           </>
         )}
       </SheetContent>
@@ -130,7 +136,7 @@ function SurveyRow({ index, fecha, nota, onChange }: { index: number; fecha: str
   )
 }
 
-function ObservationsSection({ target, observations, onChanged }: { target: FollowupTarget; observations: OnboardingObservation[]; onChanged: () => Promise<unknown> }) {
+function ObservationsSection({ target, observations, onChanged, canCreateTask, onCreateTask }: { target: FollowupTarget; observations: OnboardingObservation[]; onChanged: () => Promise<unknown>; canCreateTask: boolean; onCreateTask: Props['onCreateTask'] }) {
   const [fecha, setFecha] = useState(() => todayInArgentina())
   const [comentario, setComentario] = useState('')
   const [pending, startTransition] = useTransition()
@@ -183,9 +189,22 @@ function ObservationsSection({ target, observations, onChanged }: { target: Foll
             <li key={observation.id} className="flex flex-col gap-1 rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium">{formatDay(observation.fecha)}{observation.autorName && <span className="font-normal text-muted-foreground"> · {observation.autorName}</span>}</span>
+                <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  disabled={!canCreateTask}
+                  onClick={() => onCreateTask({ titulo: observation.comentario.split('\n')[0].slice(0, 120), descripcion: `Observación del ${formatDay(observation.fecha)}:\n${observation.comentario}` })}
+                >
+                  <ListPlus className="size-3.5" aria-hidden="true" />
+                  Crear tarea
+                </Button>
                 <Button type="button" variant="ghost" size="icon" className="size-7" onClick={() => remove(observation.id)} disabled={deletingId === observation.id} aria-label="Borrar observación">
                   <Trash2 className="size-3.5" aria-hidden="true" />
                 </Button>
+                </div>
               </div>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-pretty">{observation.comentario}</p>
             </li>

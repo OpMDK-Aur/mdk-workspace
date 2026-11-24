@@ -1,7 +1,7 @@
 'use client'
 
 import { useDeferredValue, useMemo, useState } from 'react'
-import { AlertTriangle, ClipboardList, Search } from 'lucide-react'
+import { AlertTriangle, ClipboardList, ListPlus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -12,11 +12,12 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { formatDate, isInternalAccount, type AureliaClient } from '@/lib/aurelia/metrics'
-import { computeNps, formatDay, type OnboardingFollowup } from '@/lib/aurelia/followup-shared'
+import { computeNps, type OnboardingFollowup } from '@/lib/aurelia/followup-shared'
 import { AureliaObservationsList } from './aurelia-observations-list'
 import { AureliaOnboardingSheet, type FollowupTarget } from './aurelia-onboarding-sheet'
-import { NpsScoreBadge } from './nps-score-badge'
-import { useAureliaFollowup } from './use-aurelia-followup'
+import { useAureliaDevTasks, useAureliaFollowup } from './use-aurelia-followup'
+import { FollowupInlineCells } from './followup-inline-cells'
+import { DevTaskDialog, type DevTaskDraft } from './dev-board/dev-task-dialog'
 import { STALLED_AFTER_DAYS, daysSince, matchOnboarding, normalizeName, type AureliaOnboardingData, type OnboardingMatch } from '@/lib/aurelia/onboarding-shared'
 
 const NO_OPPORTUNITY = '__none__'
@@ -38,6 +39,13 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
   const [followupTarget, setFollowupTarget] = useState<FollowupTarget | null>(null)
   const { data: followupData, mutate: refreshFollowup } = useAureliaFollowup()
   const followupReady = followupData?.available ? followupData : null
+  const editDisabledReason = !followupData ? 'Cargando seguimiento...' : followupData.available ? null : followupData.message
+  const { data: devData, mutate: refreshDevTasks } = useAureliaDevTasks()
+  const devReady = devData?.available ? devData : null
+  const devDisabledReason = !devData ? 'Cargando panel de desarrollo...' : devData.available ? null : devData.message
+  const [taskDraft, setTaskDraft] = useState<DevTaskDraft | null>(null)
+  const openNewTask = (client: { id: string; name: string }, prefill?: { titulo?: string; descripcion?: string }) =>
+    setTaskDraft({ etapa: 'backlog', categoria: 'sugerencia', client, ...prefill })
 
   const followupByClient = useMemo(() => new Map((followupReady?.followups ?? []).map((followup) => [followup.clientId, followup])), [followupReady])
   const targetObservations = useMemo(
@@ -169,7 +177,7 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
                 <TableHead>Primera reunión</TableHead>
                 <TableHead>Cierre</TableHead>
                 <TableHead>Encuestas NPS</TableHead>
-                <TableHead><span className="sr-only">Seguimiento</span></TableHead>
+                <TableHead><span className="sr-only">Acciones</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -209,19 +217,34 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
                         </span>
                       ) : '—'}
                     </TableCell>
-                    <FollowupCells followup={followupByClient.get(client.id)} />
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5"
-                        disabled={!followupReady}
-                        onClick={(event) => { event.stopPropagation(); setFollowupTarget({ id: client.id, name: client.name }) }}
-                      >
-                        <ClipboardList className="size-3.5" aria-hidden="true" />
-                        Seguimiento
-                      </Button>
+                    <FollowupInlineCells client={{ id: client.id, name: client.name }} followup={followupByClient.get(client.id)} disabledReason={editDisabledReason} onChanged={() => refreshFollowup()} />
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          disabled={!followupReady}
+                          title={editDisabledReason ?? 'Fechas, encuestas y observaciones'}
+                          onClick={() => setFollowupTarget({ id: client.id, name: client.name })}
+                        >
+                          <ClipboardList className="size-3.5" aria-hidden="true" />
+                          Seguimiento
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          disabled={!devReady}
+                          title={devDisabledReason ?? 'Crear una tarea en el panel de Desarrollo'}
+                          onClick={() => openNewTask({ id: client.id, name: client.name })}
+                        >
+                          <ListPlus className="size-3.5" aria-hidden="true" />
+                          Tarea
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -244,27 +267,14 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
           observations={targetObservations}
           onClose={() => setFollowupTarget(null)}
           onChanged={() => refreshFollowup()}
+          canCreateTask={Boolean(devReady)}
+          onCreateTask={(prefill) => followupTarget && openNewTask(followupTarget, prefill)}
         />
+        {devReady && (
+          <DevTaskDialog draft={taskDraft} team={devReady.team} viewerId={devReady.viewerId} onClose={() => setTaskDraft(null)} onSaved={() => refreshDevTasks()} />
+        )}
       </CardContent>
     </Card>
-  )
-}
-
-const SURVEY_ORDINALS = ['1ra', '2da', '3ra', '4ta']
-
-function FollowupCells({ followup }: { followup: OnboardingFollowup | undefined }) {
-  return (
-    <>
-      <TableCell className="whitespace-nowrap text-sm">{formatDay(followup?.primeraReunion ?? null)}</TableCell>
-      <TableCell className="whitespace-nowrap text-sm">{formatDay(followup?.cierreOnboarding ?? null)}</TableCell>
-      <TableCell>
-        <div className="flex gap-1">
-          {(followup?.encuestas ?? Array.from({ length: 4 }, () => ({ fecha: null, nota: null }))).map((survey, index) => (
-            <NpsScoreBadge key={index} nota={survey.nota} title={`${SURVEY_ORDINALS[index]} encuesta${survey.fecha ? ` · ${formatDay(survey.fecha)}` : ''}`} />
-          ))}
-        </div>
-      </TableCell>
-    </>
   )
 }
 

@@ -17,7 +17,7 @@ import { ClientPicker, type PickedClient } from './client-picker'
 
 const UNASSIGNED = '__none__'
 
-export type DevTaskDraft = { task: DevTask } | { etapa: DevStage; categoria: DevCategory }
+export type DevTaskDraft = { task: DevTask } | { etapa: DevStage; categoria: DevCategory; client?: PickedClient; titulo?: string; descripcion?: string }
 
 type Props = {
   draft: DevTaskDraft | null
@@ -39,14 +39,15 @@ export function DevTaskDialog({ draft, team, viewerId, onClose, onSaved }: Props
 
 function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draft: DevTaskDraft }) {
   const existing = 'task' in draft ? draft.task : null
-  const [titulo, setTitulo] = useState(existing?.titulo ?? '')
-  const [descripcion, setDescripcion] = useState(existing?.descripcion ?? '')
+  const prefill = 'task' in draft ? null : draft
+  const [titulo, setTitulo] = useState(existing?.titulo ?? prefill?.titulo ?? '')
+  const [descripcion, setDescripcion] = useState(existing?.descripcion ?? prefill?.descripcion ?? '')
   const [etapa, setEtapa] = useState<DevStage>(existing?.etapa ?? ('etapa' in draft ? draft.etapa : 'backlog'))
   const [categoria, setCategoria] = useState<DevCategory>(existing?.categoria ?? ('categoria' in draft ? draft.categoria : 'sugerencia'))
   const [fechaPedido, setFechaPedido] = useState(existing?.fechaPedido ?? todayInArgentina())
   const [fechaFin, setFechaFin] = useState(existing?.fechaFin ?? '')
   const [asignadoId, setAsignadoId] = useState(existing?.asignadoId ?? UNASSIGNED)
-  const [client, setClient] = useState<PickedClient>(existing?.clientId ? { id: existing.clientId, name: existing.clientName ?? 'Cliente' } : null)
+  const [client, setClient] = useState<PickedClient>(existing?.clientId ? { id: existing.clientId, name: existing.clientName ?? 'Cliente' } : prefill?.client ?? null)
   const [pending, startTransition] = useTransition()
 
   const creator = existing ? existing.creadoPorName ?? 'Desconocido' : team.find((member) => member.id === viewerId)?.name ?? 'Vos'
@@ -95,7 +96,7 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
       <DialogHeader>
         <DialogTitle>{existing ? 'Editar tarea de desarrollo' : 'Nueva tarea de desarrollo'}</DialogTitle>
         <DialogDescription>
-          Creada por {creator}
+          {!existing && 'Se suma al panel de Desarrollo. '}Creada por {creator}
           {existing && <> · actualizada {formatDay(existing.updatedAt)}</>}
         </DialogDescription>
       </DialogHeader>
