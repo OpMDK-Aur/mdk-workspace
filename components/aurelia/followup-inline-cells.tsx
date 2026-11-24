@@ -11,7 +11,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { TableCell } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { saveOnboardingFollowup } from '@/app/actions/aurelia-followup'
-import { SURVEY_COUNT, emptyFollowup, formatDay, type OnboardingFollowup } from '@/lib/aurelia/followup-shared'
+import { NPS_MAX, NPS_MIN, SURVEY_COUNT, emptyFollowup, formatDay, type OnboardingFollowup } from '@/lib/aurelia/followup-shared'
 import { NpsScoreBadge } from './nps-score-badge'
 
 const ORDINALS = ['Primera', 'Segunda', 'Tercera', 'Cuarta']
@@ -106,7 +106,7 @@ function SurveyCell({ index, survey, client, followup, disabledReason, onChanged
   const { pending, save } = useSave(client, followup, onChanged)
   const name = `${ORDINALS[index]} encuesta`
   const parsed = nota === '' ? null : Number(nota)
-  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= 0 && parsed <= 10)
+  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= NPS_MIN && parsed <= NPS_MAX)
 
   const apply = (next: { fecha: string | null; nota: number | null }) =>
     save((current) => ({ ...current, encuestas: current.encuestas.map((item, position) => (position === index ? next : item)) }), () => setOpen(false))
@@ -132,12 +132,12 @@ function SurveyCell({ index, survey, client, followup, disabledReason, onChanged
             <Input id={`encuesta-${index}-fecha-${client.id}`} type="date" value={fecha} onChange={(event) => setFecha(event.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`encuesta-${index}-nota-${client.id}`}>Nota (0 a 10)</Label>
+            <Label htmlFor={`encuesta-${index}-nota-${client.id}`}>Nota (1 a 5)</Label>
             <div className="flex items-center gap-2">
-              <Input id={`encuesta-${index}-nota-${client.id}`} type="number" inputMode="numeric" min={0} max={10} step={1} value={nota} onChange={(event) => setNota(event.target.value)} aria-invalid={!valid} autoFocus />
+              <Input id={`encuesta-${index}-nota-${client.id}`} type="number" inputMode="numeric" min={NPS_MIN} max={NPS_MAX} step={1} value={nota} onChange={(event) => setNota(event.target.value)} aria-invalid={!valid} autoFocus />
               <NpsScoreBadge nota={valid ? parsed : null} className="shrink-0" />
             </div>
-            {!valid && <p className="text-xs text-destructive">Tiene que ser un número entero de 0 a 10.</p>}
+            {!valid && <p className="text-xs text-destructive">Tiene que ser un número entero de 1 a 5.</p>}
           </div>
           <div className="flex justify-between gap-2">
             <Button type="button" variant="ghost" size="sm" disabled={pending || (survey.nota === null && !survey.fecha)} onClick={() => apply({ fecha: null, nota: null })}>Borrar</Button>
