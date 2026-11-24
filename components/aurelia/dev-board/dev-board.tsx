@@ -1,7 +1,7 @@
 'use client'
 
 import { useDeferredValue, useMemo, useState } from 'react'
-import { AlertTriangle, Plus, Search } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +15,7 @@ import { todayInArgentina } from '@/lib/aurelia/time-shared'
 import { useAureliaDevTasks } from '../use-aurelia-followup'
 import { DevTaskCard } from './dev-task-card'
 import { DevTaskDialog, type DevTaskDraft } from './dev-task-dialog'
+import { DevBoardFilters, EMPTY_FILTERS, matchesFilters, type DevFilters } from './dev-board-filters'
 
 const ALL = '__all__'
 const UNASSIGNED = '__none__'
@@ -26,6 +27,7 @@ export function DevBoard() {
   const [draft, setDraft] = useState<DevTaskDraft | null>(null)
   const [search, setSearch] = useState('')
   const [assignee, setAssignee] = useState(ALL)
+  const [filters, setFilters] = useState<DevFilters>(EMPTY_FILTERS)
   const deferredSearch = useDeferredValue(search)
   const today = todayInArgentina()
   const ready = data?.available ? data : null
@@ -34,8 +36,9 @@ export function DevBoard() {
     const query = normalizeName(deferredSearch)
     return (ready?.tasks ?? []).filter((task) =>
       (assignee === ALL || (assignee === UNASSIGNED ? !task.asignadoId : task.asignadoId === assignee))
-      && (!query || normalizeName(`${task.titulo} ${task.clientName ?? ''} ${task.descripcion ?? ''}`).includes(query)))
-  }, [ready, assignee, deferredSearch])
+      && (!query || normalizeName(`${task.titulo} ${task.clientName ?? ''} ${task.descripcion ?? ''}`).includes(query))
+      && matchesFilters(task, filters))
+  }, [ready, assignee, deferredSearch, filters])
 
   const move = async (taskId: string, drop: Drop) => {
     if (!ready) return
@@ -66,6 +69,9 @@ export function DevBoard() {
     )
   }
 
+  const visibleStages = filters.etapas.length ? DEV_STAGES.filter((stage) => filters.etapas.includes(stage.id)) : DEV_STAGES
+  const visibleCategories = filters.categoria === 'all' ? DEV_CATEGORIES : DEV_CATEGORIES.filter((category) => category.id === filters.categoria)
+
   const byStage = (etapa: DevStage, categoria?: DevCategory) =>
     tasks.filter((task) => task.etapa === etapa && (!categoria || task.categoria === categoria)).sort((a, b) => Number(b.prioridad) - Number(a.prioridad) || a.posicion - b.posicion)
 
@@ -85,6 +91,7 @@ export function DevBoard() {
             {ready?.team.filter((member) => member.id !== ready.viewerId).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        <DevBoardFilters filters={filters} onChange={setFilters} />
         <Button className="ml-auto gap-1.5" onClick={() => setDraft({ etapa: 'backlog', categoria: 'sugerencia' })} disabled={!ready}>
           <Plus className="size-4" aria-hidden="true" />
           Nueva tarea
@@ -92,10 +99,10 @@ export function DevBoard() {
       </div>
 
       <div className="flex min-h-[28rem] flex-1 gap-3 overflow-x-auto pb-2">
-        {DEV_STAGES.map((stage) => stage.id === 'backlog' ? (
-          <Column key={stage.id} label={stage.label} dot={stage.dot} count={byStage('backlog').length} wide>
-            <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 px-2 pb-2">
-              {DEV_CATEGORIES.map((category) => (
+        {visibleStages.map((stage) => stage.id === 'backlog' ? (
+          <Column key={stage.id} label={stage.label} dot={stage.dot} count={byStage('backlog').length} loading={isLoading} drop={{ etapa: 'backlog' }} onDrop={move} wide={visibleCategories.length > 1}>
+            <div className={cn('grid min-h-0 flex-1 gap-2 px-2 pb-2', visibleCategories.length > 1 ? 'grid-cols-2' : 'grid-cols-1')}>
+              {visibleCategories.map((category) => (
                 <DropZone key={category.id} drop={{ etapa: 'backlog', categoria: category.id }} onDrop={move} className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-[10px] bg-[var(--tasks-bg)] p-1.5">
                   <div className="flex items-center gap-1.5 px-1 pt-1">
                     <span className="text-[12px] font-semibold text-[var(--tasks-text-2)]">{category.label}</span>
@@ -108,7 +115,7 @@ export function DevBoard() {
             </div>
           </Column>
         ) : (
-          <Column key={stage.id} label={stage.label} dot={stage.dot} count={byStage(stage.id).length}>
+          <Column key={stage.id} label={stage.label} dot={stage.dot} count={byStage(stage.id).length} loading={isLoading} drop={{ etapa: stage.id }} onDrop={move}>
             <DropZone drop={{ etapa: stage.id }} onDrop={move} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
               <Cards loading={isLoading} tasks={byStage(stage.id)} today={today} showCategory onOpen={(task) => setDraft({ task })} />
             </DropZone>
@@ -122,13 +129,45 @@ export function DevBoard() {
   )
 }
 
-function Column({ label, dot, count, wide, children }: { label: string; dot: string; count: number; wide?: boolean; children: React.ReactNode }) {
+type ColumnProps = { label: string; dot: string; count: number; loading: boolean; drop: Drop; onDrop: (taskId: string, drop: Drop) => void; wide?: boolean; children: React.ReactNode }
+
+/** Igual que el kanban de MDK: las etapas vacías arrancan colapsadas y cada una se puede colapsar a mano. */
+function Column({ label, dot, count, loading, drop, onDrop, wide, children }: ColumnProps) {
+  const [collapsedPref, setCollapsedPref] = useState<boolean | null>(null)
+  const collapsed = collapsedPref ?? (!loading && count === 0)
+  const dotEl = <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} aria-hidden="true" />
+
+  if (collapsed) {
+    return (
+      <DropZone drop={drop} onDrop={onDrop} className="flex shrink-0 rounded-[14px]">
+        <button
+          type="button"
+          onClick={() => setCollapsedPref(false)}
+          aria-label={`Expandir ${label} (${count})`}
+          className="flex w-11 flex-col items-center gap-2 rounded-[14px] border border-[var(--tasks-border)] bg-[var(--tasks-col)] py-3 transition-colors hover:border-[var(--tasks-border-hover)]"
+        >
+          {dotEl}
+          <CountPill value={count} />
+          <span className="text-[13px] font-bold uppercase tracking-wide text-[var(--tasks-text)] [writing-mode:vertical-rl]">{label}</span>
+        </button>
+      </DropZone>
+    )
+  }
+
   return (
     <section aria-label={label} className={cn('flex shrink-0 flex-col overflow-hidden rounded-[14px] border border-[var(--tasks-border)] bg-[var(--tasks-col)]', wide ? 'w-[520px]' : 'w-[280px]')}>
       <header className="flex items-center gap-2 px-[14px] pb-2.5 pt-3">
-        <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} aria-hidden="true" />
+        {dotEl}
         <h3 className="truncate text-[13px] font-bold uppercase tracking-wide text-[var(--tasks-text)]">{label}</h3>
         <CountPill value={count} />
+        <button
+          type="button"
+          onClick={() => setCollapsedPref(true)}
+          aria-label={`Contraer ${label}`}
+          className="ml-auto flex size-6 items-center justify-center rounded-md text-[var(--tasks-text-3)] hover:bg-[var(--tasks-count)] hover:text-[var(--tasks-text)]"
+        >
+          <ChevronLeft className="size-3.5" aria-hidden="true" />
+        </button>
       </header>
       {children}
     </section>
