@@ -100,7 +100,7 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
         )}
         <div className="flex items-center gap-2">
           <Switch id={`${bare ? 'kpi' : 'main'}-exclude-trial`} checked={excludeTrial} onCheckedChange={(checked) => { setExcludeTrial(checked); setPage(1) }} />
-          <Label htmlFor={`${bare ? 'kpi' : 'main'}-exclude-trial`} className="text-xs" title="Saca a los clientes en prueba y a los que se dieron de baja sin haber pagado nunca">Excluir trials</Label>
+          <Label htmlFor={`${bare ? 'kpi' : 'main'}-exclude-trial`} className="text-xs" title="Saca a los clientes en prueba o con estado incompleto, y a los que se dieron de baja sin haber pagado nunca">Excluir trials</Label>
         </div>
       </div>
       {(

@@ -12,11 +12,17 @@ export type SubscriptionHistoryRow = {
   monthlyPrice: number | null
 }
 
+/** Estado de Stripe/CRM de una suscripción cuyo primer cobro nunca se completó: es una prueba, no un pago. */
+export function isIncompleteStatus(rawStatus: string | null): boolean {
+  return /^(incomplete|incompleto|incompleta|incomplete_expired)$/.test(String(rawStatus ?? '').toLowerCase().trim())
+}
+
 const ts = (value: string | null) => (value ? new Date(value).getTime() : Number.NaN)
 
 /** Suscripción que llegó a cobrarse: no es prueba ni plan gratis, y si terminó, terminó después de la prueba. */
 export function isPaidSubscription(row: SubscriptionHistoryRow, now = Date.now()): boolean {
   if (row.monthlyPrice === 0) return false
+  if (isIncompleteStatus(row.rawStatus)) return false
   if (row.status === 'trial' || row.status === 'other') return false
   if (row.status === 'active' || row.status === 'past_due') return true
   // Baja: solo cuenta si duró más que la prueba (una prueba vencida no es una activación).

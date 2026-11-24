@@ -11,7 +11,7 @@ const KPI_INFO: Record<KpiKey, string> = {
   altas: 'Clientes que entraron por primera vez en el período, aunque estén en prueba. Cada cliente cuenta una sola vez, por la fecha de su primera suscripción. No incluye las cuentas internas de Aurelia y MDK.',
   activaciones: 'Clientes que empezaron a pagar su plan actual en el período, aunque se hayan dado de alta antes. Si el plan tuvo prueba, cuenta el día en que terminó; si no, el día en que se creó. No cuentan las pruebas ni los planes gratis. Ejemplo: entra el 10 con 7 días de prueba y paga el 17: es Alta el 10 y Activación el 17. La fecha es estimada porque el CRM no guarda el cambio de estado.',
   bajas: 'Todos los clientes cuya suscripción finalizó en el período, incluidas las pruebas que no se convirtieron.',
-  bajas_pagas: 'Bajas del período de clientes que llegaron a pagar al menos una vez. Deja afuera las pruebas que terminaron sin pagar, así ves cuántos clientes que ya pagaban se fueron. No incluye las cuentas internas de Aurelia y MDK.',
+  bajas_pagas: 'Bajas del período de clientes que llegaron a pagar al menos una vez. Deja afuera las pruebas y las suscripciones con estado incompleto que terminaron sin pagar, así ves cuántos clientes que ya pagaban se fueron. No incluye las cuentas internas de Aurelia y MDK.',
   netas: 'Altas menos bajas del período. Si es negativo, se fueron más clientes de los que entraron.',
   activos: 'Clientes con la suscripción activa y al día. Los que tienen un pago pendiente se cuentan aparte.',
   past_due: 'Suscripciones vigentes con un cobro sin acreditar. Siguen sumando al MRR mientras no se den de baja.',
