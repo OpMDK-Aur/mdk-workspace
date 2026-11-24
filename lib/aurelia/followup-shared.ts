@@ -59,9 +59,31 @@ export type DevTask = {
   creadoPorName: string | null
   clientId: string | null
   clientName: string | null
+  prioridad: boolean
   posicion: number
   updatedAt: string
 }
+
+export type DevComment = {
+  id: string
+  tareaId: string
+  autorId: string | null
+  autorName: string
+  autorAvatar: string | null
+  contenido: string
+  editado: boolean
+  createdAt: string
+}
+
+export type DevCommentsData =
+  | { available: false; message: string }
+  | { available: true; comments: DevComment[]; viewerId: string }
+
+export const COMMENTS_MIGRATION_MESSAGE = 'Todavía no se creó la tabla de comentarios (falta correr scripts/aurelia-tareas-prioridad-comentarios.sql).'
+
+/** Error de PostgREST cuando se escribe una columna que todavía no existe (p. ej. `prioridad`). */
+export const isMissingColumn = (error: { code?: string; message: string }) =>
+  error.code === 'PGRST204' || error.code === '42703' || /could not find the '.+' column/i.test(error.message)
 
 export type TeamMember = { id: string; name: string }
 

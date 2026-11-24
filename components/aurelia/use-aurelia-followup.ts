@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import type { AureliaDevData, AureliaFollowupData } from '@/lib/aurelia/followup-shared'
+import type { AureliaDevData, AureliaFollowupData, DevCommentsData } from '@/lib/aurelia/followup-shared'
 
 async function fetchJson<T extends { available: boolean }>(url: string): Promise<T> {
   const response = await fetch(url, { cache: 'no-store' })
@@ -16,4 +16,8 @@ export function useAureliaFollowup() {
 
 export function useAureliaDevTasks() {
   return useSWR<AureliaDevData>('/api/aurelia/dev-tasks', fetchJson, { revalidateOnFocus: true })
+}
+
+export function useDevTaskComments(taskId: string | null) {
+  return useSWR<DevCommentsData>(taskId ? `/api/aurelia/dev-tasks/${taskId}/comments` : null, fetchJson, { revalidateOnFocus: true })
 }

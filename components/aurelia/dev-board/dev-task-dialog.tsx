@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Flag, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,11 +9,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 import { createDevTask, deleteDevTask, updateDevTask } from '@/app/actions/aurelia-followup'
 import { DEV_CATEGORIES, DEV_STAGES, formatDay, type DevCategory, type DevStage, type DevTask, type TeamMember } from '@/lib/aurelia/followup-shared'
 import { todayInArgentina } from '@/lib/aurelia/time-shared'
 import { ClientPicker, type PickedClient } from './client-picker'
+import { DevTaskComments } from './dev-task-comments'
 
 const UNASSIGNED = '__none__'
 
@@ -30,7 +33,7 @@ type Props = {
 export function DevTaskDialog({ draft, team, viewerId, onClose, onSaved }: Props) {
   return (
     <Dialog open={draft !== null} onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className={cn('max-h-[90vh] overflow-y-auto', draft && 'task' in draft ? 'sm:max-w-5xl' : 'sm:max-w-lg')}>
         {draft && <DevTaskForm key={'task' in draft ? draft.task.id : `new-${draft.etapa}-${draft.categoria}`} draft={draft} team={team} viewerId={viewerId} onClose={onClose} onSaved={onSaved} />}
       </DialogContent>
     </Dialog>
@@ -48,6 +51,7 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
   const [fechaFin, setFechaFin] = useState(existing?.fechaFin ?? '')
   const [asignadoId, setAsignadoId] = useState(existing?.asignadoId ?? UNASSIGNED)
   const [client, setClient] = useState<PickedClient>(existing?.clientId ? { id: existing.clientId, name: existing.clientName ?? 'Cliente' } : prefill?.client ?? null)
+  const [prioridad, setPrioridad] = useState(existing?.prioridad ?? false)
   const [pending, startTransition] = useTransition()
 
   const creator = existing ? existing.creadoPorName ?? 'Desconocido' : team.find((member) => member.id === viewerId)?.name ?? 'Vos'
@@ -65,6 +69,7 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
         asignadoId: asignadoId === UNASSIGNED ? null : asignadoId,
         clientId: client?.id ?? null,
         clientName: client?.name ?? null,
+        ...(prioridad !== (existing?.prioridad ?? false) ? { prioridad } : {}),
       }
       const result = existing ? await updateDevTask(existing.id, input) : await createDevTask(input)
       if (result.error) {
@@ -91,10 +96,13 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
     })
   }
 
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+  const form = (
+    <form onSubmit={submit} className="flex min-w-0 flex-col gap-4">
       <DialogHeader>
-        <DialogTitle>{existing ? 'Editar tarea de desarrollo' : 'Nueva tarea de desarrollo'}</DialogTitle>
+        <DialogTitle className="flex items-center gap-2">
+          {prioridad && <Flag className="size-4 shrink-0 fill-destructive text-destructive" aria-label="Prioritaria" />}
+          {existing ? 'Editar tarea de desarrollo' : 'Nueva tarea de desarrollo'}
+        </DialogTitle>
         <DialogDescription>
           {!existing && 'Se suma al panel de Desarrollo. '}Creada por {creator}
           {existing && <> · actualizada {formatDay(existing.updatedAt)}</>}
@@ -104,6 +112,15 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="dev-titulo">Título</Label>
         <Input id="dev-titulo" value={titulo} onChange={(event) => setTitulo(event.target.value)} maxLength={200} required autoFocus />
+      </div>
+
+      <div className={cn('flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors', prioridad && 'border-destructive/40 bg-destructive/10')}>
+        <Label htmlFor="dev-prioridad" className="flex cursor-pointer items-center gap-2">
+          <Flag className={cn('size-4', prioridad ? 'fill-destructive text-destructive' : 'text-muted-foreground')} aria-hidden="true" />
+          Prioridad
+          <span className="font-normal text-muted-foreground">{prioridad ? 'Marcada como prioritaria' : 'Normal'}</span>
+        </Label>
+        <Switch id="dev-prioridad" checked={prioridad} onCheckedChange={setPrioridad} />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -172,5 +189,15 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
         </div>
       </DialogFooter>
     </form>
+  )
+
+  if (!existing) return form
+  return (
+    <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+      {form}
+      <div className="flex min-h-0 flex-col md:max-h-[calc(90vh-3rem)]">
+        <DevTaskComments taskId={existing.id} />
+      </div>
+    </div>
   )
 }

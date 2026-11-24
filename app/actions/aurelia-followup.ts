@@ -2,8 +2,8 @@
 
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
 import { getAureliaViewer } from '@/lib/aurelia/access'
-import { DEV_TASKS_TABLE, FOLLOWUP_TABLE, OBSERVATIONS_TABLE } from '@/lib/aurelia/followup'
-import { MIGRATION_MESSAGE, SURVEY_COUNT, isDevCategory, isDevStage, isMissingTable, parseDateOnly, parseScore, type DevCategory, type DevStage, type Survey } from '@/lib/aurelia/followup-shared'
+import { DEV_COMMENTS_TABLE, DEV_TASKS_TABLE, FOLLOWUP_TABLE, OBSERVATIONS_TABLE } from '@/lib/aurelia/followup'
+import { COMMENTS_MIGRATION_MESSAGE, MIGRATION_MESSAGE, SURVEY_COUNT, isMissingColumn, isDevCategory, isDevStage, isMissingTable, parseDateOnly, parseScore, type DevCategory, type DevStage, type Survey } from '@/lib/aurelia/followup-shared'
 import { todayInArgentina } from '@/lib/aurelia/time-shared'
 
 type Result = { error: string | null }
@@ -114,6 +114,15 @@ type DevTaskInput = {
   asignadoId: string | null
   clientId: string | null
   clientName: string | null
+  /** Se manda solo si cambió, así crear/editar sigue andando antes de correr la migración de prioridad. */
+  prioridad?: boolean
+}
+
+const PRIORITY_MIGRATION_MESSAGE = 'Para marcar prioridad falta correr scripts/aurelia-tareas-prioridad-comentarios.sql.'
+
+function checkTask(error: { code?: string; message: string } | null) {
+  if (error && isMissingColumn(error)) throw new Error(PRIORITY_MIGRATION_MESSAGE)
+  check(error)
 }
 
 function devTaskValues(input: DevTaskInput) {
@@ -135,6 +144,7 @@ function devTaskValues(input: DevTaskInput) {
     asignado_a: validateMemberId(input.asignadoId),
     aurelia_client_id: clientId,
     aurelia_client_name: clientId ? cleanText(input.clientName, 200) : null,
+    ...(typeof input.prioridad === 'boolean' ? { prioridad: input.prioridad } : {}),
   }
 }
 
@@ -142,7 +152,7 @@ export async function createDevTask(input: DevTaskInput): Promise<Result> {
   return run(async () => {
     const viewer = await requireViewer()
     const { error } = await createAdminClient().from(DEV_TASKS_TABLE).insert({ ...devTaskValues(input), creado_por: viewer.userId, posicion: Date.now() / 1000 })
-    check(error)
+    checkTask(error)
   })
 }
 
@@ -151,7 +161,7 @@ export async function updateDevTask(id: string, input: DevTaskInput): Promise<Re
     await requireViewer()
     if (!UUID.test(String(id))) throw new Error('Tarea inválida.')
     const { error } = await createAdminClient().from(DEV_TASKS_TABLE).update({ ...devTaskValues(input), updated_at: new Date().toISOString() }).eq('id', id)
-    check(error)
+    checkTask(error)
   })
 }
 
@@ -178,5 +188,50 @@ export async function deleteDevTask(id: string): Promise<Result> {
     if (!UUID.test(String(id))) throw new Error('Tarea inválida.')
     const { error } = await createAdminClient().from(DEV_TASKS_TABLE).delete().eq('id', id)
     check(error)
+  })
+}
+
+function checkComment(error: { code?: string; message: string } | null) {
+  if (error) throw new Error(isMissingTable(error) ? COMMENTS_MIGRATION_MESSAGE : error.message)
+}
+
+function commentText(value: string) {
+  const text = cleanText(value, 4000)
+  if (!text) throw new Error('Escribí un comentario.')
+  return text
+}
+
+export async function addDevComment(taskId: string, contenido: string): Promise<Result> {
+  return run(async () => {
+    const viewer = await requireViewer()
+    if (!UUID.test(String(taskId))) throw new Error('Tarea inválida.')
+    const { error } = await createAdminClient().from(DEV_COMMENTS_TABLE).insert({ tarea_id: taskId, autor_id: viewer.userId, contenido: commentText(contenido) })
+    checkComment(error)
+  })
+}
+
+/** Solo el autor puede editar o borrar su comentario: el filtro por `autor_id` lo garantiza en la consulta. */
+export async function updateDevComment(id: string, contenido: string): Promise<Result> {
+  return run(async () => {
+    const viewer = await requireViewer()
+    if (!UUID.test(String(id))) throw new Error('Comentario inválido.')
+    const { data, error } = await createAdminClient()
+      .from(DEV_COMMENTS_TABLE)
+      .update({ contenido: commentText(contenido), editado: true, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('autor_id', viewer.userId)
+      .select('id')
+    checkComment(error)
+    if (!data?.length) throw new Error('Solo podés editar tus comentarios.')
+  })
+}
+
+export async function deleteDevComment(id: string): Promise<Result> {
+  return run(async () => {
+    const viewer = await requireViewer()
+    if (!UUID.test(String(id))) throw new Error('Comentario inválido.')
+    const { data, error } = await createAdminClient().from(DEV_COMMENTS_TABLE).delete().eq('id', id).eq('autor_id', viewer.userId).select('id')
+    checkComment(error)
+    if (!data?.length) throw new Error('Solo podés borrar tus comentarios.')
   })
 }

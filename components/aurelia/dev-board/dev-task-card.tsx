@@ -1,6 +1,6 @@
 'use client'
 
-import { Bug, CalendarDays, Lightbulb } from 'lucide-react'
+import { Bug, CalendarDays, Flag, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDay, type DevTask } from '@/lib/aurelia/followup-shared'
 
@@ -27,10 +27,16 @@ export function DevTaskCard({ task, today, showCategory, onOpen }: { task: DevTa
       onClick={onOpen}
       className="flex w-full flex-col gap-2 rounded-[10px] border border-[var(--tasks-border)] bg-[var(--tasks-card)] p-3 text-left transition-colors hover:border-[var(--tasks-border-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tasks-brand)]"
     >
-      {(showCategory || task.clientName) && (
+      {(showCategory || task.clientName || task.prioridad) && (
         <div className="flex min-w-0 items-center gap-1.5">
           {showCategory && <CategoryPill categoria={task.categoria} />}
           {task.clientName && <span className="truncate text-[11.5px] font-medium text-[var(--tasks-text-3)]">{task.clientName}</span>}
+          {task.prioridad && (
+            <span title="Prioritaria" className="ml-auto shrink-0">
+              <Flag className="size-3.5 fill-[var(--tasks-overdue)] text-[var(--tasks-overdue)]" aria-hidden="true" />
+              <span className="sr-only">Prioritaria</span>
+            </span>
+          )}
         </div>
       )}
       <span className="line-clamp-3 text-[13px] font-semibold leading-snug text-[var(--tasks-text)]">{task.titulo}</span>

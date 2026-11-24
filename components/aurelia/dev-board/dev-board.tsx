@@ -67,7 +67,7 @@ export function DevBoard() {
   }
 
   const byStage = (etapa: DevStage, categoria?: DevCategory) =>
-    tasks.filter((task) => task.etapa === etapa && (!categoria || task.categoria === categoria)).sort((a, b) => a.posicion - b.posicion)
+    tasks.filter((task) => task.etapa === etapa && (!categoria || task.categoria === categoria)).sort((a, b) => Number(b.prioridad) - Number(a.prioridad) || a.posicion - b.posicion)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">

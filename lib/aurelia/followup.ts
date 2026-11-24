@@ -5,7 +5,10 @@ import {
   isDevCategory,
   isDevStage,
   isMissingTable,
+  COMMENTS_MIGRATION_MESSAGE,
   type AureliaDevData,
+  type DevComment,
+  type DevCommentsData,
   type AureliaFollowupData,
   type DevTask,
   type OnboardingFollowup,
@@ -16,6 +19,7 @@ import {
 export const FOLLOWUP_TABLE = 'aurelia_onboarding_seguimiento'
 export const OBSERVATIONS_TABLE = 'aurelia_onboarding_observaciones'
 export const DEV_TASKS_TABLE = 'aurelia_tareas_desarrollo'
+export const DEV_COMMENTS_TABLE = 'aurelia_tareas_desarrollo_comentarios'
 
 const PAGE_SIZE = 1000
 const MAX_ROWS = 10000
@@ -91,6 +95,7 @@ const toDevTask = (row: Row): DevTask => ({
   creadoPorName: personName(row.creador as Person),
   clientId: str(row.aurelia_client_id),
   clientName: str(row.aurelia_client_name),
+  prioridad: row.prioridad === true,
   posicion: Number(row.posicion) || 0,
   updatedAt: String(row.updated_at),
 })
@@ -115,4 +120,30 @@ export async function getAureliaDevData(viewerId: string): Promise<AureliaDevDat
   } catch (error) {
     return { available: false, message: error instanceof Error ? `No se pudo cargar el equipo: ${error.message}` : 'No se pudo cargar el equipo.' }
   }
+}
+
+type Author = { nombre: string | null; apellido: string | null; avatar_url?: string | null } | null
+
+export async function getDevTaskComments(taskId: string, viewerId: string): Promise<DevCommentsData> {
+  const { data, error } = await createAdminClient()
+    .from(DEV_COMMENTS_TABLE)
+    .select('id,tarea_id,autor_id,contenido,editado,created_at,autor:colaboradores!autor_id(nombre,apellido,avatar_url)')
+    .eq('tarea_id', taskId)
+    .order('created_at', { ascending: true })
+    .limit(500)
+  if (error) return { available: false, message: isMissingTable(error) ? COMMENTS_MIGRATION_MESSAGE : `No se pudieron cargar los comentarios: ${error.message}` }
+  const comments: DevComment[] = ((data ?? []) as unknown as Row[]).map((row) => {
+    const autor = row.autor as Author
+    return {
+      id: String(row.id),
+      tareaId: String(row.tarea_id),
+      autorId: str(row.autor_id),
+      autorName: personName(autor) ?? 'Usuario',
+      autorAvatar: str(autor?.avatar_url),
+      contenido: String(row.contenido ?? ''),
+      editado: row.editado === true,
+      createdAt: String(row.created_at),
+    }
+  })
+  return { available: true, comments, viewerId }
 }
