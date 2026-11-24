@@ -31,13 +31,13 @@ import { useAureliaTime } from './use-aurelia-time'
 import type { ClientsTableTime } from './aurelia-clients-table'
 import { AureliaHeading } from './aurelia-heading'
 import { AureliaKpiGrid } from './aurelia-kpi-grid'
+import { AureliaOnboardingKpis } from './aurelia-onboarding-kpis'
+import { AureliaOriginBreakdown } from './aurelia-origin-breakdown'
 import { AureliaGrowthChart } from './aurelia-growth-chart'
 import { AureliaPlanBreakdown } from './aurelia-plan-breakdown'
 import { AureliaClientsTable } from './aurelia-clients-table'
-import { AureliaOnboardingPanel } from './aurelia-onboarding-panel'
-import type { AureliaOnboardingData } from '@/lib/aurelia/onboarding-shared'
 
-export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaDataset; onboarding: AureliaOnboardingData }) {
+export function AureliaDashboard({ dataset }: { dataset: AureliaDataset }) {
   const [period, setPeriod] = useState<PeriodKey>('this_month')
   const [customRange, setCustomRange] = useState(() => ({ from: todayInArgentina().slice(0, 8) + '01', to: todayInArgentina() }))
   const [selectedKpi, setSelectedKpi] = useState<KpiKey | null>(null)
@@ -88,7 +88,7 @@ export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaData
   const periodLabel = period === 'custom'
     ? `${shortDate(computed.range.start)} – ${shortDate(new Date(computed.range.end.getTime() - 1))}`
     : PERIOD_OPTIONS.find((option) => option.value === period)?.label ?? ''
-  const updatedAt = new Date(dataset.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  const updatedAt = new Date(dataset.generatedAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
   const running = timeData?.available ? timeData.running : null
   const openClient = (client: AureliaClient) => { setSelectedKpi(null); setSelectedClient(client) }
   const tableTime: ClientsTableTime | undefined = timeData?.available
@@ -151,6 +151,8 @@ export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaData
 
       <AureliaKpiGrid current={computed.current} previous={computed.previous} snapshot={computed.snapshot} currency={dataset.currency} periodLabel={periodLabel} onSelect={setSelectedKpi} />
 
+      <AureliaOnboardingKpis clients={clients} />
+
       <AureliaKpiSheet
         kpi={selectedKpi}
         clients={selectedKpi ? selectKpiClients(selectedKpi, clients, computed.range) : []}
@@ -167,11 +169,10 @@ export function AureliaDashboard({ dataset, onboarding }: { dataset: AureliaData
         <AureliaGrowthChart series={computed.series} currency={dataset.currency} className="lg:col-span-2" />
         <div className="flex flex-col gap-4">
           <AureliaPlanBreakdown rows={computed.plans} totalMrr={computed.snapshot.mrr} currency={dataset.currency} />
+          <AureliaOriginBreakdown clients={clients} range={computed.range} periodLabel={periodLabel} />
           <AureliaTimeSummary data={timeData} secondsByClient={periodSeconds} clients={clients} periodLabel={periodLabel} onOpenClient={openClient} />
         </div>
       </div>
-
-      <AureliaOnboardingPanel clients={dataset.clients} onboarding={onboarding} onOpenClient={openClient} />
 
       <AureliaClientsTable clients={clients} currency={dataset.currency} time={tableTime} onOpenClient={openClient} range={computed.range} rangeLabel={periodLabel} />
     </div>
