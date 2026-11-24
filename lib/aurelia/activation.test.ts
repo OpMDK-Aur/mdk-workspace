@@ -40,4 +40,10 @@ describe('estimateActivation', () => {
   it('falls back to the creation date when there is no trial', () => {
     expect(estimateActivation([row({})], now)).toBe('2026-04-23T10:00:00Z')
   })
+
+  it('no cuenta como pago una suscripción incompleta dada de baja', () => {
+    const history = [row({ status: 'churned', rawStatus: 'incomplete_expired', trialEndAt: null, endedAt: '2026-11-19T12:00:00Z' })]
+    expect(estimateActivation(history, now)).toBeNull()
+    expect(estimateActivation([row({ status: 'churned', rawStatus: 'incompleto', trialEndAt: null, endedAt: '2026-11-19T12:00:00Z' })], now)).toBeNull()
+  })
 })
