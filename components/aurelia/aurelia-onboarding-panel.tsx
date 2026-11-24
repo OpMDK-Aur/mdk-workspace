@@ -1,7 +1,9 @@
 'use client'
 
 import { useDeferredValue, useMemo, useState } from 'react'
-import { AlertTriangle, Search } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,6 +12,11 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { formatDate, isInternalAccount, type AureliaClient } from '@/lib/aurelia/metrics'
+import { computeNps, formatDay, type OnboardingFollowup } from '@/lib/aurelia/followup-shared'
+import { AureliaObservationsList } from './aurelia-observations-list'
+import { AureliaOnboardingSheet, type FollowupTarget } from './aurelia-onboarding-sheet'
+import { NpsScoreBadge } from './nps-score-badge'
+import { useAureliaFollowup } from './use-aurelia-followup'
 import { STALLED_AFTER_DAYS, daysSince, matchOnboarding, normalizeName, type AureliaOnboardingData, type OnboardingMatch } from '@/lib/aurelia/onboarding-shared'
 
 const NO_OPPORTUNITY = '__none__'
@@ -28,6 +35,15 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
   const [search, setSearch] = useState('')
   const [hideUnmatched, setHideUnmatched] = useState(false)
   const deferredSearch = useDeferredValue(search)
+  const [followupTarget, setFollowupTarget] = useState<FollowupTarget | null>(null)
+  const { data: followupData, mutate: refreshFollowup } = useAureliaFollowup()
+  const followupReady = followupData?.available ? followupData : null
+
+  const followupByClient = useMemo(() => new Map((followupReady?.followups ?? []).map((followup) => [followup.clientId, followup])), [followupReady])
+  const targetObservations = useMemo(
+    () => (followupTarget ? (followupReady?.observations ?? []).filter((observation) => observation.clientId === followupTarget.id) : []),
+    [followupReady, followupTarget],
+  )
 
   const activeClients = useMemo(() => clients.filter((client) => client.status === 'active' && !isInternalAccount(client)), [clients])
 
@@ -46,8 +62,9 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
       const key = row.match?.stage?.id ?? NO_OPPORTUNITY
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
-    return { rows, counts, stalled: rows.filter((row) => (row.daysInStage ?? 0) >= STALLED_AFTER_DAYS).length }
-  }, [activeClients, onboarding, hideUnmatched])
+    const followups = rows.map((row) => followupByClient.get(row.client.id)).filter((followup): followup is OnboardingFollowup => Boolean(followup))
+    return { rows, counts, stalled: rows.filter((row) => (row.daysInStage ?? 0) >= STALLED_AFTER_DAYS).length, nps: computeNps(followups) }
+  }, [activeClients, onboarding, hideUnmatched, followupByClient])
 
   const filteredRows = useMemo(() => {
     if (!view) return []
@@ -86,8 +103,21 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
           {total} clientes activos · etapa de su oportunidad en el pipeline {onboarding.pipelineName}
           {view.stalled > 0 && <> · <span className="font-medium text-chart-4">{view.stalled} con más de {STALLED_AFTER_DAYS} días en la misma etapa</span></>}
         </CardDescription>
+        {followupReady && view.nps.respuestas > 0 && (
+          <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm" title="NPS = % promotores (9-10) menos % detractores (0-6), con la última encuesta de cada cliente">
+            <span className="font-medium">NPS <span className="tabular-nums">{view.nps.score}</span></span>
+            <span className="text-xs text-muted-foreground">{view.nps.respuestas} con encuesta · <span className="text-chart-2">{view.nps.promotores} promotores</span> · {view.nps.pasivos} pasivos · <span className="text-destructive">{view.nps.detractores} detractores</span></span>
+          </p>
+        )}
+        {followupData && !followupData.available && <p className="flex items-center gap-2 text-xs text-destructive"><AlertTriangle className="size-3.5" aria-hidden="true" />{followupData.message}</p>}
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
+      <CardContent>
+        <Tabs defaultValue="clientes" className="gap-5">
+        <TabsList>
+          <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          <TabsTrigger value="observaciones">Observaciones{followupReady ? ` (${followupReady.observations.length})` : ''}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="clientes" className="flex flex-col gap-5">
         <div className="flex flex-col gap-3">
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
             {segments.filter((segment) => segment.count > 0).map((segment) => {
@@ -136,12 +166,16 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
                 <TableHead>Etapa</TableHead>
                 <TableHead>En la etapa</TableHead>
                 <TableHead>Oportunidad</TableHead>
+                <TableHead>Primera reunión</TableHead>
+                <TableHead>Cierre</TableHead>
+                <TableHead>Encuestas NPS</TableHead>
+                <TableHead><span className="sr-only">Seguimiento</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">Ningún cliente coincide con los filtros.</TableCell>
+                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">Ningún cliente coincide con los filtros.</TableCell>
                 </TableRow>
               ) : filteredRows.map(({ client, match, daysInStage }) => {
                 const stalled = (daysInStage ?? 0) >= STALLED_AFTER_DAYS
@@ -175,14 +209,62 @@ export function AureliaOnboardingPanel({ clients, onboarding, onOpenClient }: { 
                         </span>
                       ) : '—'}
                     </TableCell>
+                    <FollowupCells followup={followupByClient.get(client.id)} />
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        disabled={!followupReady}
+                        onClick={(event) => { event.stopPropagation(); setFollowupTarget({ id: client.id, name: client.name }) }}
+                      >
+                        <ClipboardList className="size-3.5" aria-hidden="true" />
+                        Seguimiento
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 )
               })}
             </TableBody>
           </Table>
         </div>
+        </TabsContent>
+        <TabsContent value="observaciones">
+          {followupReady ? (
+            <AureliaObservationsList observations={followupReady.observations} onOpenClient={(id, name) => setFollowupTarget({ id, name })} />
+          ) : (
+            <p className="py-6 text-sm text-muted-foreground">{followupData && !followupData.available ? followupData.message : 'Cargando observaciones...'}</p>
+          )}
+        </TabsContent>
+        </Tabs>
+        <AureliaOnboardingSheet
+          target={followupTarget}
+          followup={followupTarget ? followupByClient.get(followupTarget.id) : undefined}
+          observations={targetObservations}
+          onClose={() => setFollowupTarget(null)}
+          onChanged={() => refreshFollowup()}
+        />
       </CardContent>
     </Card>
+  )
+}
+
+const SURVEY_ORDINALS = ['1ra', '2da', '3ra', '4ta']
+
+function FollowupCells({ followup }: { followup: OnboardingFollowup | undefined }) {
+  return (
+    <>
+      <TableCell className="whitespace-nowrap text-sm">{formatDay(followup?.primeraReunion ?? null)}</TableCell>
+      <TableCell className="whitespace-nowrap text-sm">{formatDay(followup?.cierreOnboarding ?? null)}</TableCell>
+      <TableCell>
+        <div className="flex gap-1">
+          {(followup?.encuestas ?? Array.from({ length: 4 }, () => ({ fecha: null, nota: null }))).map((survey, index) => (
+            <NpsScoreBadge key={index} nota={survey.nota} title={`${SURVEY_ORDINALS[index]} encuesta${survey.fecha ? ` · ${formatDay(survey.fecha)}` : ''}`} />
+          ))}
+        </div>
+      </TableCell>
+    </>
   )
 }
 

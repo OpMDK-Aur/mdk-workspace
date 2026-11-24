@@ -51,6 +51,7 @@ import {
   Smile,
   FileText,
   Gem,
+  SquareKanban,
 } from 'lucide-react'
 import { KeyboardArrowLeftIcon, KeyboardArrowRightIcon, LinkedServicesIcon, ManageAccountsIcon, SdkIcon } from '@/components/icons/material-symbols'
 import { UserSettingsDialog } from './user-settings-dialog'
@@ -84,6 +85,7 @@ interface NavSection {
 
 const conexaItem: NavItem = { id: 'conexa', name: 'Conexa', href: '/dashboard/conexa', icon: Sparkles, badge: 'nuevo', badgeUntil: CONEXA_NEW_UNTIL }
 const aureliaItem: NavItem = { id: 'aurelia', name: 'Aurelia', href: '/dashboard/aurelia', icon: Gem }
+const aureliaDevItem: NavItem = { id: 'aurelia-desarrollo', name: 'Desarrollo', href: '/dashboard/aurelia/desarrollo', icon: SquareKanban }
 
 // Main navigation items (no section header)
 const mainItems: NavItem[] = [
@@ -268,6 +270,8 @@ export function Sidebar({
   const isItemActive = (href: string) => {
     const basePath = href.split('?')[0]
     if (basePath === '/dashboard') return pathname === '/dashboard'
+    // Desarrollo tiene su propio ítem: Aurelia solo se marca en su tablero.
+    if (basePath === aureliaItem.href) return pathname === basePath
     return pathname === basePath || pathname.startsWith(basePath + '/')
   }
 
@@ -425,6 +429,7 @@ export function Sidebar({
               <div className="space-y-1">
                 {unitAccess.mdk && renderNavItem(conexaItem, true, () => setIsCollapsed(false))}
                 {unitAccess.aurelia && renderNavItem(aureliaItem, true)}
+                {unitAccess.aurelia && renderNavItem(aureliaDevItem, true)}
                 {unitAccess.mdk && mainItems.map(item => renderNavItem(item, true))}
                 {unitAccess.mdk && tareasSubItems.map(item => renderNavItem(item, true))}
               </div>
@@ -578,6 +583,7 @@ export function Sidebar({
                 <div className="space-y-1">
                   {unitAccess.mdk && <ConexaNavGroup />}
                   {unitAccess.aurelia && renderNavItem(aureliaItem)}
+                {unitAccess.aurelia && renderNavItem(aureliaDevItem)}
                   {/* Tareas as collapsible parent */}
                   {unitAccess.mdk && (
                   <Collapsible open={tareasOpen} onOpenChange={setTareasOpen}>
