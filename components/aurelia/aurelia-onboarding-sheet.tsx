@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { addOnboardingObservation, deleteOnboardingObservation, saveOnboardingFollowup } from '@/app/actions/aurelia-followup'
-import { emptyFollowup, formatDay, type OnboardingFollowup, type OnboardingObservation, type Survey } from '@/lib/aurelia/followup-shared'
+import { NPS_MAX, NPS_MIN, emptyFollowup, formatDay, type OnboardingFollowup, type OnboardingObservation, type Survey } from '@/lib/aurelia/followup-shared'
 import { todayInArgentina } from '@/lib/aurelia/time-shared'
 import { NpsScoreBadge } from './nps-score-badge'
 
@@ -92,7 +92,7 @@ function FollowupForm({ target, followup, onChanged }: { target: FollowupTarget;
         <div className="grid grid-cols-[auto_1fr_6rem_auto] items-center gap-x-3 gap-y-2">
           <span className="sr-only">Encuesta</span>
           <span className="text-xs text-muted-foreground">Fecha</span>
-          <span className="text-xs text-muted-foreground">Nota (0 a 10)</span>
+          <span className="text-xs text-muted-foreground">Nota (1 a 5)</span>
           <span className="sr-only">Categoría</span>
           {surveys.map((survey, index) => (
             <SurveyRow key={index} index={index} fecha={survey.fecha} nota={survey.nota} onChange={(patch) => updateSurvey(index, patch)} />
@@ -115,7 +115,7 @@ const ORDINALS = ['Primera', 'Segunda', 'Tercera', 'Cuarta']
 
 function SurveyRow({ index, fecha, nota, onChange }: { index: number; fecha: string; nota: string; onChange: (patch: { fecha?: string; nota?: string }) => void }) {
   const parsed = nota === '' ? null : Number(nota)
-  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= 0 && parsed <= 10)
+  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= NPS_MIN && parsed <= NPS_MAX)
   return (
     <>
       <span className="whitespace-nowrap text-sm">{ORDINALS[index] ?? `Encuesta ${index + 1}`}</span>
@@ -123,8 +123,8 @@ function SurveyRow({ index, fecha, nota, onChange }: { index: number; fecha: str
       <Input
         type="number"
         inputMode="numeric"
-        min={0}
-        max={10}
+        min={NPS_MIN}
+        max={NPS_MAX}
         step={1}
         value={nota}
         onChange={(event) => onChange({ nota: event.target.value })}
