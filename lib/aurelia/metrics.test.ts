@@ -28,6 +28,18 @@ describe('Aurelia metrics', () => {
     expect(metrics.mrrPerdido).toBe(100)
   })
 
+  it('separates bajas of clients that paid at least once and their churn', () => {
+    const withTrialChurn = [
+      ...clients.map((row) => (row.id === 'c' ? { ...row, activatedAt: '2026-02-01T00:00:00Z' } : row)),
+      client({ id: 'f', status: 'churned', startedAt: '2026-10-25T00:00:00Z', churnedAt: '2026-11-08T00:00:00Z' }),
+    ]
+    const metrics = computePeriodMetrics(withTrialChurn, november)
+    expect(metrics.bajas).toBe(2)
+    expect(metrics.bajasPagas).toBe(1)
+    expect(metrics.churnPagoRate).toBeCloseTo(1 / metrics.activosInicio)
+    expect(selectKpiClients('bajas_pagas', withTrialChurn, november).map((row) => row.id)).toEqual(['c'])
+  })
+
   it('sums MRR only for paying subscriptions', () => {
     const snapshot = computeSnapshot(clients)
     expect(snapshot.mrr).toBe(250)

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireDashboardUser } from '@/lib/conexa/dashboard-api'
 import { createClient as createAdminClient } from '@/lib/supabase/admin'
+import { myClientsFilter, resolveColaborador } from '@/lib/conexa/inicio-server'
 import { connectionsOf, sortConnections, todayRange, type InicioAlert, type InicioData, type InicioTask } from '@/lib/conexa/inicio'
 
 export const runtime = 'nodejs'
@@ -20,10 +21,8 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
 
   const admin = createAdminClient()
-  const { data: colaborador } = user.email
-    ? await admin.from('colaboradores').select('id, nombre').eq('email', user.email).maybeSingle()
-    : { data: null }
-  const me = (colaborador?.id as string | undefined) ?? user.id
+  const colaborador = await resolveColaborador(admin, user)
+  const me = colaborador.id
   const { start, end } = todayRange()
   const assigned = `asignado_a.eq.${me},asignados_a.cs.{${me}}`
 
@@ -33,9 +32,13 @@ export async function GET(request: Request) {
     admin.from('tareas').select('id, titulo, estado, fecha_vencimiento, reunion_inicio, reunion_fin, google_meet_url, google_calendar_event_id, cliente:cliente_id(nombre_del_negocio)')
       .or(assigned).gte('reunion_inicio', start).lt('reunion_inicio', end).order('reunion_inicio').limit(MAX_TASKS),
     admin.from('tareas').select('id', { count: 'exact', head: true }).or(assigned).not('estado', 'in', DONE_STATES).lt('fecha_vencimiento', start),
-    admin.from('clientes').select('id, nombre_del_negocio, activo, meta_ads_account_id, meta_ads_account_ids, google_ads_customer_id, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, cuentas_publicitarias(plataforma, activo)').or(`project_manager_id.eq.${me},account_manager_id.eq.${me}`).limit(300),
+    admin.from('clientes').select('id, nombre_del_negocio, activo, meta_ads_account_id, meta_ads_account_ids, google_ads_customer_id, google_ads_customer_ids, analytics_property_id, tag_manager_container_id, cuentas_publicitarias(plataforma, activo)').or(myClientsFilter(me)).limit(300),
     admin.from('entradas_de_tiempo').select('iniciado_en, finalizado_en, duracion_seg').eq('colaborador_id', me).gte('iniciado_en', start).lt('iniciado_en', end).limit(200),
   ])
+  if (myClients.error) {
+    console.error('[conexa/inicio] No se pudieron leer los clientes:', myClients.error.message)
+    return NextResponse.json({ error: 'No se pudieron leer tus clientes.' }, { status: 500 })
+  }
 
   const byId = new Map<string, InicioTask>()
   for (const row of [...(meetingsToday.data ?? []), ...(dueToday.data ?? [])] as Array<Record<string, unknown>>) {
@@ -60,8 +63,12 @@ export async function GET(request: Request) {
   const conexiones = sortConnections((myClients.data ?? []).filter((row) => row.activo !== false).map((row) => ({ clienteId: String(row.id), clienteNombre: String(row.nombre_del_negocio ?? 'Cliente'), conectadas: connectionsOf(row) })))
   let alertas: InicioAlert[] = []
   if (clientNames.size) {
-    const { data: fired } = await admin.from('controller_alertas').select('id, cliente_id, subtipo, plataforma, disparada_desde')
+    const { data: fired, error: alertsError } = await admin.from('controller_alertas').select('id, cliente_id, subtipo, plataforma, disparada_desde')
       .in('cliente_id', [...clientNames.keys()]).eq('activa', true).eq('estado_actual', 'disparada').order('disparada_desde', { ascending: false }).limit(MAX_ALERTS)
+    if (alertsError) {
+      console.error('[conexa/inicio] No se pudieron leer las alertas:', alertsError.message)
+      return NextResponse.json({ error: 'No se pudieron leer las alertas de tus clientes.' }, { status: 500 })
+    }
     const alertIds = (fired ?? []).map((row) => String(row.id))
     const { data: runs } = alertIds.length
       ? await admin.from('controller_ejecuciones').select('alerta_id, mensaje, ejecutado_at').in('alerta_id', alertIds).eq('disparada', true).order('ejecutado_at', { ascending: false }).limit(MAX_ALERTS * 3)
@@ -87,6 +94,6 @@ export async function GET(request: Request) {
     else { timerCorriendo = true; segundosHoy += Math.max(0, (now - new Date(String(entry.iniciado_en)).getTime()) / 1000) }
   }
 
-  const body: InicioData = { nombre: String(colaborador?.nombre ?? user.user_metadata?.nombre ?? ''), tareas, vencidas: overdue.count ?? 0, alertas, conexiones, segundosHoy: Math.round(segundosHoy), timerCorriendo }
+  const body: InicioData = { nombre: String(colaborador.nombre ?? user.user_metadata?.nombre ?? ''), tareas, vencidas: overdue.count ?? 0, alertas, conexiones, segundosHoy: Math.round(segundosHoy), timerCorriendo }
   return NextResponse.json(body)
 }

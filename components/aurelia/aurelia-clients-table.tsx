@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { DATE_FIELD_OPTIONS, STATUS_LABELS, formatDate, formatMoney, isDateInRange, isInternalAccount, type AureliaClient, type DateField, type DateRange, type SubscriptionStatus } from '@/lib/aurelia/metrics'
+import { DATE_FIELD_OPTIONS, STATUS_LABELS, formatDate, formatMoney, isDateInRange, isInternalAccount, isTrialOnly, type AureliaClient, type DateField, type DateRange, type SubscriptionStatus } from '@/lib/aurelia/metrics'
 
 const PAGE_SIZE = 25
 type StatusFilter = 'all' | SubscriptionStatus
@@ -41,14 +41,15 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [dateField, setDateField] = useState<DateField | 'none'>('none')
-  const [onlyActive, setOnlyActive] = useState(false)
+  const [excludeTrial, setExcludeTrial] = useState(false)
   const [page, setPage] = useState(1)
   const deferredSearch = useDeferredValue(search)
 
   // Filtrar por fecha usa el mismo período elegido arriba en el tablero.
   const dateFiltered = useMemo(
-    () => (dateField === 'none' || !range ? clients : clients.filter((client) => isDateInRange(client[dateField], range))),
-    [clients, dateField, range],
+    () => (dateField === 'none' || !range ? clients : clients.filter((client) => isDateInRange(client[dateField], range)))
+      .filter((client) => !excludeTrial || !isTrialOnly(client)),
+    [clients, dateField, range, excludeTrial],
   )
 
   const counts = useMemo(() => {
@@ -57,7 +58,7 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
     return result
   }, [dateFiltered])
 
-  const effectiveStatus: StatusFilter = onlyActive ? 'active' : status
+  const effectiveStatus: StatusFilter = excludeTrial && status === 'trial' ? 'all' : status
 
   const filtered = useMemo(() => {
     const term = deferredSearch.trim().toLocaleLowerCase('es-AR')
@@ -98,12 +99,12 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
           </div>
         )}
         <div className="flex items-center gap-2">
-          <Switch id={`${bare ? 'kpi' : 'main'}-only-active`} checked={onlyActive} onCheckedChange={(checked) => { setOnlyActive(checked); setPage(1) }} />
-          <Label htmlFor={`${bare ? 'kpi' : 'main'}-only-active`} className="text-xs">Solo activos</Label>
+          <Switch id={`${bare ? 'kpi' : 'main'}-exclude-trial`} checked={excludeTrial} onCheckedChange={(checked) => { setExcludeTrial(checked); setPage(1) }} />
+          <Label htmlFor={`${bare ? 'kpi' : 'main'}-exclude-trial`} className="text-xs" title="Saca a los clientes en prueba o con estado incompleto, y a los que se dieron de baja sin haber pagado nunca">Excluir trials</Label>
         </div>
       </div>
-      {!onlyActive && (
-        <ToggleGroup type="single" size="sm" variant="outline" value={status} onValueChange={(value) => { if (value) { setStatus(value as StatusFilter); setPage(1) } }} className="flex-wrap justify-start" aria-label="Filtrar por estado">
+      {(
+        <ToggleGroup type="single" size="sm" variant="outline" value={effectiveStatus} onValueChange={(value) => { if (value) { setStatus(value as StatusFilter); setPage(1) } }} className="flex-wrap justify-start" aria-label="Filtrar por estado">
           {FILTER_ORDER.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
             <ToggleGroupItem key={key} value={key} className="min-w-fit flex-none gap-1.5 whitespace-nowrap px-3 text-xs">
               {key === 'all' ? 'Todos' : STATUS_LABELS[key]}
