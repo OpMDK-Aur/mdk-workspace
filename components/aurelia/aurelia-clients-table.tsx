@@ -173,6 +173,11 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                             {origin?.source === 'ghl' && <span title="Dato de GoHighLevel" className="shrink-0 rounded border px-1 text-[10px] font-semibold text-muted-foreground">GHL</span>}
                           </span>
                           {campaign && <span className="truncate text-xs text-muted-foreground">{campaign}</span>}
+                          {(origin?.ghlFirst || origin?.ghlLast) && (
+                            <span className="truncate text-[11px] text-muted-foreground" title={`Primera: ${origin.ghlFirst?.label ?? '—'} · Última: ${origin.ghlLast?.label ?? '—'}`}>
+                              1ª {origin.ghlFirst?.label ?? '—'} · Últ. {origin.ghlLast?.label ?? '—'}
+                            </span>
+                          )}
                         </div>
                       )
                     })()}
