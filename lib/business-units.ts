@@ -8,14 +8,14 @@ export const AURELIA_HOME = '/dashboard/aurelia'
 export const MDK_HOME = '/dashboard/conexa'
 
 /**
- * Master ve todo. El resto ve las unidades de `colaboradores.unidades_negocio`;
- * si la columna todavía no existe o está vacía, se asume MDK para no cortar el
- * acceso de nadie.
+ * El panel de Aurelia está abierto a todos los colaboradores. MDK depende de
+ * `colaboradores.unidades_negocio` (Master ve todo); si la columna todavía no
+ * existe o está vacía, se asume MDK para no cortar el acceso de nadie.
  */
 export function resolveUnitAccess(roleName: string | null | undefined, unidades: string[] | null | undefined): UnitAccess {
   if (roleName === 'Master') return { mdk: true, aurelia: true }
   const units = unidades?.length ? unidades : ['MDK']
-  return { mdk: units.includes('MDK'), aurelia: units.includes('Aurelia') }
+  return { mdk: units.includes('MDK'), aurelia: true }
 }
 
 const SHARED_PATHS = ['/dashboard/perfil']

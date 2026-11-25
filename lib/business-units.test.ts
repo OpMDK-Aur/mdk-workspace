@@ -6,9 +6,9 @@ describe('business units', () => {
     expect(resolveUnitAccess('Master', ['Aurelia'])).toEqual({ mdk: true, aurelia: true })
   })
 
-  it('defaults to MDK when the column is missing or empty', () => {
-    expect(resolveUnitAccess('Usuario', undefined)).toEqual({ mdk: true, aurelia: false })
-    expect(resolveUnitAccess('Usuario', [])).toEqual({ mdk: true, aurelia: false })
+  it('defaults to MDK when the column is missing or empty, with Aurelia open to everyone', () => {
+    expect(resolveUnitAccess('Usuario', undefined)).toEqual({ mdk: true, aurelia: true })
+    expect(resolveUnitAccess('Usuario', [])).toEqual({ mdk: true, aurelia: true })
   })
 
   it('keeps Aurelia-only users inside Aurelia', () => {
@@ -19,9 +19,10 @@ describe('business units', () => {
     expect(homeForAccess(access)).toBe('/dashboard/aurelia')
   })
 
-  it('keeps MDK-only users out of Aurelia', () => {
+  it('lets MDK users into Aurelia too', () => {
     const access = resolveUnitAccess('Usuario', ['MDK'])
-    expect(isDashboardPathAllowed('/dashboard/aurelia', access)).toBe(false)
+    expect(isDashboardPathAllowed('/dashboard/aurelia', access)).toBe(true)
+    expect(isDashboardPathAllowed('/dashboard/aurelia/desarrollo', access)).toBe(true)
     expect(isDashboardPathAllowed('/dashboard/aureliax', access)).toBe(true)
     expect(isDashboardPathAllowed('/dashboard/clients', access)).toBe(true)
   })
