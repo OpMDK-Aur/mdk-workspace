@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { originCampaign, originChannelLabel } from '@/lib/aurelia/origins-shared'
+import { useAureliaOrigins } from './use-aurelia-origins'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
@@ -37,7 +39,9 @@ export type ClientsTableTime = {
 
 /** `bare` la muestra sin tarjeta y respeta el orden recibido (lo usa el detalle de cada indicador). */
 export function AureliaClientsTable({ clients, currency, bare = false, time, onOpenClient, range, rangeLabel }: { clients: AureliaClient[]; currency: string; bare?: boolean; time?: ClientsTableTime; onOpenClient?: (client: AureliaClient) => void; range?: DateRange; rangeLabel?: string }) {
-  const columnCount = 10 + (time ? 2 : 0)
+  const columnCount = 11 + (time ? 2 : 0)
+  const { data: originsData } = useAureliaOrigins()
+  const origins = originsData?.available ? originsData.origins : null
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [dateField, setDateField] = useState<DateField | 'none'>('none')
@@ -124,6 +128,7 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                 <TableHead>Cliente</TableHead>
                 <TableHead>Teléfono</TableHead>
                 <TableHead>Plan</TableHead>
+                <TableHead>Origen</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Alta</TableHead>
                 <TableHead>Activación</TableHead>
@@ -157,6 +162,26 @@ export function AureliaClientsTable({ clients, currency, bare = false, time, onO
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{client.phone || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap text-sm">{client.planName ?? client.planSlug ?? '—'}</TableCell>
+                  <TableCell className="max-w-56 text-sm">
+                    {!originsData ? <span className="text-muted-foreground">…</span> : !origins ? <span className="text-muted-foreground">—</span> : (() => {
+                      const origin = origins[client.id]
+                      const campaign = originCampaign(origin)
+                      return (
+                        <div className="flex flex-col" title={origin?.label ?? undefined}>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={cn('truncate', origin?.kind !== 'referral' && 'text-muted-foreground')}>{originChannelLabel(origin)}</span>
+                            {origin?.source === 'ghl' && <span title="Dato de GoHighLevel" className="shrink-0 rounded border px-1 text-[10px] font-semibold text-muted-foreground">GHL</span>}
+                          </span>
+                          {campaign && <span className="truncate text-xs text-muted-foreground">{campaign}</span>}
+                          {(origin?.ghlFirst || origin?.ghlLast) && (
+                            <span className="truncate text-[11px] text-muted-foreground" title={`Primera: ${origin.ghlFirst?.label ?? '—'} · Última: ${origin.ghlLast?.label ?? '—'}`}>
+                              1ª {origin.ghlFirst?.label ?? '—'} · Últ. {origin.ghlLast?.label ?? '—'}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <Badge variant="outline" className={cn('whitespace-nowrap font-medium', STATUS_STYLES[client.status])} title={client.rawStatus ?? undefined}>
