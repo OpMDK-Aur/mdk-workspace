@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ArrowUpDown, Pencil, Send, Trash2 } from 'lucide-react'
@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { addDevComment, deleteDevComment, updateDevComment } from '@/app/actions/aurelia-followup'
 import type { DevComment } from '@/lib/aurelia/followup-shared'
 import { useDevTaskComments } from '../use-aurelia-followup'
+import { AttachImageButton, DraftImages, TextWithImages, useTextImages } from './text-images'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'
 const isComposing = (event: React.KeyboardEvent) => event.nativeEvent.isComposing || event.keyCode === 229
@@ -21,6 +22,9 @@ export function DevTaskComments({ taskId }: { taskId: string }) {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [draft, setDraft] = useState('')
   const [sending, startSending] = useTransition()
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const images = useTextImages({ folder: taskId, getValue: () => draftRef.current, onChange: setDraft })
   const ready = data?.available ? data : null
 
   const comments = useMemo(() => {
@@ -29,7 +33,7 @@ export function DevTaskComments({ taskId }: { taskId: string }) {
   }, [ready, sortOrder])
 
   const send = () => {
-    if (!draft.trim() || sending) return
+    if (!draft.trim() || sending || images.uploading) return
     startSending(async () => {
       const result = await addDevComment(taskId, draft)
       if (result.error) {
@@ -84,10 +88,13 @@ export function DevTaskComments({ taskId }: { taskId: string }) {
           maxLength={4000}
           disabled={!ready}
           className="resize-none bg-background"
+          {...images.textareaProps}
         />
+        <DraftImages text={draft} onChange={setDraft} />
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea</span>
-          <Button type="submit" size="sm" className="gap-1.5" disabled={!ready || sending || !draft.trim()}>
+          <span className="text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea · Ctrl + V para pegar imágenes</span>
+          <AttachImageButton onFiles={images.upload} uploading={images.uploading} disabled={!ready} className="ml-auto" />
+          <Button type="submit" size="sm" className="gap-1.5" disabled={!ready || sending || images.uploading || !draft.trim()}>
             {sending ? <Spinner /> : <Send className="size-3.5" aria-hidden="true" />}
             Comentar
           </Button>
@@ -101,6 +108,9 @@ function CommentItem({ comment, mine, onChanged }: { comment: DevComment; mine: 
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(comment.contenido)
   const [pending, startTransition] = useTransition()
+  const textRef = useRef(text)
+  textRef.current = text
+  const images = useTextImages({ folder: comment.id, getValue: () => textRef.current, onChange: setText })
   const created = new Date(comment.createdAt)
 
   const save = () => {
@@ -154,14 +164,16 @@ function CommentItem({ comment, mine, onChanged }: { comment: DevComment; mine: 
         </div>
         {editing ? (
           <div className="flex flex-col gap-2">
-            <Textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} maxLength={4000} aria-label="Editar comentario" autoFocus className="bg-background" />
+            <Textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} maxLength={4000} aria-label="Editar comentario" autoFocus className="bg-background" {...images.textareaProps} />
+            <DraftImages text={text} onChange={setText} />
             <div className="flex justify-end gap-2">
+              <AttachImageButton onFiles={images.upload} uploading={images.uploading} className="mr-auto" />
               <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={pending}>Cancelar</Button>
-              <Button type="button" size="sm" onClick={save} disabled={pending || !text.trim()}>{pending && <Spinner />}Guardar</Button>
+              <Button type="button" size="sm" onClick={save} disabled={pending || images.uploading || !text.trim()}>{pending && <Spinner />}Guardar</Button>
             </div>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-pretty">{comment.contenido}</p>
+          <TextWithImages text={comment.contenido} />
         )}
       </div>
     </article>
