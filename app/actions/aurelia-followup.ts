@@ -143,7 +143,7 @@ function devTaskValues(input: DevTaskInput) {
   const clientId = validateClientId(input.clientId, false)
   return {
     titulo,
-    descripcion: cleanText(input.descripcion, 4000),
+    descripcion: cleanText(input.descripcion, 10000),
     etapa: input.etapa,
     categoria: input.categoria,
     fecha_pedido: fechaPedido,
