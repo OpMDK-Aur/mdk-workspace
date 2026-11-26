@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { Flag, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import { todayInArgentina } from '@/lib/aurelia/time-shared'
 import { ClientPicker, type PickedClient } from './client-picker'
 import { DevTaskComments } from './dev-task-comments'
 import { DevTaskTimerButton } from './dev-task-timer-button'
+import { AttachImageButton, DraftImages, useTextImages } from './text-images'
 
 const UNASSIGNED = '__none__'
 
@@ -54,6 +55,9 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
   const [client, setClient] = useState<PickedClient>(existing?.clientId ? { id: existing.clientId, name: existing.clientName ?? 'Cliente' } : prefill?.client ?? null)
   const [prioridad, setPrioridad] = useState(existing?.prioridad ?? false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const descripcionRef = useRef(descripcion)
+  descripcionRef.current = descripcion
+  const images = useTextImages({ folder: existing?.id ?? 'nuevas', getValue: () => descripcionRef.current, onChange: setDescripcion })
   const [pending, startTransition] = useTransition()
 
   const creator = existing ? existing.creadoPorName ?? 'Desconocido' : team.find((member) => member.id === viewerId)?.name ?? 'Vos'
@@ -131,8 +135,13 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="dev-descripcion">Descripción / próximos pasos</Label>
-        <Textarea id="dev-descripcion" value={descripcion} onChange={(event) => setDescripcion(event.target.value)} rows={4} maxLength={4000} />
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="dev-descripcion">Descripción / próximos pasos</Label>
+          <AttachImageButton onFiles={images.upload} uploading={images.uploading} />
+        </div>
+        <Textarea id="dev-descripcion" value={descripcion} onChange={(event) => setDescripcion(event.target.value)} rows={4} maxLength={10000} aria-describedby="dev-descripcion-ayuda" {...images.textareaProps} />
+        <p id="dev-descripcion-ayuda" className="text-xs text-muted-foreground">Pegá capturas con Ctrl + V o arrastralas al texto.</p>
+        <DraftImages text={descripcion} onChange={setDescripcion} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -191,7 +200,7 @@ function DevTaskForm({ draft, team, viewerId, onClose, onSaved }: Props & { draf
         ) : <span />}
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={pending}>Cancelar</Button>
-          <Button type="submit" disabled={pending || !titulo.trim()}>
+          <Button type="submit" disabled={pending || images.uploading || !titulo.trim()}>
             {pending && <Spinner />}
             {existing ? 'Guardar' : 'Crear tarea'}
           </Button>
