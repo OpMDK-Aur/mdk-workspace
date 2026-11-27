@@ -11,6 +11,7 @@ import { getCatalogToolKeys, getToolDefinitions } from '../tools'
 import type { ExecutionContext } from '../types'
 import { CLIENT_PROFILE_COLUMNS, buildClientMemory, describeClientProfile } from '../client-memory'
 import { createClient } from '@/lib/supabase/server'
+import { getUserClaude } from '../user-claude'
 
 const MAX_TOOL_OUTPUT_BYTES = 180_000
 
@@ -196,7 +197,12 @@ export async function streamSupervisorResponse(
   // inválidos que todavía puedan existir en ai_agents.model para que una
   // configuración histórica no deje el stream sin respuesta.
   const selectedModel = requestedModel === 'openai/o4-mini' ? requestedModel : 'openai/o4-mini'
-  console.log('[v0] Supervisor model selected:', { requestedModel, selectedModel })
+  // Si el colaborador conectó su Claude, el Supervisor responde con su clave.
+  const userClaude = await getUserClaude(context.userId)
+  const modelSettings = userClaude
+    ? { model: userClaude.model, providerOptions: userClaude.providerOptions }
+    : { model: getGatewayModel(selectedModel) }
+  console.log('[v0] Supervisor model selected:', { requestedModel, selectedModel: userClaude?.model ?? selectedModel, userClaude: Boolean(userClaude) })
   const reportMode = detectReportMode(messages)
   const monthlyReportMode = detectMonthlyReportMode(messages)
   console.log('[v0] Supervisor report mode:', { reportMode, monthlyReportMode })
@@ -262,7 +268,7 @@ export async function streamSupervisorResponse(
     const rewrites = new Map<string, string>()
     try {
       const { text } = await generateText({
-        model: getGatewayModel(selectedModel),
+        ...modelSettings,
         system: 'Reescribí cada sección reemplazando los marcadores (XX, YY, ZZ, AA, BB, CC, RR) por las cifras reales provistas. Si una cifra no está en los datos, reformulá la frase sin ella. Mantené el resto del texto. Respondé SOLO un JSON: [{"heading": "...", "text": "..."}].',
         prompt: `TOTALES CALCULADOS: ${describeKpis(kpis)}\n\n${await platformSummaries(range)}\n\nSECCIONES:\n${JSON.stringify(offending.map(({ heading, text }) => ({ heading, text })))}`,
         maxOutputTokens: 4000,
@@ -349,7 +355,7 @@ export async function streamSupervisorResponse(
   const clientContextPrompt = await loadClientContextPrompt(context.clientId)
 
   return streamText({
-    model: getGatewayModel(selectedModel),
+    ...modelSettings,
     system: [
       config.systemPrompt,
       clientContextPrompt,

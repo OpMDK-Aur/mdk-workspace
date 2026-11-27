@@ -83,6 +83,13 @@ function assertHttpsUrl(value: string) {
 export async function verifyConnectorCredentials(id: ConnectorId, input: Record<string, string>): Promise<VerifyResult> {
   try {
     switch (id) {
+      case 'anthropic': {
+        const apiKey = input.apiKey.trim()
+        if (!apiKey.startsWith('sk-ant-')) return { ok: false, error: 'La API key de Anthropic empieza con sk-ant-.' }
+        const result = await getJson('https://api.anthropic.com/v1/models?limit=1', { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' })
+        if (!result.ok) return { ok: false, error: rejected(result.status, 'Anthropic') }
+        return { ok: true, label: `Clave …${apiKey.slice(-4)}`, values: { apiKey } }
+      }
       case 'instagram': {
         const token = input.token.trim()
         // Tokens de "Instagram API con login de Instagram"; si es un token de Facebook Login, se prueba contra Graph.

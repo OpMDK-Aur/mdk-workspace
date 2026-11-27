@@ -112,6 +112,7 @@ export function ConnectorsGrid({ statuses }: { statuses: ConnectorStatus[] }) {
   }
 
   const groups = [
+    { key: 'ai', title: 'Inteligencia artificial', description: 'Conectá tu clave y el asistente te responde con tu propio Claude.' },
     { key: 'google', title: 'Google', description: 'Cada persona conecta su propia cuenta de Google.' },
     { key: 'social', title: 'Publicidad y redes', description: null },
     { key: 'crm', title: 'CRM', description: 'Al conectar te pedimos los datos de acceso a la API.' },

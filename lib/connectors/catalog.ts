@@ -3,6 +3,7 @@ export type ConnectorId =
   | 'instagram' | 'tiktok'
   | 'gohighlevel' | 'aurelia_crm' | 'kommo' | 'hubspot' | 'fidelity' | 'tecnom'
   | 'hostinger' | 'hostinger_email' | 'donweb' | 'cloudflare'
+  | 'anthropic'
 
 export type CredentialField = {
   name: string
@@ -14,7 +15,7 @@ export type CredentialField = {
   defaultValue?: string
 }
 
-export type ConnectorGroup = 'google' | 'social' | 'crm' | 'hosting' | 'other'
+export type ConnectorGroup = 'ai' | 'google' | 'social' | 'crm' | 'hosting' | 'other'
 
 export type ConnectorDefinition = {
   id: ConnectorId
@@ -38,6 +39,23 @@ export type ConnectorDefinition = {
 }
 
 export const CONNECTORS: ConnectorDefinition[] = [
+  {
+    id: 'anthropic',
+    name: 'Claude (Anthropic)',
+    description: 'Tu propia clave de Claude: el asistente responde con tu cuenta de Anthropic y el consumo se te factura a vos.',
+    logos: [],
+    monogram: { text: 'C', color: '#D97757' },
+    group: 'ai',
+    kind: 'credentials',
+    platform: 'anthropic',
+    connectPath: null,
+    verifies: true,
+    helpUrl: 'https://console.anthropic.com/settings/keys',
+    fields: [
+      { name: 'apiKey', label: 'API key de Anthropic', type: 'password', placeholder: 'sk-ant-…', help: 'console.anthropic.com → Settings → API Keys → Create Key.' },
+    ],
+    fallbackLabel: 'Sin tu clave, la IA usa la cuenta de la agencia.',
+  },
   {
     id: 'google_ads',
     name: 'Google Ads',

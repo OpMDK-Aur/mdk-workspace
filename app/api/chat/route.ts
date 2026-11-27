@@ -7,6 +7,7 @@ import {
 } from 'ai'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getUserClaude } from '@/lib/ai/user-claude'
 
 export const maxDuration = 30
 
@@ -78,8 +79,11 @@ Fecha actual: ${new Date().toLocaleDateString('es-AR', {
 
   const modelMessages = await convertToModelMessages(messages)
 
+  const userClaude = await getUserClaude(user.id, 'anthropic/claude-opus-4.6')
+
   const result = streamText({
     model: 'anthropic/claude-opus-4.6',
+    ...(userClaude ? { providerOptions: userClaude.providerOptions } : {}),
     system: systemPrompt,
     messages: modelMessages,
     abortSignal: req.signal,

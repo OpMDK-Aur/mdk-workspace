@@ -5,6 +5,7 @@ import {
   UIMessage,
 } from 'ai'
 import { createClient } from '@/lib/supabase/server'
+import { getUserClaude } from '@/lib/ai/user-claude'
 
 export const maxDuration = 60
 
@@ -226,8 +227,11 @@ Fecha actual: ${new Date().toLocaleDateString('es-AR', {
 
     const modelMessages = await convertToModelMessages(messages)
 
+    const userClaude = await getUserClaude(user.id)
+
     const result = streamText({
-      model: 'anthropic/claude-sonnet-4-20250514',
+      model: userClaude?.model ?? 'anthropic/claude-sonnet-4-20250514',
+      ...(userClaude ? { providerOptions: userClaude.providerOptions } : {}),
       system: systemPrompt,
       messages: modelMessages,
       abortSignal: req.signal,
